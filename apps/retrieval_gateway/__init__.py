@@ -1,0 +1,1 @@
+"""Retrieval Gateway HTTP service."""

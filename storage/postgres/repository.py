@@ -1,0 +1,167 @@
+import json
+import time
+from contextlib import contextmanager
+from typing import Any, Iterator
+from uuid import UUID, uuid4
+
+import psycopg
+
+from config.settings import settings
+
+
+@contextmanager
+def connection() -> Iterator[psycopg.Connection[Any]]:
+    conn = psycopg.connect(settings.database_url)
+    try:
+        yield conn
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def wait_for_database(attempts: int = 30) -> None:
+    last_error: Exception | None = None
+    for _ in range(attempts):
+        try:
+            with connection() as conn:
+                conn.execute("SELECT 1")
+            return
+        except Exception as exc:  # pragma: no cover - startup-only path
+            last_error = exc
+            time.sleep(1)
+    raise RuntimeError("PostgreSQL is not available") from last_error
+
+
+def init_db() -> None:
+    wait_for_database()
+    with connection() as conn:
+        conn.execute("CREATE SCHEMA IF NOT EXISTS workflow")
+        conn.execute("CREATE SCHEMA IF NOT EXISTS audit")
+        conn.execute("CREATE SCHEMA IF NOT EXISTS agent")
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS workflow.tasks (
+              id UUID PRIMARY KEY,
+              request_id TEXT NOT NULL,
+              session_id TEXT NOT NULL,
+              user_query TEXT NOT NULL,
+              status TEXT NOT NULL,
+              state_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+              result_json JSONB,
+              error TEXT,
+              retry_count INTEGER NOT NULL DEFAULT 0,
+              created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+              updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS workflow.checkpoints (
+              id BIGSERIAL PRIMARY KEY,
+              task_id UUID NOT NULL REFERENCES workflow.tasks(id) ON DELETE CASCADE,
+              node_name TEXT NOT NULL,
+              state_json JSONB NOT NULL,
+              created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS audit.events (
+              id BIGSERIAL PRIMARY KEY,
+              request_id TEXT NOT NULL,
+              task_id UUID,
+              agent_name TEXT NOT NULL,
+              model_name TEXT,
+              prompt_version TEXT,
+              input_hash TEXT,
+              tool_calls JSONB NOT NULL DEFAULT '[]'::jsonb,
+              model_output JSONB,
+              token_usage JSONB,
+              latency_ms INTEGER,
+              reviewer_result TEXT,
+              created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS agent.prompt_versions (
+              prompt_id TEXT NOT NULL,
+              version TEXT NOT NULL,
+              status TEXT NOT NULL DEFAULT 'active',
+              model_name TEXT,
+              content TEXT NOT NULL,
+              created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+              PRIMARY KEY (prompt_id, version)
+            )
+            """
+        )
+
+
+def create_task(user_query: str, session_id: str | None, metadata: dict[str, Any]) -> dict[str, Any]:
+    task_id = uuid4()
+    request_id = str(uuid4())
+    session_id = session_id or str(uuid4())
+    state = {"request_id": request_id, "session_id": session_id, "user_query": user_query, "metadata": metadata, "retry_count": 0}
+    with connection() as conn:
+        conn.execute(
+            "INSERT INTO workflow.tasks (id, request_id, session_id, user_query, status, state_json) VALUES (%s, %s, %s, %s, %s, %s)",
+            (task_id, request_id, session_id, user_query, "queued", json.dumps(state)),
+        )
+    return {"id": str(task_id), "request_id": request_id, "session_id": session_id, "status": "queued"}
+
+
+def get_task(task_id: str) -> dict[str, Any] | None:
+    with connection() as conn:
+        row = conn.execute(
+            "SELECT id, request_id, session_id, user_query, status, state_json, result_json, error, retry_count, created_at, updated_at FROM workflow.tasks WHERE id = %s",
+            (UUID(task_id),),
+        ).fetchone()
+    if not row:
+        return None
+    keys = ["id", "request_id", "session_id", "user_query", "status", "state", "result", "error", "retry_count", "created_at", "updated_at"]
+    result = dict(zip(keys, row))
+    result["id"] = str(result["id"])
+    return result
+
+
+def update_task_state(task_id: str, state: dict[str, Any], status: str | None = None) -> None:
+    with connection() as conn:
+        if status:
+            conn.execute("UPDATE workflow.tasks SET state_json=%s, status=%s, updated_at=NOW() WHERE id=%s", (json.dumps(state), status, UUID(task_id)))
+        else:
+            conn.execute("UPDATE workflow.tasks SET state_json=%s, updated_at=NOW() WHERE id=%s", (json.dumps(state), UUID(task_id)))
+
+
+def save_checkpoint(task_id: str, node_name: str, state: dict[str, Any]) -> None:
+    with connection() as conn:
+        conn.execute("INSERT INTO workflow.checkpoints (task_id, node_name, state_json) VALUES (%s, %s, %s)", (UUID(task_id), node_name, json.dumps(state)))
+
+
+def complete_task(task_id: str, state: dict[str, Any], status: str = "completed", error: str | None = None) -> None:
+    with connection() as conn:
+        conn.execute(
+            "UPDATE workflow.tasks SET state_json=%s, result_json=%s, status=%s, error=%s, retry_count=%s, updated_at=NOW() WHERE id=%s",
+            (json.dumps(state), json.dumps(state.get("final_output")), status, error, state.get("retry_count", 0), UUID(task_id)),
+        )
+
+
+def record_prompt(prompt_id: str, version: str, content: str, model_name: str) -> None:
+    with connection() as conn:
+        conn.execute(
+            "INSERT INTO agent.prompt_versions (prompt_id, version, model_name, content) VALUES (%s, %s, %s, %s) ON CONFLICT (prompt_id, version) DO NOTHING",
+            (prompt_id, version, model_name, content),
+        )
+
+
+def record_audit(event: dict[str, Any]) -> None:
+    with connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO audit.events (request_id, task_id, agent_name, model_name, prompt_version, input_hash, tool_calls, model_output, token_usage, latency_ms, reviewer_result)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (event["request_id"], event.get("task_id"), event["agent_name"], event.get("model_name"), event.get("prompt_version"), event.get("input_hash"), json.dumps(event.get("tool_calls", [])), json.dumps(event.get("model_output")), json.dumps(event.get("token_usage")), event.get("latency_ms"), event.get("reviewer_result")),
+        )

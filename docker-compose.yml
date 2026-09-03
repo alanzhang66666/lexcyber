@@ -1,0 +1,116 @@
+services:
+  api:
+    build: .
+    command: uvicorn apps.api.main:app --host 0.0.0.0 --port 8000
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://lex:lex@postgres:5432/lex}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      RETRIEVAL_GATEWAY_URL: ${RETRIEVAL_GATEWAY_URL:-http://retrieval-gateway:8002}
+      MODEL_GATEWAY_URL: ${MODEL_GATEWAY_URL:-http://model-gateway:8001}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    expose:
+      - "8000"
+
+  agent-worker:
+    build: .
+    command: dramatiq apps.worker.tasks --processes 1 --threads 4
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://lex:lex@postgres:5432/lex}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      RETRIEVAL_GATEWAY_URL: ${RETRIEVAL_GATEWAY_URL:-http://retrieval-gateway:8002}
+      MODEL_GATEWAY_URL: ${MODEL_GATEWAY_URL:-http://model-gateway:8001}
+      KNOWLEDGE_BASE_URL: ${KNOWLEDGE_BASE_URL:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      model-gateway:
+        condition: service_started
+      retrieval-gateway:
+        condition: service_started
+
+  model-gateway:
+    build: .
+    command: uvicorn apps.model_gateway.main:app --host 0.0.0.0 --port 8001
+    environment:
+      MODEL_PROVIDER: ${MODEL_PROVIDER:-stub}
+      MODEL_NAME: ${MODEL_NAME:-stub-general-v1}
+      MODEL_API_KEY: ${MODEL_API_KEY:-}
+      MODEL_API_BASE_URL: ${MODEL_API_BASE_URL:-https://api.openai.com/v1}
+      MODEL_TIMEOUT_SECONDS: ${MODEL_TIMEOUT_SECONDS:-45}
+      MODEL_MAX_RETRIES: ${MODEL_MAX_RETRIES:-2}
+    expose:
+      - "8001"
+
+  retrieval-gateway:
+    build: .
+    command: uvicorn apps.retrieval_gateway.main:app --host 0.0.0.0 --port 8002
+    environment:
+      KNOWLEDGE_BASE_URL: ${KNOWLEDGE_BASE_URL:-}
+    expose:
+      - "8002"
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: lex
+      POSTGRES_PASSWORD: lex
+      POSTGRES_DB: lex
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations/001_initial.sql:/docker-entrypoint-initdb.d/001_initial.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lex -d lex"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9001:9001"
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      - minio
+    entrypoint: ["/bin/sh", "-c"]
+    command: >-
+      "until mc alias set local http://minio:9000 ${MINIO_ACCESS_KEY:-minioadmin} ${MINIO_SECRET_KEY:-minioadmin}; do sleep 2; done;
+      mc mb --ignore-existing local/${MINIO_BUCKET:-lexcyber}"
+
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:
+  minio_data:
