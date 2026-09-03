@@ -5,6 +5,7 @@ from typing import Any, Iterator
 from uuid import UUID, uuid4
 
 import psycopg
+from psycopg.types.json import Jsonb
 
 from config.settings import settings
 
@@ -108,7 +109,7 @@ def create_task(user_query: str, session_id: str | None, metadata: dict[str, Any
     with connection() as conn:
         conn.execute(
             "INSERT INTO workflow.tasks (id, request_id, session_id, user_query, status, state_json) VALUES (%s, %s, %s, %s, %s, %s)",
-            (task_id, request_id, session_id, user_query, "queued", json.dumps(state)),
+            (task_id, request_id, session_id, user_query, "queued", Jsonb(state)),
         )
     return {"id": str(task_id), "request_id": request_id, "session_id": session_id, "status": "queued"}
 
@@ -130,21 +131,21 @@ def get_task(task_id: str) -> dict[str, Any] | None:
 def update_task_state(task_id: str, state: dict[str, Any], status: str | None = None) -> None:
     with connection() as conn:
         if status:
-            conn.execute("UPDATE workflow.tasks SET state_json=%s, status=%s, updated_at=NOW() WHERE id=%s", (json.dumps(state), status, UUID(task_id)))
+            conn.execute("UPDATE workflow.tasks SET state_json=%s, status=%s, updated_at=NOW() WHERE id=%s", (Jsonb(state), status, UUID(task_id)))
         else:
-            conn.execute("UPDATE workflow.tasks SET state_json=%s, updated_at=NOW() WHERE id=%s", (json.dumps(state), UUID(task_id)))
+            conn.execute("UPDATE workflow.tasks SET state_json=%s, updated_at=NOW() WHERE id=%s", (Jsonb(state), UUID(task_id)))
 
 
 def save_checkpoint(task_id: str, node_name: str, state: dict[str, Any]) -> None:
     with connection() as conn:
-        conn.execute("INSERT INTO workflow.checkpoints (task_id, node_name, state_json) VALUES (%s, %s, %s)", (UUID(task_id), node_name, json.dumps(state)))
+        conn.execute("INSERT INTO workflow.checkpoints (task_id, node_name, state_json) VALUES (%s, %s, %s)", (UUID(task_id), node_name, Jsonb(state)))
 
 
 def complete_task(task_id: str, state: dict[str, Any], status: str = "completed", error: str | None = None) -> None:
     with connection() as conn:
         conn.execute(
             "UPDATE workflow.tasks SET state_json=%s, result_json=%s, status=%s, error=%s, retry_count=%s, updated_at=NOW() WHERE id=%s",
-            (json.dumps(state), json.dumps(state.get("final_output")), status, error, state.get("retry_count", 0), UUID(task_id)),
+            (Jsonb(state), Jsonb(state.get("final_output")), status, error, state.get("retry_count", 0), UUID(task_id)),
         )
 
 
@@ -163,5 +164,5 @@ def record_audit(event: dict[str, Any]) -> None:
             INSERT INTO audit.events (request_id, task_id, agent_name, model_name, prompt_version, input_hash, tool_calls, model_output, token_usage, latency_ms, reviewer_result)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
-            (event["request_id"], event.get("task_id"), event["agent_name"], event.get("model_name"), event.get("prompt_version"), event.get("input_hash"), json.dumps(event.get("tool_calls", [])), json.dumps(event.get("model_output")), json.dumps(event.get("token_usage")), event.get("latency_ms"), event.get("reviewer_result")),
+            (event["request_id"], event.get("task_id"), event["agent_name"], event.get("model_name"), event.get("prompt_version"), event.get("input_hash"), Jsonb(event.get("tool_calls", [])), Jsonb(event.get("model_output")), Jsonb(event.get("token_usage")), event.get("latency_ms"), event.get("reviewer_result")),
         )
