@@ -1,2 +1,1 @@
-"""Low-risk legal extraction and source-verification skills."""
-
+"""Legal Skill Pack v0.2 package."""

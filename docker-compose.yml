@@ -9,6 +9,10 @@ services:
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
       RETRIEVAL_GATEWAY_URL: ${RETRIEVAL_GATEWAY_URL:-http://retrieval-gateway:8002}
       MODEL_GATEWAY_URL: ${MODEL_GATEWAY_URL:-http://model-gateway:8001}
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-http://minio:9000}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+      MINIO_BUCKET: ${MINIO_BUCKET:-lexcyber}
     depends_on:
       postgres:
         condition: service_healthy
@@ -65,6 +69,7 @@ services:
     environment:
       APP_ENV: ${APP_ENV:-development}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://lex:lex@postgres:5432/lex}
       KNOWLEDGE_BASE_URL: ${KNOWLEDGE_BASE_URL:-}
       RETRIEVAL_GATEWAY_URL: ${RETRIEVAL_GATEWAY_URL:-http://retrieval-gateway:8002}
     depends_on:
@@ -81,7 +86,7 @@ services:
       POSTGRES_DB: lex
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./migrations/001_initial.sql:/docker-entrypoint-initdb.d/001_initial.sql:ro
+      - ./migrations:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U lex -d lex"]
       interval: 5s

@@ -5,7 +5,6 @@ from graph.workflow import build_workflow
 from storage.postgres.repository import complete_task, get_task, update_task_state
 from storage.redis import configure_broker
 
-
 configure_broker()
 
 

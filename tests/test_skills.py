@@ -8,7 +8,7 @@ def test_legal_skill_catalog_is_registered():
     ids = {skill["id"] for skill in skills}
     assert "legal.document.classify" in ids
     assert "legal.citation.verify" in ids
-    assert len(ids) == 10
+    assert len(ids) == 22
 
 
 def test_executor_runs_registered_skill():

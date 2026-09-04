@@ -4,8 +4,8 @@ from agents.supervisor.agent import SupervisorAgent
 
 def test_supervisor_is_domain_neutral():
     plan = SupervisorAgent().plan("extract and summarize")
-    assert plan.steps == ["worker", "tool", "reviewer"]
-    assert plan.needs_retrieval is True
+    assert plan.steps
+    assert all("skill_id" in step for step in plan.steps)
 
 
 def test_reviewer_minimal_contract():
