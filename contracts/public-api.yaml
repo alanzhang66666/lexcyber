@@ -1,0 +1,203 @@
+openapi: 3.1.0
+info:
+  title: LexCyber Public API
+  version: 0.3.0
+  description: Public contract owned by the Java application service.
+servers:
+  - url: /v1
+tags:
+  - name: tasks
+  - name: cases
+  - name: reviews
+paths:
+  /tasks:
+    post:
+      tags: [tasks]
+      summary: Create an asynchronous task
+      operationId: createTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TaskCreate' }
+      responses:
+        '202':
+          description: Task accepted; execution is delegated to the engine.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskView' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /tasks/{taskId}:
+    get:
+      tags: [tasks]
+      summary: Read the current public task state
+      operationId: getTask
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+      responses:
+        '200':
+          description: Current task state.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskView' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /tasks/{taskId}/retry:
+    post:
+      tags: [tasks]
+      summary: Create a new execution while retaining history
+      operationId: retryTask
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+      responses:
+        '202':
+          description: Retry accepted.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskView' }
+  /reviews:
+    get:
+      tags: [reviews]
+      summary: List human review requests
+      operationId: listReviews
+      parameters:
+        - { name: status, in: query, schema: { type: string } }
+        - { name: page, in: query, schema: { type: integer, minimum: 0, default: 0 } }
+        - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses:
+        '200':
+          description: Page of review requests.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PageReview' }
+  /reviews/{reviewId}/approve:
+    post:
+      tags: [reviews]
+      summary: Approve the current immutable result version
+      operationId: approveReview
+      parameters:
+        - { name: reviewId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReviewDecision' }
+      responses:
+        '200':
+          description: Review decision recorded.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReviewRecord' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /reviews/{reviewId}/reject:
+    post:
+      tags: [reviews]
+      summary: Reject the current result version
+      operationId: rejectReview
+      parameters:
+        - { name: reviewId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReviewDecision' }
+      responses:
+        '200':
+          description: Review decision recorded.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReviewRecord' }
+components:
+  parameters:
+    TaskId:
+      name: taskId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+  responses:
+    BadRequest:
+      description: Request validation failed.
+      content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } }
+    NotFound:
+      description: Resource not found.
+      content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } }
+    Conflict:
+      description: Resource version or state conflict.
+      content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } }
+  schemas:
+    TaskCreate:
+      type: object
+      required: [query]
+      properties:
+        query: { type: string, minLength: 1, maxLength: 20000 }
+        caseId: { type: string }
+        sessionId: { type: string }
+        metadata: { type: object, additionalProperties: true }
+    TaskView:
+      type: object
+      required: [id, requestId, status, executionId, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        requestId: { type: string, format: uuid }
+        executionId: { type: string, format: uuid }
+        caseId: { type: string }
+        status: { type: string, enum: [queued, running, completed, waiting_review, failed, timed_out, rejected] }
+        currentStage: { type: string }
+        result: { $ref: '#/components/schemas/ResultRef' }
+        error: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    ResultRef:
+      type: object
+      required: [resultId, version, type]
+      properties:
+        resultId: { type: string, format: uuid }
+        version: { type: integer, minimum: 1 }
+        type: { type: string }
+        contentHash: { type: string }
+        sourceRefs:
+          type: array
+          items: { $ref: '#/components/schemas/SourceRef' }
+    SourceRef:
+      type: object
+      required: [sourceId, locator]
+      properties:
+        sourceId: { type: string }
+        locator: { type: string, description: Page/paragraph/anchor locator in the source document. }
+        jurisdiction: { type: string }
+        version: { type: string }
+        effectiveFrom: { type: string, format: date }
+        effectiveTo: { type: string, format: date }
+    ReviewRecord:
+      type: object
+      required: [id, resultVersion, status, decision]
+      properties:
+        id: { type: string, format: uuid }
+        taskId: { type: string, format: uuid }
+        resultVersion: { type: integer, minimum: 1 }
+        status: { type: string, enum: [pending, approved, rejected, superseded] }
+        decision: { type: string, enum: [approve, reject, retry, none] }
+        actor: { type: string }
+        comment: { type: string }
+        authenticated: { type: boolean }
+        decidedAt: { type: string, format: date-time }
+    PageReview:
+      type: object
+      required: [items, page, size, total]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/ReviewRecord' } }
+        page: { type: integer }
+        size: { type: integer }
+        total: { type: integer, format: int64 }
+    ReviewDecision:
+      type: object
+      properties:
+        comment: { type: string, maxLength: 5000 }
+        resultVersion: { type: integer, minimum: 1 }
+    ApiError:
+      type: object
+      required: [code, message, traceId, retryable]
+      properties:
+        code: { type: string }
+        message: { type: string }
+        traceId: { type: string }
+        retryable: { type: boolean }
