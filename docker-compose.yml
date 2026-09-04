@@ -59,6 +59,20 @@ services:
     expose:
       - "8002"
 
+  skill-gateway:
+    build: .
+    command: uvicorn apps.skill_gateway.main:app --host 0.0.0.0 --port 8003
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      KNOWLEDGE_BASE_URL: ${KNOWLEDGE_BASE_URL:-}
+      RETRIEVAL_GATEWAY_URL: ${RETRIEVAL_GATEWAY_URL:-http://retrieval-gateway:8002}
+    depends_on:
+      retrieval-gateway:
+        condition: service_started
+    expose:
+      - "8003"
+
   postgres:
     image: postgres:16-alpine
     environment:

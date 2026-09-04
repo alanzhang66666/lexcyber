@@ -13,6 +13,7 @@
 - Redis + Dramatiq 异步任务队列
 - MinIO 对象存储基础设施
 - Docker Compose 部署和 Nginx 入口
+- Legal Skill Pack v0.1：10 个可注册、可审计的法律资料处理 Skill
 
 本版本不包含罪名、涉外、证据或其他法律判断节点。未来业务 Agent 只需新增节点和 prompt，不需要重构基础设施。
 
@@ -57,20 +58,25 @@ lex-backend/
 ├── prompts/               # Prompt Registry
 ├── migrations/            # PostgreSQL 初始化 SQL
 ├── nginx/                 # 统一入口
-└── tests/                 # 最小工作流测试
+├── skills/                # Skill catalog 与 Legal Skill Pack
+├── skill_runtime/         # Skill Registry、Executor、统一契约
+└── tests/                 # 工作流与 Skill 测试
 ```
 
 ## 后续扩展点
 
 1. 在 `models/router.py` 增加供应商和模型路由，不让 Graph 节点直接依赖具体 SDK。
 2. 在 `retrieval_gateway` 接入现有私有库，保持 `/retrieval/search` 契约不变。
-3. 在 `agents/` 增加领域 Agent，并通过 `graph/routing.py` 插入节点。
-4. 用真实 LangGraph checkpointer 替换当前 PostgreSQL checkpoint adapter。
-5. 为 `audit.events` 接入 OpenTelemetry、Prometheus 和集中式日志。
+3. 在 `skills/catalog.json` 注册新的能力，并由 Tool Gateway 统一执行。
+4. 在 `agents/` 增加领域 Agent，并通过 `graph/routing.py` 插入节点。
+5. 用真实 LangGraph checkpointer 替换当前 PostgreSQL checkpoint adapter。
+6. 为 `audit.events` 接入 OpenTelemetry、Prometheus 和集中式日志。
 
 ## 安全边界
 
 - 默认不上传文件、不调用外部知识库、不执行任意代码。
 - 工具调用必须经过 `ToolGateway`。
+- Skill 只能从 `skills/catalog.json` 加载，不能执行未注册入口。
+- 法律 Skill 只做资料提取、检索和核验，不自动生成最终法律判断。
 - 模型 API Key 只从环境变量读取，不写入仓库。
 - `.env`、密钥、运行时文件和本地数据均被 `.gitignore` 忽略。
