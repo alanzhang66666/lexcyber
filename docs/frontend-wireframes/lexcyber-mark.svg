@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <title>LexCyber 衡链标识</title>
+  <rect x="8" y="8" width="112" height="112" rx="26" fill="#17243A"/>
+  <!-- Three traceable legal/evidence nodes form the balance beam -->
+  <path d="M29 43L64 27L99 43" fill="none" stroke="#DCE7FA" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="29" cy="43" r="9" fill="#2F6FED" stroke="#FFFFFF" stroke-width="4"/>
+  <circle cx="64" cy="27" r="9" fill="#795CC5" stroke="#FFFFFF" stroke-width="4"/>
+  <circle cx="99" cy="43" r="9" fill="#2E9B72" stroke="#FFFFFF" stroke-width="4"/>
+  <!-- Human-controlled axis -->
+  <path d="M64 38V88" stroke="#FFFFFF" stroke-width="7" stroke-linecap="round"/>
+  <path d="M43 92H85" stroke="#FFFFFF" stroke-width="7" stroke-linecap="round"/>
+  <!-- Evidence and rule trays -->
+  <path d="M19 55C21 68 28 74 38 74C48 74 55 68 57 55" fill="none" stroke="#DCE7FA" stroke-width="5" stroke-linecap="round"/>
+  <path d="M71 55C73 68 80 74 90 74C100 74 107 68 109 55" fill="none" stroke="#DCE7FA" stroke-width="5" stroke-linecap="round"/>
+  <!-- Review seal -->
+  <circle cx="91" cy="91" r="14" fill="#2E9B72" stroke="#17243A" stroke-width="4"/>
+  <path d="M84 91L89 96L99 84" fill="none" stroke="#FFFFFF" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

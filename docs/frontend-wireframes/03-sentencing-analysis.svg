@@ -1,0 +1,246 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000">
+  <defs>
+    <filter id="shadow3" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="3" stdDeviation="8" flood-color="#17243A" flood-opacity="0.08"/>
+    </filter>
+    <style>
+      .t { font-family: Inter, "Microsoft YaHei", "PingFang SC", sans-serif; fill: #17243A; }
+      .white { fill: #FFFFFF; }
+      .muted { fill: #6B788B; }
+      .tiny { font-size: 12px; }
+      .small { font-size: 14px; }
+      .body { font-size: 16px; }
+      .h2 { font-size: 19px; font-weight: 700; }
+      .title { font-size: 25px; font-weight: 750; }
+      .label { font-size: 13px; font-weight: 650; }
+      .line { stroke: #E1E7EE; stroke-width: 1; }
+    </style>
+  </defs>
+
+  <rect width="1600" height="1000" fill="#F4F6F9"/>
+  <rect x="0" y="0" width="72" height="1000" fill="#17243A"/>
+  <rect x="17" y="17" width="38" height="38" rx="9" fill="#2F6FED"/>
+  <text class="t white" x="36" y="43" font-size="18" text-anchor="middle" font-weight="800">L</text>
+  <path d="M26 108h20v17H26zM30 104h12l4 4" fill="none" stroke="#8FA0B8" stroke-width="2"/>
+  <circle cx="36" cy="184" r="10" fill="none" stroke="#8FA0B8" stroke-width="2"/>
+  <path d="M31 184l4 4 7-9" fill="none" stroke="#8FA0B8" stroke-width="2"/>
+  <rect x="12" y="228" width="48" height="48" rx="10" fill="#2B3E58"/>
+  <path d="M36 240v22M26 246h20M31 246l-6 9h12zM43 246l-6 9h12z" fill="none" stroke="#FFFFFF" stroke-width="2"/>
+  <path d="M27 309h18v19H27zM30 314h12M30 319h9" fill="none" stroke="#8FA0B8" stroke-width="2"/>
+  <circle cx="36" cy="950" r="18" fill="#354963"/>
+  <text class="t white" x="36" y="956" font-size="14" text-anchor="middle">审</text>
+
+  <!-- Header and phase navigation -->
+  <rect x="72" y="0" width="1528" height="76" fill="#FFFFFF"/>
+  <line x1="72" y1="75" x2="1600" y2="75" class="line"/>
+  <text class="t muted small" x="104" y="31">案件中心  /  张某涉嫌盗窃案  /</text>
+  <text class="t body" x="342" y="31" font-weight="700">量刑分析</text>
+  <text class="t muted tiny" x="104" y="55">分析版本 V3 · 规则基准日 2026-09-04 · 由审核员王某编辑</text>
+
+  <g transform="translate(708,20)">
+    <circle cx="0" cy="17" r="12" fill="#2E9B72"/>
+    <path d="M-5 17l4 4 7-9" fill="none" stroke="#FFFFFF" stroke-width="2"/>
+    <text class="t small" x="20" y="22">材料</text>
+    <line x1="66" y1="17" x2="102" y2="17" stroke="#B9C4D2"/>
+    <circle cx="120" cy="17" r="12" fill="#2E9B72"/>
+    <path d="M115 17l4 4 7-9" fill="none" stroke="#FFFFFF" stroke-width="2"/>
+    <text class="t small" x="140" y="22">要素</text>
+    <line x1="186" y1="17" x2="222" y2="17" stroke="#B9C4D2"/>
+    <circle cx="240" cy="17" r="12" fill="#2F6FED"/>
+    <text class="t white tiny" x="240" y="21" text-anchor="middle">3</text>
+    <text class="t small" x="260" y="22" font-weight="700">量刑分析</text>
+    <line x1="340" y1="17" x2="376" y2="17" stroke="#B9C4D2"/>
+    <circle cx="394" cy="17" r="12" fill="#E5EAF0"/>
+    <text class="t tiny" x="394" y="21" text-anchor="middle">4</text>
+    <text class="t muted small" x="414" y="22">审核</text>
+  </g>
+  <rect x="1445" y="18" width="123" height="40" rx="8" fill="#FFFFFF" stroke="#D5DDE7"/>
+  <text class="t small" x="1507" y="43" text-anchor="middle">历史版本 ▾</text>
+
+  <!-- Legal warning -->
+  <rect x="96" y="94" width="1472" height="52" rx="8" fill="#FFF8E7" stroke="#E9C87D"/>
+  <circle cx="120" cy="120" r="10" fill="#D98919"/>
+  <text class="t white tiny" x="120" y="124" text-anchor="middle">!</text>
+  <text class="t small" x="140" y="117" font-weight="700">辅助分析，不替代司法裁量</text>
+  <text class="t muted tiny" x="140" y="136">所有罪名、情节、法条版本和调节幅度均须由有权限的专业人员确认后才能进入审核。</text>
+  <text class="t tiny" x="1538" y="125" text-anchor="end" fill="#A66008">查看责任边界</text>
+
+  <!-- Left case facts -->
+  <rect x="96" y="166" width="300" height="806" rx="12" fill="#FFFFFF" filter="url(#shadow3)"/>
+  <text class="t h2" x="120" y="205">已确认案件要素</text>
+  <rect x="309" y="184" width="63" height="28" rx="14" fill="#E7F7F1"/>
+  <text class="t label" x="340" y="203" text-anchor="middle" fill="#248B68">10 / 10</text>
+  <line x1="120" y1="226" x2="372" y2="226" class="line"/>
+
+  <text class="t tiny muted" x="120" y="259">拟分析罪名</text>
+  <text class="t body" x="120" y="284" font-weight="750">盗窃罪</text>
+  <rect x="286" y="257" width="86" height="26" rx="13" fill="#E7F7F1"/>
+  <text class="t tiny" x="329" y="275" text-anchor="middle" fill="#248B68">✓ 人工确认</text>
+  <text class="t tiny" x="120" y="309" fill="#2F6FED">查看构成事实与法条依据 ↗</text>
+
+  <line x1="120" y1="331" x2="372" y2="331" class="line"/>
+  <text class="t tiny muted" x="120" y="363">核心事实</text>
+  <circle cx="127" cy="390" r="7" fill="#2E9B72"/>
+  <path d="M123 390l3 3 5-7" fill="none" stroke="#FFFFFF" stroke-width="1.4"/>
+  <text class="t small" x="144" y="395">涉案金额：38,000 元</text>
+  <circle cx="127" cy="426" r="7" fill="#2E9B72"/>
+  <path d="M123 426l3 3 5-7" fill="none" stroke="#FFFFFF" stroke-width="1.4"/>
+  <text class="t small" x="144" y="431">既遂：是</text>
+  <circle cx="127" cy="462" r="7" fill="#2E9B72"/>
+  <path d="M123 462l3 3 5-7" fill="none" stroke="#FFFFFF" stroke-width="1.4"/>
+  <text class="t small" x="144" y="467">共同犯罪：否</text>
+  <circle cx="127" cy="498" r="7" fill="#2E9B72"/>
+  <path d="M123 498l3 3 5-7" fill="none" stroke="#FFFFFF" stroke-width="1.4"/>
+  <text class="t small" x="144" y="503">前科：无</text>
+
+  <line x1="120" y1="532" x2="372" y2="532" class="line"/>
+  <text class="t tiny muted" x="120" y="563">证据状态</text>
+  <text class="t small" x="120" y="590">直接证据</text>
+  <text class="t label" x="372" y="590" text-anchor="end">4 项</text>
+  <text class="t small" x="120" y="619">间接证据</text>
+  <text class="t label" x="372" y="619" text-anchor="end">3 项</text>
+  <text class="t small" x="120" y="648">待核验证据</text>
+  <text class="t label" x="372" y="648" text-anchor="end" fill="#C47810">1 项</text>
+  <rect x="120" y="669" width="252" height="38" rx="7" fill="#F6F8FB"/>
+  <text class="t tiny" x="246" y="693" text-anchor="middle" fill="#2F6FED">打开证据矩阵 →</text>
+
+  <line x1="120" y1="735" x2="372" y2="735" class="line"/>
+  <text class="t tiny muted" x="120" y="765">分析完整性</text>
+  <rect x="120" y="782" width="252" height="8" rx="4" fill="#E7EBF1"/>
+  <rect x="120" y="782" width="220" height="8" rx="4" fill="#2F6FED"/>
+  <text class="t tiny muted" x="120" y="813">规则覆盖</text>
+  <text class="t label" x="372" y="813" text-anchor="end">87%</text>
+  <text class="t tiny muted" x="120" y="841">法源引用</text>
+  <text class="t label" x="372" y="841" text-anchor="end">5 / 5 已匹配</text>
+  <text class="t tiny muted" x="120" y="869">人工确认</text>
+  <text class="t label" x="372" y="869" text-anchor="end" fill="#C47810">3 / 6 项</text>
+
+  <rect x="120" y="897" width="252" height="50" rx="8" fill="#FFF8E7"/>
+  <text class="t tiny" x="136" y="918" fill="#A66008">仍有 3 项调节幅度待确认</text>
+  <text class="t tiny" x="136" y="937" fill="#A66008">不能提交最终审核</text>
+
+  <!-- Center sentencing reasoning chain -->
+  <rect x="416" y="166" width="760" height="806" rx="12" fill="#FFFFFF" filter="url(#shadow3)"/>
+  <text class="t title" x="444" y="207">量刑推导链</text>
+  <text class="t muted small" x="444" y="232">每一步均保留规则版本、证据来源和人工修改记录</text>
+  <rect x="997" y="186" width="150" height="36" rx="8" fill="#F6F8FB"/>
+  <text class="t small" x="1072" y="209" text-anchor="middle">仅看待确认项</text>
+  <circle cx="1128" cy="204" r="9" fill="#CDD5DF"/>
+
+  <!-- Step 1 -->
+  <circle cx="458" cy="279" r="18" fill="#2E9B72"/>
+  <text class="t white label" x="458" y="284" text-anchor="middle">1</text>
+  <line x1="458" y1="297" x2="458" y2="372" stroke="#BFC9D5" stroke-width="2"/>
+  <rect x="490" y="256" width="657" height="108" rx="9" fill="#F7FAFC" stroke="#DDE4EC"/>
+  <text class="t tiny muted" x="514" y="281">法定刑档 · 已人工确认</text>
+  <text class="t h2" x="514" y="310">三年以下有期徒刑、拘役或者管制，并处或者单处罚金</text>
+  <text class="t tiny" x="514" y="337" fill="#2F6FED">依据：刑法条文 + 地方规则 V2026.2　查看法源与效力 ↗</text>
+  <rect x="1024" y="274" width="96" height="26" rx="13" fill="#E7F7F1"/>
+  <text class="t tiny" x="1072" y="292" text-anchor="middle" fill="#248B68">✓ 人工确认</text>
+
+  <!-- Step 2 -->
+  <circle cx="458" cy="397" r="18" fill="#2E9B72"/>
+  <text class="t white label" x="458" y="402" text-anchor="middle">2</text>
+  <line x1="458" y1="415" x2="458" y2="503" stroke="#BFC9D5" stroke-width="2"/>
+  <rect x="490" y="378" width="657" height="116" rx="9" fill="#F7FAFC" stroke="#DDE4EC"/>
+  <text class="t tiny muted" x="514" y="403">基准刑计算 · 示例数据</text>
+  <text class="t body" x="514" y="433" font-weight="700">起点 12 个月</text>
+  <text class="t small" x="640" y="433">＋ 数额增量 6 个月</text>
+  <text class="t small" x="814" y="433">＝</text>
+  <text class="t" x="846" y="434" font-size="22" font-weight="800" fill="#2F6FED">18 个月</text>
+  <text class="t tiny muted" x="514" y="463">计算规则：量刑指导规则 V2026.2 · 输入：金额 38,000 元</text>
+  <text class="t tiny" x="1076" y="463" text-anchor="end" fill="#2F6FED">展开计算明细 ↗</text>
+
+  <!-- Step 3 -->
+  <circle cx="458" cy="528" r="18" fill="#2F6FED"/>
+  <text class="t white label" x="458" y="533" text-anchor="middle">3</text>
+  <line x1="458" y1="546" x2="458" y2="770" stroke="#BFC9D5" stroke-width="2"/>
+  <rect x="490" y="510" width="657" height="250" rx="9" fill="#FFFFFF" stroke="#8EB0EF" stroke-width="1.5"/>
+  <text class="t tiny muted" x="514" y="537">量刑情节调节 · 需逐项确认</text>
+
+  <rect x="514" y="551" width="609" height="50" rx="7" fill="#F7FAFC"/>
+  <circle cx="534" cy="576" r="7" fill="#2E9B72"/>
+  <text class="t small" x="550" y="581" font-weight="700">自首</text>
+  <text class="t tiny muted" x="621" y="581">证据 2 项 · 规则区间 -10% ～ -30%</text>
+  <rect x="948" y="561" width="78" height="30" rx="6" fill="#FFFFFF" stroke="#B8C7DA"/>
+  <text class="t small" x="987" y="581" text-anchor="middle">-20%</text>
+  <rect x="1036" y="561" width="70" height="30" rx="6" fill="#E7F7F1"/>
+  <text class="t tiny" x="1071" y="581" text-anchor="middle" fill="#248B68">已确认</text>
+
+  <rect x="514" y="608" width="609" height="50" rx="7" fill="#FFF9EC"/>
+  <circle cx="534" cy="633" r="7" fill="#D98919"/>
+  <text class="t small" x="550" y="638" font-weight="700">退赃退赔</text>
+  <text class="t tiny muted" x="641" y="638">证据 1 项待核验 · 建议区间 -5% ～ -20%</text>
+  <rect x="948" y="618" width="78" height="30" rx="6" fill="#FFFFFF" stroke="#D6B66E"/>
+  <text class="t small" x="987" y="638" text-anchor="middle">-10%</text>
+  <rect x="1036" y="618" width="70" height="30" rx="6" fill="#FFF0BD"/>
+  <text class="t tiny" x="1071" y="638" text-anchor="middle" fill="#A66008">待确认</text>
+
+  <rect x="514" y="665" width="609" height="50" rx="7" fill="#FFF9EC"/>
+  <circle cx="534" cy="690" r="7" fill="#D98919"/>
+  <text class="t small" x="550" y="695" font-weight="700">取得谅解</text>
+  <text class="t tiny muted" x="641" y="695">证据 1 项 · 建议区间 -5% ～ -15%</text>
+  <rect x="948" y="675" width="78" height="30" rx="6" fill="#FFFFFF" stroke="#D6B66E"/>
+  <text class="t small" x="987" y="695" text-anchor="middle">-10%</text>
+  <rect x="1036" y="675" width="70" height="30" rx="6" fill="#FFF0BD"/>
+  <text class="t tiny" x="1071" y="695" text-anchor="middle" fill="#A66008">待确认</text>
+
+  <text class="t tiny" x="514" y="742" fill="#2F6FED">＋ 添加或排除量刑情节</text>
+  <text class="t tiny muted" x="1123" y="742" text-anchor="end">当前合计调节：-40%</text>
+
+  <!-- Step 4 -->
+  <circle cx="458" cy="795" r="18" fill="#D98919"/>
+  <text class="t white label" x="458" y="800" text-anchor="middle">4</text>
+  <rect x="490" y="778" width="657" height="152" rx="9" fill="#EEF4FF" stroke="#93B3EE"/>
+  <text class="t tiny" x="514" y="805" fill="#2F6FED">辅助建议区间 · 尚未提交审核</text>
+  <text class="t" x="514" y="850" font-size="32" font-weight="850" fill="#214F9E">10 ～ 14 个月</text>
+  <text class="t small muted" x="514" y="880">由基准刑 18 个月及当前已选情节计算；待确认项变化时自动重算。</text>
+  <rect x="928" y="814" width="190" height="42" rx="8" fill="#FFFFFF" stroke="#A8BDE2"/>
+  <text class="t small" x="1023" y="840" text-anchor="middle">比较不同情节方案</text>
+  <text class="t tiny" x="514" y="908" fill="#A66008">不确定性：退赃金额证据未完成核验，区间可能发生变化</text>
+
+  <!-- Right sources and audit panel -->
+  <rect x="1196" y="166" width="372" height="806" rx="12" fill="#FFFFFF" filter="url(#shadow3)"/>
+  <text class="t h2" x="1220" y="205">依据与审计</text>
+  <text class="t label" x="1220" y="243" fill="#2F6FED">法源依据　5</text>
+  <text class="t muted label" x="1323" y="243">证据链　7</text>
+  <text class="t muted label" x="1412" y="243">操作记录</text>
+  <line x1="1220" y1="258" x2="1544" y2="258" class="line"/>
+  <rect x="1220" y="257" width="84" height="3" fill="#2F6FED"/>
+
+  <rect x="1220" y="280" width="324" height="106" rx="8" fill="#F7F9FC"/>
+  <rect x="1236" y="296" width="44" height="22" rx="11" fill="#E7F7F1"/>
+  <text class="t tiny" x="1258" y="312" text-anchor="middle" fill="#248B68">现行</text>
+  <text class="t small" x="1290" y="312" font-weight="700">《中华人民共和国刑法》</text>
+  <text class="t tiny muted" x="1236" y="340">相关条文 · 效力已匹配 · 国家法律</text>
+  <text class="t tiny" x="1236" y="367" fill="#2F6FED">查看原文及版本沿革 ↗</text>
+
+  <rect x="1220" y="396" width="324" height="106" rx="8" fill="#F7F9FC"/>
+  <rect x="1236" y="412" width="44" height="22" rx="11" fill="#E7F7F1"/>
+  <text class="t tiny" x="1258" y="428" text-anchor="middle" fill="#248B68">现行</text>
+  <text class="t small" x="1290" y="428" font-weight="700">量刑指导规则</text>
+  <text class="t tiny muted" x="1236" y="456">版本 V2026.2 · 适用地区已确认</text>
+  <text class="t tiny" x="1236" y="483" fill="#2F6FED">查看规则节点与变更记录 ↗</text>
+
+  <rect x="1220" y="512" width="324" height="90" rx="8" fill="#F7F9FC"/>
+  <text class="t small" x="1236" y="539" font-weight="700">类案参考（仅供比较）</text>
+  <text class="t tiny muted" x="1236" y="562">已筛选同地区、相近时间和相近事实</text>
+  <text class="t tiny" x="1236" y="586" fill="#2F6FED">打开 12 个类案比较 ↗</text>
+
+  <text class="t label" x="1220" y="643">当前风险提示</text>
+  <rect x="1220" y="660" width="324" height="99" rx="8" fill="#FFF8E7" stroke="#E9C87D"/>
+  <text class="t small" x="1238" y="687" fill="#A66008" font-weight="700">退赃事实存在证据冲突</text>
+  <text class="t tiny" x="1238" y="712" fill="#7E5A24">价格认定意见与转账记录金额不一致，</text>
+  <text class="t tiny" x="1238" y="733" fill="#7E5A24">建议核验后再确认调节幅度。</text>
+  <text class="t tiny" x="1519" y="748" text-anchor="end" fill="#2F6FED">立即核验 →</text>
+
+  <text class="t label" x="1220" y="797">审核备注</text>
+  <rect x="1220" y="812" width="324" height="76" rx="8" fill="#FFFFFF" stroke="#D6DEE8"/>
+  <text class="t tiny muted" x="1238" y="838">填写调节幅度选择理由，供复核人员查看…</text>
+  <text class="t tiny muted" x="1519" y="875" text-anchor="end">0 / 500</text>
+
+  <rect x="1220" y="906" width="118" height="42" rx="8" fill="#FFFFFF" stroke="#C5D0DE"/>
+  <text class="t small" x="1279" y="932" text-anchor="middle">保存草稿</text>
+  <rect x="1348" y="906" width="196" height="42" rx="8" fill="#2F6FED"/>
+  <text class="t white small" x="1446" y="932" text-anchor="middle" font-weight="700">提交人工复核 →</text>
+</svg>

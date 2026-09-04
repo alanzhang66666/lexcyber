@@ -1,0 +1,174 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000">
+  <defs>
+    <filter id="brandShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="4" stdDeviation="10" flood-color="#17243A" flood-opacity="0.10"/>
+    </filter>
+    <style>
+      .t { font-family: Inter, "Microsoft YaHei", "PingFang SC", sans-serif; fill: #17243A; }
+      .white { fill: #FFFFFF; }
+      .muted { fill: #6B788B; }
+      .tiny { font-size: 12px; }
+      .small { font-size: 14px; }
+      .body { font-size: 16px; }
+      .h2 { font-size: 21px; font-weight: 750; }
+      .title { font-size: 34px; font-weight: 800; }
+      .label { font-size: 13px; font-weight: 650; }
+      .line { stroke: #E1E7EE; stroke-width: 1; }
+    </style>
+  </defs>
+
+  <rect width="1600" height="1000" fill="#F4F6F9"/>
+  <text class="t title" x="80" y="76">LexCyber 项目视觉识别提案</text>
+  <text class="t muted body" x="80" y="108">核心概念：证据节点 × 法律天平 × 可追溯链路 × 人工审核印记</text>
+  <rect x="1382" y="55" width="138" height="34" rx="17" fill="#EAF1FF"/>
+  <text class="t label" x="1451" y="77" text-anchor="middle" fill="#2F6FED">Brand Draft 01</text>
+
+  <!-- Main lockup -->
+  <rect x="80" y="146" width="680" height="300" rx="18" fill="#FFFFFF" filter="url(#brandShadow)"/>
+  <text class="t h2" x="112" y="188">主标识 · 衡链</text>
+  <text class="t tiny muted" x="112" y="213">Balance + Trace Chain + Human Seal</text>
+
+  <g transform="translate(123,244)">
+    <rect width="150" height="150" rx="34" fill="#17243A"/>
+    <path d="M28 51L75 29L122 51" fill="none" stroke="#DCE7FA" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="28" cy="51" r="11" fill="#2F6FED" stroke="#FFFFFF" stroke-width="4"/>
+    <circle cx="75" cy="29" r="11" fill="#795CC5" stroke="#FFFFFF" stroke-width="4"/>
+    <circle cx="122" cy="51" r="11" fill="#2E9B72" stroke="#FFFFFF" stroke-width="4"/>
+    <path d="M75 42V108M50 112H100" stroke="#FFFFFF" stroke-width="8" stroke-linecap="round"/>
+    <path d="M15 67C18 84 29 92 42 92C55 92 65 84 68 67M82 67C85 84 95 92 108 92C121 92 132 84 135 67" fill="none" stroke="#DCE7FA" stroke-width="6" stroke-linecap="round"/>
+    <circle cx="111" cy="111" r="18" fill="#2E9B72" stroke="#17243A" stroke-width="5"/>
+    <path d="M103 111l6 6 12-15" fill="none" stroke="#FFFFFF" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <text class="t" x="310" y="297" font-size="45" font-weight="850" letter-spacing="1">LEXCYBER</text>
+  <text class="t" x="313" y="333" font-size="18" font-weight="650" fill="#2F6FED">智能辅助量刑工作台</text>
+  <text class="t muted body" x="313" y="375">证据有源 · 规则有版 · 审核有痕</text>
+  <text class="t tiny muted" x="313" y="405">标识不使用法槌或法院徽记，避免暗示系统代替司法裁量。</text>
+
+  <!-- Small and inverse variants -->
+  <rect x="792" y="146" width="728" height="300" rx="18" fill="#FFFFFF" filter="url(#brandShadow)"/>
+  <text class="t h2" x="824" y="188">适配形式</text>
+  <text class="t tiny muted" x="824" y="213">导航栏、登录页、报告页及深色模式</text>
+
+  <rect x="824" y="242" width="312" height="82" rx="12" fill="#17243A"/>
+  <g transform="translate(843,260) scale(.42)">
+    <rect width="112" height="112" rx="26" fill="#243751"/>
+    <path d="M21 39L56 23L91 39M56 32V84M37 88H75" fill="none" stroke="#FFFFFF" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="21" cy="39" r="8" fill="#2F6FED" stroke="#FFFFFF" stroke-width="3"/>
+    <circle cx="56" cy="23" r="8" fill="#795CC5" stroke="#FFFFFF" stroke-width="3"/>
+    <circle cx="91" cy="39" r="8" fill="#2E9B72" stroke="#FFFFFF" stroke-width="3"/>
+    <path d="M12 50C14 62 21 69 31 69C41 69 48 62 50 50M62 50C64 62 71 69 81 69C91 69 98 62 100 50" fill="none" stroke="#FFFFFF" stroke-width="5" stroke-linecap="round"/>
+  </g>
+  <text class="t white" x="912" y="278" font-size="21" font-weight="800">LEXCYBER</text>
+  <text class="t" x="912" y="300" font-size="11" fill="#9FB0C7">智能辅助量刑工作台</text>
+
+  <rect x="1156" y="242" width="332" height="82" rx="12" fill="#F4F6F9" stroke="#DCE3EB"/>
+  <rect x="1175" y="260" width="46" height="46" rx="10" fill="#17243A"/>
+  <path d="M1185 275l13-7 13 7M1198 270v25M1188 298h20" fill="none" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round"/>
+  <circle cx="1185" cy="275" r="3" fill="#2F6FED"/>
+  <circle cx="1211" cy="275" r="3" fill="#2E9B72"/>
+  <text class="t" x="1235" y="280" font-size="20" font-weight="800">LEXCYBER</text>
+  <text class="t tiny muted" x="1235" y="300">报告页横向签名</text>
+
+  <text class="t tiny muted" x="824" y="364">最小尺寸</text>
+  <rect x="824" y="377" width="34" height="34" rx="8" fill="#17243A"/>
+  <path d="M831 389l10-5 10 5M841 386v17M834 405h14" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round"/>
+  <circle cx="831" cy="389" r="2.5" fill="#2F6FED"/>
+  <circle cx="851" cy="389" r="2.5" fill="#2E9B72"/>
+  <text class="t tiny muted" x="871" y="399">32px：保留三节点、中心轴和底座；隐藏审核印记。</text>
+
+  <!-- Color palette -->
+  <rect x="80" y="476" width="680" height="216" rx="18" fill="#FFFFFF" filter="url(#brandShadow)"/>
+  <text class="t h2" x="112" y="518">专属语义色</text>
+  <text class="t tiny muted" x="112" y="543">不是装饰色，而是贯穿证据—规则—审核流程的状态语言</text>
+  <g transform="translate(112,570)">
+    <rect x="0" y="0" width="90" height="58" rx="9" fill="#17243A"/>
+    <text class="t label" x="0" y="82">衡墨</text><text class="t tiny muted" x="0" y="101">#17243A</text>
+    <rect x="104" y="0" width="90" height="58" rx="9" fill="#2F6FED"/>
+    <text class="t label" x="104" y="82">溯源蓝</text><text class="t tiny muted" x="104" y="101">#2F6FED</text>
+    <rect x="208" y="0" width="90" height="58" rx="9" fill="#2E9B72"/>
+    <text class="t label" x="208" y="82">核验绿</text><text class="t tiny muted" x="208" y="101">#2E9B72</text>
+    <rect x="312" y="0" width="90" height="58" rx="9" fill="#D98919"/>
+    <text class="t label" x="312" y="82">复核金</text><text class="t tiny muted" x="312" y="101">#D98919</text>
+    <rect x="416" y="0" width="90" height="58" rx="9" fill="#D84F5E"/>
+    <text class="t label" x="416" y="82">风险红</text><text class="t tiny muted" x="416" y="101">#D84F5E</text>
+    <rect x="520" y="0" width="90" height="58" rx="9" fill="#795CC5"/>
+    <text class="t label" x="520" y="82">法源紫</text><text class="t tiny muted" x="520" y="101">#795CC5</text>
+  </g>
+
+  <!-- Custom symbols -->
+  <rect x="792" y="476" width="728" height="216" rx="18" fill="#FFFFFF" filter="url(#brandShadow)"/>
+  <text class="t h2" x="824" y="518">项目专属符号</text>
+  <text class="t tiny muted" x="824" y="543">保持图标与文字并用，避免仅依赖颜色传达法律状态</text>
+
+  <g transform="translate(824,570)">
+    <rect x="0" y="0" width="150" height="88" rx="10" fill="#F5F8FD"/>
+    <rect x="17" y="17" width="32" height="39" rx="4" fill="#FFFFFF" stroke="#2F6FED" stroke-width="2"/>
+    <path d="M23 28h18M23 35h14" stroke="#2F6FED" stroke-width="2"/>
+    <circle cx="48" cy="51" r="9" fill="#2F6FED"/>
+    <text class="t white tiny" x="48" y="55" text-anchor="middle">3</text>
+    <text class="t tiny" x="66" y="32" font-weight="700">原文锚点</text>
+    <text class="t tiny muted" x="66" y="51">P3 ¶4</text>
+    <text class="t tiny" x="17" y="76" fill="#2F6FED">点击双向定位</text>
+
+    <rect x="166" y="0" width="150" height="88" rx="10" fill="#F2FAF7"/>
+    <circle cx="190" cy="35" r="15" fill="#2E9B72"/>
+    <path d="M183 35l5 5 10-13" fill="none" stroke="#FFFFFF" stroke-width="3"/>
+    <rect x="199" y="40" width="11" height="10" rx="2" fill="#FFFFFF" stroke="#2E9B72"/>
+    <text class="t tiny" x="220" y="32" font-weight="700">人工核验印</text>
+    <text class="t tiny muted" x="220" y="51">锁定字段</text>
+    <text class="t tiny" x="183" y="76" fill="#248B68">重跑不可覆盖</text>
+
+    <rect x="332" y="0" width="150" height="88" rx="10" fill="#FFF9EC"/>
+    <path d="M353 48V27M353 27l-10 10M353 27l10 10" fill="none" stroke="#D98919" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="353" cy="54" r="4" fill="#D98919"/>
+    <text class="t tiny" x="381" y="32" font-weight="700">风险门控</text>
+    <text class="t tiny muted" x="381" y="51">阻断自动提交</text>
+    <text class="t tiny" x="349" y="76" fill="#A66008">转人工复核</text>
+
+    <rect x="498" y="0" width="174" height="88" rx="10" fill="#F5F3FC"/>
+    <circle cx="520" cy="35" r="7" fill="#2F6FED"/>
+    <circle cx="550" cy="35" r="7" fill="#795CC5"/>
+    <circle cx="580" cy="35" r="7" fill="#2E9B72"/>
+    <path d="M527 35h16M557 35h16" stroke="#9AA8BC" stroke-width="2"/>
+    <text class="t tiny" x="600" y="32" font-weight="700">衡链轨迹</text>
+    <text class="t tiny muted" x="600" y="51">事实→规则→审核</text>
+    <text class="t tiny" x="515" y="76" fill="#795CC5">全过程可展开</text>
+  </g>
+
+  <!-- UI signature patterns -->
+  <rect x="80" y="722" width="1440" height="220" rx="18" fill="#FFFFFF" filter="url(#brandShadow)"/>
+  <text class="t h2" x="112" y="764">界面中的特色表达</text>
+  <text class="t tiny muted" x="112" y="789">把品牌落到可信工作流，而不是只放一个 Logo</text>
+
+  <g transform="translate(112,816)">
+    <rect x="0" y="0" width="392" height="92" rx="10" fill="#F7F9FC" stroke="#DDE4EC"/>
+    <circle cx="24" cy="27" r="10" fill="#2F6FED"/>
+    <text class="t white tiny" x="24" y="31" text-anchor="middle">1</text>
+    <text class="t label" x="44" y="25">证据有源</text>
+    <text class="t tiny muted" x="44" y="46">每个提取结果显示文档、页码、段落和置信度</text>
+    <rect x="44" y="59" width="154" height="22" rx="11" fill="#EAF1FF"/>
+    <text class="t tiny" x="121" y="75" text-anchor="middle" fill="#2F6FED">起诉书 P3 ¶4 ↗</text>
+
+    <rect x="416" y="0" width="392" height="92" rx="10" fill="#F7F9FC" stroke="#DDE4EC"/>
+    <circle cx="440" cy="27" r="10" fill="#795CC5"/>
+    <text class="t white tiny" x="440" y="31" text-anchor="middle">2</text>
+    <text class="t label" x="460" y="25">规则有版</text>
+    <text class="t tiny muted" x="460" y="46">计算节点固定展示规则版本与适用日期</text>
+    <rect x="460" y="59" width="164" height="22" rx="11" fill="#EEE9FD"/>
+    <text class="t tiny" x="542" y="75" text-anchor="middle" fill="#795CC5">规则 V2026.2 · 现行</text>
+
+    <rect x="832" y="0" width="392" height="92" rx="10" fill="#F7F9FC" stroke="#DDE4EC"/>
+    <circle cx="856" cy="27" r="10" fill="#2E9B72"/>
+    <text class="t white tiny" x="856" y="31" text-anchor="middle">3</text>
+    <text class="t label" x="876" y="25">审核有痕</text>
+    <text class="t tiny muted" x="876" y="46">人工决定显示确认人、时间、版本和修改理由</text>
+    <rect x="876" y="59" width="178" height="22" rx="11" fill="#E7F7F1"/>
+    <text class="t tiny" x="965" y="75" text-anchor="middle" fill="#248B68">✓ 王某 · 已锁定 · V3</text>
+
+    <rect x="1248" y="0" width="136" height="92" rx="10" fill="#17243A"/>
+    <text class="t white label" x="1316" y="30" text-anchor="middle">产品原则</text>
+    <text class="t" x="1316" y="54" font-size="11" text-anchor="middle" fill="#AFC0D7">机器给出依据</text>
+    <text class="t" x="1316" y="73" font-size="11" text-anchor="middle" fill="#AFC0D7">人保留裁量</text>
+  </g>
+</svg>

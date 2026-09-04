@@ -1,0 +1,445 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="LexCyber 智能辅助量刑工作台交互原型">
+  <title>LexCyber · 智能辅助量刑工作台</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body data-theme="aurora" data-density="comfortable">
+  <div class="ambient ambient-one" aria-hidden="true"></div>
+  <div class="ambient ambient-two" aria-hidden="true"></div>
+
+  <header class="topbar">
+    <button class="brand" type="button" data-route="home" aria-label="返回首页">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 48 48" role="img">
+          <path d="M10 18 24 11l14 7M24 14v23M15 39h18" class="mark-line"/>
+          <circle cx="10" cy="18" r="4" class="mark-node mark-node-a"/>
+          <circle cx="24" cy="11" r="4" class="mark-node mark-node-b"/>
+          <circle cx="38" cy="18" r="4" class="mark-node mark-node-c"/>
+          <path d="M6 23c1 7 5 10 10 10s9-3 10-10M22 23c1 7 5 10 10 10s9-3 10-10" class="mark-soft"/>
+        </svg>
+      </span>
+      <span class="brand-copy">
+        <strong>LEXCYBER</strong>
+        <small>证据有源 · 规则有版 · 审核有痕</small>
+      </span>
+    </button>
+
+    <nav class="primary-nav" aria-label="主导航">
+      <button type="button" class="nav-link is-active" data-route="home">首页</button>
+      <button type="button" class="nav-link" data-route="cases">案件中心</button>
+      <button type="button" class="nav-link" data-route="workspace">智能阅卷</button>
+      <button type="button" class="nav-link" data-route="analysis">量刑分析</button>
+      <button type="button" class="nav-link" data-route="reviews">
+        审核中心
+        <span class="nav-count">7</span>
+      </button>
+    </nav>
+
+    <div class="top-actions">
+      <button type="button" class="search-trigger" data-demo="搜索">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg>
+        <span>搜索</span>
+        <kbd>⌘ K</kbd>
+      </button>
+      <button type="button" class="icon-button" data-demo="通知" aria-label="通知">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9Z"/><path d="M10 21h4"/></svg>
+        <span class="notice-dot"></span>
+      </button>
+      <button type="button" class="profile-button" data-route="settings" aria-label="打开用户设置">
+        <span class="avatar">王</span>
+        <span class="profile-copy"><strong>王某</strong><small>高级审核员</small></span>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <aside class="workspace-dock" aria-label="可选工作区侧边栏">
+    <div class="dock-heading">
+      <span>快捷工作区</span>
+      <button type="button" data-route="settings" aria-label="配置侧边栏">⚙</button>
+    </div>
+    <button type="button" data-route="cases" class="dock-link is-active"><span>案</span>案件列表</button>
+    <button type="button" data-route="workspace" class="dock-link"><span>卷</span>卷宗阅览</button>
+    <button type="button" data-route="analysis" class="dock-link"><span>衡</span>量刑分析</button>
+    <button type="button" data-route="reviews" class="dock-link"><span>审</span>人工审核</button>
+    <div class="dock-note">此侧栏由用户设置启用，首页始终不显示。</div>
+  </aside>
+
+  <main id="mainContent">
+    <!-- Formal home: always top-navigation only -->
+    <section class="page is-visible home-page" data-page="home" aria-labelledby="homeTitle">
+      <div class="home-wrap">
+        <section class="hero-panel">
+          <div class="hero-copy">
+            <span class="eyebrow"><i></i> LEX TRACE · 衡链工作流</span>
+            <h1 id="homeTitle">让每一项量刑依据，<br><em>都能回到原文。</em></h1>
+            <p>从卷宗事实、证据关系到规则版本与人工复核，形成一条可验证、可解释、可回溯的辅助分析链。</p>
+            <div class="hero-actions">
+              <button type="button" class="button button-primary" data-demo="新建案件">新建案件 <span>＋</span></button>
+              <button type="button" class="button button-glass" data-route="reviews">继续今日审核 <span>→</span></button>
+            </div>
+            <div class="hero-proof">
+              <span><b>18</b> 进行中案件</span>
+              <span><b>92%</b> 要素可追溯</span>
+              <span><b>7</b> 待人工审核</span>
+            </div>
+          </div>
+
+          <div class="trace-stage" aria-label="可追溯分析链示意">
+            <div class="trace-orbit orbit-one"></div>
+            <div class="trace-orbit orbit-two"></div>
+            <div class="trace-line line-a"></div>
+            <div class="trace-line line-b"></div>
+            <article class="trace-card source-card">
+              <span class="trace-icon">原</span>
+              <div><small>事实来源</small><strong>起诉书 P3 ¶4</strong><span>涉案金额 38,000 元</span></div>
+              <b class="confidence">97%</b>
+            </article>
+            <article class="trace-card rule-card">
+              <span class="trace-icon">规</span>
+              <div><small>适用规则</small><strong>规则 V2026.2</strong><span>适用日期与地区已匹配</span></div>
+              <b class="status-pill">现行</b>
+            </article>
+            <article class="trace-card human-card">
+              <span class="trace-icon">人</span>
+              <div><small>人工复核</small><strong>王某 · 已确认</strong><span>修改记录已锁定至 V3</span></div>
+              <b class="status-pill">有痕</b>
+            </article>
+            <div class="trace-seal">
+              <svg viewBox="0 0 64 64" aria-hidden="true">
+                <path d="M13 24 32 14l19 10M32 18v30M21 51h22"/>
+                <circle cx="13" cy="24" r="5"/><circle cx="32" cy="14" r="5"/><circle cx="51" cy="24" r="5"/>
+              </svg>
+              <span>衡链完成</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="section-block flow-section">
+          <div class="section-heading">
+            <div><span class="section-kicker">TODAY</span><h2>今日工作流</h2></div>
+            <button type="button" class="text-button" data-route="cases">查看全部任务 <span>→</span></button>
+          </div>
+          <div class="flow-grid">
+            <button type="button" class="flow-tile tile-cyan" data-route="workspace">
+              <span class="tile-index">01</span><span class="tile-icon">卷</span>
+              <small>等待解析</small><strong>3 <i>份材料</i></strong><em>1 份 OCR 需要校对</em>
+            </button>
+            <button type="button" class="flow-tile tile-violet" data-route="workspace">
+              <span class="tile-index">02</span><span class="tile-icon">证</span>
+              <small>等待确认</small><strong>18 <i>个要素</i></strong><em>来自 5 个案件</em>
+            </button>
+            <button type="button" class="flow-tile tile-gold" data-route="analysis">
+              <span class="tile-index">03</span><span class="tile-icon">衡</span>
+              <small>等待分析</small><strong>4 <i>个案件</i></strong><em>2 项规则版本待确认</em>
+            </button>
+            <button type="button" class="flow-tile tile-coral" data-route="reviews">
+              <span class="tile-index">04</span><span class="tile-icon">审</span>
+              <small>等待复核</small><strong>7 <i>项任务</i></strong><em>2 项高风险即将超时</em>
+            </button>
+          </div>
+        </section>
+
+        <section class="dashboard-grid">
+          <article class="panel cases-panel">
+            <div class="panel-heading">
+              <div><span class="section-kicker">PRIORITY MATTERS</span><h2>优先案件</h2></div>
+              <div class="panel-tools"><button class="chip is-selected" type="button">全部</button><button class="chip" type="button">我的</button><button class="more-button" type="button" data-route="cases">•••</button></div>
+            </div>
+            <div class="case-table" role="table" aria-label="优先案件列表">
+              <div class="case-row case-header" role="row">
+                <span>案件</span><span>当前阶段</span><span>确认度</span><span>风险</span><span>更新时间</span><span></span>
+              </div>
+              <button type="button" class="case-row" role="row" data-route="workspace">
+                <span class="case-name"><i class="case-avatar cyan">张</i><b>张某涉嫌盗窃案<small>（2026）沪01刑初128号</small></b></span>
+                <span><i class="stage-pill blue">要素校对</i></span>
+                <span class="completion"><b>8 / 10</b><i><em style="width:80%"></em></i></span>
+                <span><i class="risk-pill amber">● 中风险</i></span>
+                <span class="muted-cell">今天 14:32</span><span class="row-arrow">→</span>
+              </button>
+              <button type="button" class="case-row" role="row" data-route="reviews">
+                <span class="case-name"><i class="case-avatar coral">赵</i><b>赵某诈骗案<small>（2026）沪01刑初098号</small></b></span>
+                <span><i class="stage-pill coral">人工审核</i></span>
+                <span class="completion"><b>12 / 12</b><i><em style="width:100%"></em></i></span>
+                <span><i class="risk-pill red">● 高风险</i></span>
+                <span class="muted-cell">今天 10:18</span><span class="row-arrow">→</span>
+              </button>
+              <button type="button" class="case-row" role="row" data-route="analysis">
+                <span class="case-name"><i class="case-avatar violet">孙</i><b>孙某故意伤害案<small>（2026）沪01刑初076号</small></b></span>
+                <span><i class="stage-pill violet">量刑分析</i></span>
+                <span class="completion"><b>10 / 11</b><i><em style="width:91%"></em></i></span>
+                <span><i class="risk-pill amber">● 中风险</i></span>
+                <span class="muted-cell">昨天 16:20</span><span class="row-arrow">→</span>
+              </button>
+              <button type="button" class="case-row" role="row" data-route="workspace">
+                <span class="case-name"><i class="case-avatar gold">李</i><b>李某危险驾驶案<small>（2026）沪01刑初121号</small></b></span>
+                <span><i class="stage-pill gold">补充材料</i></span>
+                <span class="completion"><b>5 / 9</b><i><em style="width:56%"></em></i></span>
+                <span><i class="risk-pill green">● 低风险</i></span>
+                <span class="muted-cell">昨天 11:08</span><span class="row-arrow">→</span>
+              </button>
+            </div>
+            <button type="button" class="panel-footer-link" data-route="cases">进入案件中心 <span>→</span></button>
+          </article>
+
+          <div class="right-stack">
+            <article class="panel attention-panel">
+              <div class="panel-heading compact"><div><span class="section-kicker">REVIEW</span><h2>需要关注</h2></div><span class="attention-count">2</span></div>
+              <button type="button" class="attention-item danger" data-route="reviews">
+                <span class="attention-symbol">!</span><span><strong>涉案金额存在冲突</strong><small>赵某诈骗案 · 剩余 2 小时</small></span><em>→</em>
+              </button>
+              <button type="button" class="attention-item warning" data-route="workspace">
+                <span class="attention-symbol">⌁</span><span><strong>OCR 原文等待校对</strong><small>转账记录.pdf · 置信度 76%</small></span><em>→</em>
+              </button>
+            </article>
+
+            <article class="trust-panel">
+              <div class="trust-top"><span class="section-kicker">TRUST BY DESIGN</span><span class="trust-mark">衡</span></div>
+              <h2>机器给出依据，<br>人保留裁量。</h2>
+              <div class="trust-chain">
+                <span><i>1</i><b>证据有源</b></span><em></em>
+                <span><i>2</i><b>规则有版</b></span><em></em>
+                <span><i>3</i><b>审核有痕</b></span>
+              </div>
+              <button type="button" data-demo="查看可信设计说明">查看可信设计说明 <span>↗</span></button>
+            </article>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <!-- Case center -->
+    <section class="page internal-page" data-page="cases" aria-labelledby="casesTitle">
+      <div class="page-wrap">
+        <div class="page-title-row">
+          <div><span class="section-kicker">MATTER CENTER</span><h1 id="casesTitle">案件中心</h1><p>统一查看案件、材料、分析和审核状态。</p></div>
+          <button type="button" class="button button-primary" data-demo="新建案件">新建案件 ＋</button>
+        </div>
+        <div class="filter-bar panel">
+          <label class="wide-search"><span>⌕</span><input value="" placeholder="搜索案号、案件名称或当事人"></label>
+          <button type="button">状态 <span>⌄</span></button><button type="button">罪名 <span>⌄</span></button><button type="button">风险 <span>⌄</span></button><button type="button">更新时间 <span>⌄</span></button>
+        </div>
+        <div class="case-card-grid">
+          <article class="matter-card" data-open-route="workspace">
+            <div class="matter-top"><span class="case-avatar cyan">张</span><span class="risk-pill amber">● 中风险</span></div>
+            <h3>张某涉嫌盗窃案</h3><p>（2026）沪01刑初128号</p>
+            <div class="matter-meta"><span>一审</span><span>上海市</span><span>王某</span></div>
+            <div class="matter-progress"><div><span>要素确认</span><b>8 / 10</b></div><i><em style="width:80%"></em></i></div>
+            <footer><span class="stage-pill blue">要素校对</span><time>今天 14:32</time></footer>
+          </article>
+          <article class="matter-card" data-open-route="reviews">
+            <div class="matter-top"><span class="case-avatar coral">赵</span><span class="risk-pill red">● 高风险</span></div>
+            <h3>赵某诈骗案</h3><p>（2026）沪01刑初098号</p>
+            <div class="matter-meta"><span>一审</span><span>上海市</span><span>周某</span></div>
+            <div class="matter-progress"><div><span>要素确认</span><b>12 / 12</b></div><i><em style="width:100%"></em></i></div>
+            <footer><span class="stage-pill coral">人工审核</span><time>今天 10:18</time></footer>
+          </article>
+          <article class="matter-card" data-open-route="analysis">
+            <div class="matter-top"><span class="case-avatar violet">孙</span><span class="risk-pill amber">● 中风险</span></div>
+            <h3>孙某故意伤害案</h3><p>（2026）沪01刑初076号</p>
+            <div class="matter-meta"><span>一审</span><span>苏州市</span><span>刘某</span></div>
+            <div class="matter-progress"><div><span>要素确认</span><b>10 / 11</b></div><i><em style="width:91%"></em></i></div>
+            <footer><span class="stage-pill violet">量刑分析</span><time>昨天 16:20</time></footer>
+          </article>
+          <article class="matter-card" data-open-route="workspace">
+            <div class="matter-top"><span class="case-avatar gold">李</span><span class="risk-pill green">● 低风险</span></div>
+            <h3>李某危险驾驶案</h3><p>（2026）沪01刑初121号</p>
+            <div class="matter-meta"><span>一审</span><span>上海市</span><span>陈某</span></div>
+            <div class="matter-progress"><div><span>材料完整</span><b>5 / 9</b></div><i><em style="width:56%"></em></i></div>
+            <footer><span class="stage-pill gold">补充材料</span><time>昨天 11:08</time></footer>
+          </article>
+          <button type="button" class="new-matter-card" data-demo="新建案件"><span>＋</span><strong>新建案件</strong><small>从卷宗导入或手动创建</small></button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Document workspace -->
+    <section class="page workspace-page" data-page="workspace" aria-labelledby="workspaceTitle">
+      <div class="workspace-header">
+        <div><span class="breadcrumb">案件中心 / 张某涉嫌盗窃案 /</span><h1 id="workspaceTitle">智能阅卷</h1></div>
+        <div class="phase-steps"><span class="done">✓ 材料</span><i></i><span class="current">2 要素校对</span><i></i><span>3 量刑分析</span><i></i><span>4 审核</span></div>
+        <button type="button" class="button button-primary" data-route="analysis">进入量刑分析 →</button>
+      </div>
+      <div class="review-workspace">
+        <aside class="document-tree panel">
+          <div class="panel-heading compact"><div><span class="section-kicker">FILES</span><h2>卷宗材料</h2></div><button class="round-add" data-demo="上传材料">＋</button></div>
+          <label class="mini-search"><span>⌕</span><input placeholder="搜索材料"></label>
+          <strong class="tree-label">诉讼文书</strong>
+          <button class="file-item is-active"><span class="file-icon">PDF</span><b>起诉书.pdf<small>12 页 · 已解析</small></b><em>✓</em></button>
+          <button class="file-item"><span class="file-icon">PDF</span><b>拘留决定书.pdf<small>2 页 · 已解析</small></b><em>✓</em></button>
+          <strong class="tree-label">证据材料</strong>
+          <button class="file-item"><span class="file-icon doc">DOC</span><b>询问笔录.docx<small>8 页 · 已解析</small></b><em>✓</em></button>
+          <button class="file-item"><span class="file-icon">PDF</span><b>价格认定意见.pdf<small>4 页 · 已解析</small></b><em>✓</em></button>
+          <button class="file-item has-warning"><span class="file-icon">PDF</span><b>转账记录.pdf<small>3 页 · OCR 待校对</small></b><em>!</em></button>
+          <div class="tree-progress"><span>解析进度 <b>9 / 10</b></span><i><em></em></i></div>
+        </aside>
+        <article class="document-viewer panel">
+          <header><div><strong>起诉书.pdf</strong><small>提取文本</small></div><div class="viewer-tools"><button>⌕</button><button>−</button><span>100%</span><button>＋</button><button>•••</button></div></header>
+          <div class="viewer-tabs"><button>原始页</button><button class="is-active">提取文本</button><button>页码锚点</button><span>‹　3 / 12　›</span></div>
+          <div class="paper">
+            <h3>起　诉　书</h3><small>沪检刑诉〔2026〕128号</small>
+            <p>被告人：<mark class="mark-blue">张某，男</mark>，1992年出生，户籍地上海市……<i class="anchor blue">1</i></p>
+            <p>经依法审查查明：</p>
+            <p>2026年3月12日，被告人进入某商场，取走柜台内财物。</p>
+            <p><mark class="mark-gold">经价格认定，被盗财物价值人民币38,000元。</mark><i class="anchor gold">2</i></p>
+            <p>案发后，被告人于2026年3月18日主动到案并如实供述。</p>
+            <p><mark class="mark-green">涉案财物已追回，被告人取得被害人谅解。</mark><i class="anchor green">3</i></p>
+            <p>认定上述事实的证据包括被告人供述、被害人陈述、价格认定意见及监控录像。</p>
+            <p><mark class="mark-violet">依据《中华人民共和国刑法》相关规定</mark>，提起公诉。<i class="anchor violet">4</i></p>
+            <footer>— 第 3 页 —</footer>
+          </div>
+        </article>
+        <aside class="extraction-panel panel">
+          <div class="panel-heading compact"><div><span class="section-kicker">TRACE RESULT</span><h2>识别结果</h2></div><span class="verified-badge">✓ 已解析</span></div>
+          <div class="result-tabs"><button class="is-active">要素 6</button><button>证据 8</button><button>法源 3</button><button>待处理 2</button></div>
+          <div class="result-card confirmed"><span class="result-index">1</span><div><small>被告人</small><strong>张某 · 男 · 1992年生</strong><button>起诉书 P3 ¶1 ↗</button></div><em>已确认</em></div>
+          <div class="result-card warning"><span class="result-index">2</span><div><small>涉案金额 · 82%</small><strong>人民币 38,000 元</strong><p>另有“30,000 元”记录</p><button>对照证据 ↗</button></div><em>待确认</em></div>
+          <div class="result-card"><span class="result-index">3</span><div><small>可能的量刑情节</small><strong>主动到案 · 如实供述 · 谅解</strong><button>3 处原文 · 展开 ↗</button></div></div>
+          <div class="result-card citation"><span class="result-index">4</span><div><small>法律引用</small><strong>《中华人民共和国刑法》</strong><p>引用不完整，需补充具体条文</p></div></div>
+          <div class="result-progress"><span>确认进度 <b>4 / 6</b></span><i><em></em></i></div>
+          <button class="button button-primary full" data-route="analysis">保存并进入量刑分析 →</button>
+        </aside>
+      </div>
+    </section>
+
+    <!-- Sentencing analysis -->
+    <section class="page internal-page" data-page="analysis" aria-labelledby="analysisTitle">
+      <div class="page-wrap narrow">
+        <div class="page-title-row">
+          <div><span class="section-kicker">TRACE ANALYSIS · V3</span><h1 id="analysisTitle">量刑推导链</h1><p>张某涉嫌盗窃案 · 示例数据 · 规则基准日 2026-09-04</p></div>
+          <button type="button" class="button button-primary" data-route="reviews">提交人工复核 →</button>
+        </div>
+        <div class="boundary-banner"><span>!</span><div><strong>辅助分析，不替代司法裁量</strong><small>罪名、法条版本和调节幅度必须经有权限的专业人员确认。</small></div><button data-demo="责任边界">查看边界</button></div>
+        <div class="analysis-layout">
+          <article class="reasoning-chain panel">
+            <div class="chain-step is-done"><span>1</span><div><small>法定刑档 · 已确认</small><h3>三年以下有期徒刑、拘役或者管制，并处或者单处罚金</h3><button>刑法条文 + 规则 V2026.2 ↗</button></div><em>✓ 人工确认</em></div>
+            <div class="chain-connector"></div>
+            <div class="chain-step is-done"><span>2</span><div><small>基准刑计算 · 示例</small><h3><b>起点 12 个月</b> ＋ 数额增量 6 个月 ＝ <mark>18 个月</mark></h3><button>展开计算明细 ↗</button></div><em>✓ 已核验</em></div>
+            <div class="chain-connector"></div>
+            <div class="chain-step is-current"><span>3</span><div class="circumstance-wrap"><small>量刑情节调节 · 逐项确认</small>
+              <div class="circumstance"><b>自首</b><span>规则区间 -10% ～ -30%</span><input value="-20%" aria-label="自首调节幅度"><em class="ok">已确认</em></div>
+              <div class="circumstance warn"><b>退赃退赔</b><span>证据 1 项待核验</span><input value="-10%" aria-label="退赃退赔调节幅度"><em>待确认</em></div>
+              <div class="circumstance warn"><b>取得谅解</b><span>规则区间 -5% ～ -15%</span><input value="-10%" aria-label="谅解调节幅度"><em>待确认</em></div>
+            </div></div>
+            <div class="chain-connector"></div>
+            <div class="chain-step result"><span>4</span><div><small>辅助建议区间 · 尚未提交审核</small><h3>10 ～ 14 <b>个月</b></h3><p>待确认项变化时自动重算；保留每次计算版本。</p></div><button data-demo="方案比较">比较方案</button></div>
+          </article>
+          <aside class="basis-panel panel"><div class="panel-heading compact"><div><span class="section-kicker">BASIS</span><h2>依据与风险</h2></div></div>
+            <div class="basis-card"><span class="basis-status">现行</span><strong>《中华人民共和国刑法》</strong><small>效力与地区已匹配</small><button>查看版本沿革 ↗</button></div>
+            <div class="basis-card"><span class="basis-status violet">规则</span><strong>量刑指导规则 V2026.2</strong><small>适用日期 2026-09-04</small><button>查看规则节点 ↗</button></div>
+            <div class="basis-card risk"><span class="basis-status warning">风险</span><strong>退赃事实存在冲突</strong><small>建议核验后再确认调节幅度。</small><button data-route="workspace">立即核验 →</button></div>
+            <label class="review-note"><span>审核备注</span><textarea placeholder="填写调节幅度选择理由…"></textarea></label>
+          </aside>
+        </div>
+      </div>
+    </section>
+
+    <!-- Human review -->
+    <section class="page internal-page" data-page="reviews" aria-labelledby="reviewsTitle">
+      <div class="page-wrap">
+        <div class="page-title-row">
+          <div><span class="section-kicker">HUMAN GATE</span><h1 id="reviewsTitle">人工审核中心</h1><p>所有高风险决定在这里完成对照、说明和留痕。</p></div>
+          <span class="review-summary">今日已完成 <b>4</b> 项</span>
+        </div>
+        <div class="review-layout">
+          <aside class="queue-panel panel"><div class="panel-heading compact"><div><span class="section-kicker">QUEUE</span><h2>待审核 7</h2></div><button>筛选⌄</button></div>
+            <button class="queue-item is-active"><span class="risk-pill red">高风险</span><strong>赵某诈骗案</strong><small>金额冲突 · 剩余 2h</small></button>
+            <button class="queue-item"><span class="risk-pill amber">中风险</span><strong>张某涉嫌盗窃案</strong><small>3 项调节幅度待复核</small></button>
+            <button class="queue-item"><span class="risk-pill amber">中风险</span><strong>孙某故意伤害案</strong><small>事实一致性未通过</small></button>
+            <button class="queue-item"><span class="risk-pill green">普通</span><strong>李某危险驾驶案</strong><small>补充材料后重新提交</small></button>
+          </aside>
+          <article class="decision-panel panel"><div class="review-case-head"><div><span class="risk-pill red">高风险</span><h2>赵某诈骗案</h2><small>REV-20260904-027 · 今天 10:18</small></div><button data-route="cases">打开案件 ↗</button></div>
+            <div class="issue-head"><span>问题 1 / 2</span><h3>涉案金额存在两处不一致记录</h3></div>
+            <div class="compare-grid"><div><small>来源 A · 价格认定意见</small><strong>380,000 元</strong><span>P2 ¶4 · 置信度 97%</span><button>查看原文 ↗</button></div><i>≠</i><div class="warn"><small>来源 B · 转账记录</small><strong>300,000 元</strong><span>P1 ¶8 · OCR 置信度 76%</span><button>查看扫描件 ↗</button></div></div>
+            <fieldset class="review-options"><legend>审核处理</legend><label><input type="radio" name="decision">采用价格认定意见：380,000 元</label><label><input type="radio" name="decision">采用转账记录：300,000 元</label><label><input type="radio" name="decision">两者含义不同，保留并补充字段说明</label><label class="selected"><input type="radio" name="decision" checked>退回补充材料或重新 OCR</label></fieldset>
+            <label class="review-note"><span>审核意见</span><textarea>请核验转账记录原始凭证，并说明两处金额分别对应的事实。</textarea></label>
+          </article>
+          <aside class="checklist-panel panel"><div class="panel-heading compact"><div><span class="section-kicker">CHECKLIST</span><h2>审核清单</h2></div></div>
+            <div class="check-item done"><span>✓</span><b>身份与权限核验</b><em>完成</em></div><div class="check-item done"><span>✓</span><b>适用法源及版本</b><em>完成</em></div><div class="check-item pending"><span>!</span><b>事实与证据冲突</b><em>待处理</em></div><div class="check-item pending"><span>!</span><b>调节幅度与理由</b><em>待处理</em></div><div class="check-item"><span>○</span><b>结果与说明一致性</b><em>未开始</em></div>
+            <div class="audit-note"><strong>审核有痕</strong><small>所有选择、修改和意见都会写入审核记录；批准后锁定当前版本。</small></div>
+            <div class="decision-actions"><button class="reject" data-demo="拒绝">拒绝</button><button class="retry" data-demo="要求补充或重试">要求补充 / 重试</button><button disabled>批准</button></div>
+          </aside>
+        </div>
+      </div>
+    </section>
+
+    <!-- User settings: navigation choice lives here, never on home -->
+    <section class="page settings-page" data-page="settings" aria-labelledby="settingsTitle">
+      <div class="settings-wrap">
+        <div class="page-title-row settings-title">
+          <div><span class="section-kicker">PERSONAL SPACE</span><h1 id="settingsTitle">用户设置</h1><p>管理外观、导航、密度和个人审核偏好。</p></div>
+          <button type="button" class="button button-soft" data-route="home">完成并返回首页</button>
+        </div>
+        <div class="settings-layout">
+          <nav class="settings-nav" aria-label="设置分类">
+            <button class="is-active" type="button" data-settings-target="appearance"><span>◈</span>外观与布局</button>
+            <button type="button" data-settings-target="profile"><span>◎</span>个人资料</button>
+            <button type="button" data-settings-target="review"><span>✓</span>审核偏好</button>
+            <button type="button" data-settings-target="notice"><span>◌</span>通知提醒</button>
+            <button type="button" data-settings-target="security"><span>◇</span>安全与隐私</button>
+            <div class="settings-nav-note"><b>说明</b><small>侧边导航属于个人工作偏好，因此只在这里配置；首页始终使用顶部导航。</small></div>
+          </nav>
+
+          <div class="settings-content">
+            <section class="settings-section is-visible" data-settings-panel="appearance">
+              <div class="setting-card">
+                <div class="setting-heading"><div><h2>界面主题</h2><p>选择更适合你的工作环境和视觉偏好。</p></div><span class="setting-state">即时预览</span></div>
+                <div class="theme-grid">
+                  <button type="button" class="theme-choice is-selected" data-theme-choice="aurora">
+                    <span class="theme-preview aurora"><i></i><b></b><em></em><strong></strong></span>
+                    <b>极光衡链</b><small>高辨识度 · 推荐</small><i class="choice-check">✓</i>
+                  </button>
+                  <button type="button" class="theme-choice" data-theme-choice="ember">
+                    <span class="theme-preview ember"><i></i><b></b><em></em><strong></strong></span>
+                    <b>朱砂曜金</b><small>温暖而正式</small><i class="choice-check">✓</i>
+                  </button>
+                  <button type="button" class="theme-choice" data-theme-choice="tide">
+                    <span class="theme-preview tide"><i></i><b></b><em></em><strong></strong></span>
+                    <b>深海青</b><small>冷静与技术感</small><i class="choice-check">✓</i>
+                  </button>
+                </div>
+              </div>
+
+              <div class="setting-card">
+                <div class="setting-heading"><div><h2>导航布局</h2><p>首页固定使用顶部导航；侧边栏只影响案件、阅卷、分析和审核页面。</p></div></div>
+                <div class="layout-options">
+                  <label class="layout-choice is-selected">
+                    <input type="radio" name="nav-layout" value="top" checked>
+                    <span class="layout-sketch top-layout"><i></i><b></b><em></em></span>
+                    <strong>顶部导航</strong><small>更开阔，适合大多数用户</small><i class="radio-dot"></i>
+                  </label>
+                  <label class="layout-choice">
+                    <input type="radio" name="nav-layout" value="side">
+                    <span class="layout-sketch side-layout"><i></i><b></b><em></em></span>
+                    <strong>工作区侧栏</strong><small>仅在内部工作页显示</small><i class="radio-dot"></i>
+                  </label>
+                </div>
+                <div class="setting-hint"><span>i</span><p>无论选择哪一种布局，正式首页都不会出现侧边栏，以保留完整品牌展示和信息总览空间。</p></div>
+              </div>
+
+              <div class="setting-card compact-card">
+                <div class="setting-heading"><div><h2>内容密度</h2><p>调整案件表格、审阅卡片和表单间距。</p></div>
+                  <div class="segmented" role="group" aria-label="内容密度"><button type="button" data-density-choice="compact">紧凑</button><button type="button" class="is-active" data-density-choice="comfortable">舒适</button><button type="button" data-density-choice="spacious">宽松</button></div>
+                </div>
+              </div>
+            </section>
+
+            <section class="settings-section placeholder-settings" data-settings-panel="profile"><div class="empty-symbol">◎</div><h2>个人资料</h2><p>姓名、单位、专业角色和默认管辖地区将在正式版本中配置。</p></section>
+            <section class="settings-section placeholder-settings" data-settings-panel="review"><div class="empty-symbol">✓</div><h2>审核偏好</h2><p>可配置默认清单、风险阈值、超时提醒和常用审核意见。</p></section>
+            <section class="settings-section placeholder-settings" data-settings-panel="notice"><div class="empty-symbol">◌</div><h2>通知提醒</h2><p>可配置站内通知、邮件通知和高风险任务即时提醒。</p></section>
+            <section class="settings-section placeholder-settings" data-settings-panel="security"><div class="empty-symbol">◇</div><h2>安全与隐私</h2><p>可管理登录设备、会话、导出权限和敏感信息显示范围。</p></section>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div class="toast" role="status" aria-live="polite"><span>✓</span><p></p></div>
+
+  <script src="./app.js"></script>
+</body>
+</html>
