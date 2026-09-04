@@ -1,6 +1,6 @@
 [project]
 name = "lex-multi-agent-backend"
-version = "0.2.0"
+version = "0.3.0"
 description = "Extensible multi-agent backend with legal skill runtime for Lex Cyber"
 requires-python = ">=3.11"
 dependencies = [
@@ -24,6 +24,7 @@ dependencies = [
 dev = [
   "pytest>=8,<9",
   "ruff>=0.6,<1",
+  "openapi-spec-validator>=0.7,<1",
 ]
 
 [tool.pytest.ini_options]
@@ -48,6 +49,7 @@ include = [
   "audit*",
   "config*",
   "domain*",
+  "engine*",
   "graph*",
   "models*",
   "prompts*",

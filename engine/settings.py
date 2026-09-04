@@ -7,6 +7,8 @@ class EngineSettings(BaseSettings):
     engine_database_url: str = "postgresql://lex_engine@localhost:5432/lexcyber"
     redis_url: str = "redis://localhost:6379/0"
     service_token: str = ""
+    app_callback_base_url: str = "http://java:8080"
+    workflow_profile: str = "stub"
     app_env: str = "development"
     model_provider: str = "stub"
     model_name: str = "stub-general-v1"

@@ -2,7 +2,7 @@ name: ci
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
   pull_request:
 
 jobs:
@@ -20,4 +20,89 @@ jobs:
       - name: Test
         run: pytest -q
       - name: Compose config
-        run: docker compose config --quiet
+        env:
+          POSTGRES_PASSWORD: ci-postgres
+          APP_DB_PASSWORD: ci-app
+          ENGINE_DB_PASSWORD: ci-engine
+          ENGINE_SERVICE_TOKEN: ci-engine-token
+          MINIO_ROOT_USER: ci-minio
+          MINIO_ROOT_PASSWORD: ci-minio-password
+        run: docker compose -f docker-compose.yml config --quiet
+
+  java:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Compile and test
+        working-directory: server
+        run: mvn -B test
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+        working-directory: web
+      - run: npm run build
+        working-directory: web
+
+  contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install validator
+        run: pip install "openapi-spec-validator>=0.7,<1"
+      - name: Validate contracts
+        run: |
+          openapi-spec-validator contracts/public-api.yaml
+          openapi-spec-validator contracts/internal-engine-api.yaml
+          python scripts/check_openapi_snapshot.py
+
+  compose-e2e:
+    runs-on: ubuntu-latest
+    needs: [test, java, web, contracts]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start v0.3 stack
+        env:
+          POSTGRES_PASSWORD: ci-postgres
+          APP_DB_PASSWORD: ci-app
+          ENGINE_DB_PASSWORD: ci-engine
+          ENGINE_SERVICE_TOKEN: ci-engine-token
+          MINIO_ROOT_USER: ci-minio
+          MINIO_ROOT_PASSWORD: ci-minio-password
+        run: docker compose -f docker-compose.yml up -d --build
+      - name: Wait for API and execute Stub task
+        run: |
+          for i in $(seq 1 60); do curl --fail --silent http://127.0.0.1:18080/healthz && break || sleep 2; done
+          response=$(curl --fail --silent -X POST http://127.0.0.1:18080/v1/tasks -H 'Content-Type: application/json' -d '{"query":"ci generic task","metadata":{"source":"ci"}}')
+          task=$(python -c 'import json,sys; print(json.load(sys.stdin)["id"])' <<< "$response")
+          for i in $(seq 1 60); do status=$(curl --fail --silent http://127.0.0.1:18080/v1/tasks/$task | python -c 'import json,sys; print(json.load(sys.stdin)["status"])'); case "$status" in completed|failed|timed_out) test "$status" = completed || exit 1; break;; esac; sleep 2; done
+          test "$status" = completed
+          review_response=$(curl --fail --silent -X POST http://127.0.0.1:18080/v1/tasks -H 'Content-Type: application/json' -d '{"query":"ci review task","metadata":{"demo_requires_review":true}}')
+          review_task=$(python -c 'import json,sys; print(json.load(sys.stdin)["id"])' <<< "$review_response")
+          for i in $(seq 1 60); do status=$(curl --fail --silent http://127.0.0.1:18080/v1/tasks/$review_task | python -c 'import json,sys; print(json.load(sys.stdin)["status"])'); test "$status" = waiting_review && break; case "$status" in failed|timed_out) exit 1;; esac; sleep 2; done
+          test "$status" = waiting_review
+          review=$(curl --fail --silent 'http://127.0.0.1:18080/v1/reviews?status=pending')
+          review_id=$(python -c 'import json,sys; print(json.load(sys.stdin)["items"][0]["id"])' <<< "$review")
+          result_version=$(python -c 'import json,sys; print(json.load(sys.stdin)["items"][0]["resultVersion"])' <<< "$review")
+          curl --fail --silent -X POST "http://127.0.0.1:18080/v1/reviews/$review_id/approve" -H 'Content-Type: application/json' -d '{"resultVersion":'"$result_version"'}'
+          for i in $(seq 1 30); do status=$(curl --fail --silent http://127.0.0.1:18080/v1/tasks/$review_task | python -c 'import json,sys; print(json.load(sys.stdin)["status"])'); test "$status" = completed && exit 0; sleep 2; done
+          exit 1
+      - if: always()
+        run: docker compose -f docker-compose.yml logs --no-color
+      - if: always()
+        run: docker compose -f docker-compose.yml down -v

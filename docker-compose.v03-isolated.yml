@@ -15,11 +15,14 @@ services:
       SPRING_FLYWAY_LOCATIONS: classpath:db/migration/app
       ENGINE_BASE_URL: http://engine:8100
       ENGINE_SERVICE_TOKEN: ${ENGINE_SERVICE_TOKEN:?ENGINE_SERVICE_TOKEN is required}
+      REVIEW_AUTH_MODE: trusted-header
     depends_on:
       postgres:
         condition: service_healthy
       engine-migrate:
         condition: service_completed_successfully
+      engine:
+        condition: service_healthy
     expose: [8080]
 
   engine:
@@ -28,6 +31,8 @@ services:
       ENGINE_DATABASE_URL: postgresql://lex_engine:${ENGINE_DB_PASSWORD:?ENGINE_DB_PASSWORD is required}@postgres:5432/lexcyber
       REDIS_URL: redis://redis:6379/0
       SERVICE_TOKEN: ${ENGINE_SERVICE_TOKEN:?ENGINE_SERVICE_TOKEN is required}
+      APP_CALLBACK_BASE_URL: http://java:8080
+      WORKFLOW_PROFILE: ${WORKFLOW_PROFILE:-stub}
       MODEL_PROVIDER: ${MODEL_PROVIDER:-stub}
       MODEL_NAME: ${MODEL_NAME:-stub-general-v1}
       MODEL_API_KEY: ${MODEL_API_KEY:-}
@@ -38,6 +43,11 @@ services:
       redis:
         condition: service_healthy
     expose: [8100]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8100/healthz', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
 
   engine-worker:
     build: ./engine
@@ -46,6 +56,8 @@ services:
       ENGINE_DATABASE_URL: postgresql://lex_engine:${ENGINE_DB_PASSWORD:?ENGINE_DB_PASSWORD is required}@postgres:5432/lexcyber
       REDIS_URL: redis://redis:6379/0
       SERVICE_TOKEN: ${ENGINE_SERVICE_TOKEN:?ENGINE_SERVICE_TOKEN is required}
+      APP_CALLBACK_BASE_URL: http://java:8080
+      WORKFLOW_PROFILE: ${WORKFLOW_PROFILE:-stub}
       MODEL_PROVIDER: ${MODEL_PROVIDER:-stub}
       MODEL_NAME: ${MODEL_NAME:-stub-general-v1}
       MODEL_API_KEY: ${MODEL_API_KEY:-}

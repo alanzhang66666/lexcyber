@@ -11,6 +11,7 @@ public record TaskView(
         String status,
         String currentStage,
         ResultRef result,
+        String errorCode,
         String error,
         OffsetDateTime createdAt,
         OffsetDateTime updatedAt) {

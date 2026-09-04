@@ -4,6 +4,7 @@ import com.lexcyber.server.domain.TaskCreate;
 import com.lexcyber.server.domain.TaskService;
 import com.lexcyber.server.domain.TaskView;
 import jakarta.validation.Valid;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -13,6 +14,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/v1/tasks")
@@ -30,7 +32,13 @@ public class TaskController {
 
     @GetMapping("/{taskId}")
     public ResponseEntity<TaskView> get(@PathVariable UUID taskId) {
-        return taskService.find(taskId).map(ResponseEntity::ok).orElseGet(() -> ResponseEntity.notFound().build());
+        return taskService.find(taskId).map(ResponseEntity::ok)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "task not found"));
+    }
+
+    @GetMapping("/{taskId}/result")
+    public ResponseEntity<Map<String, Object>> result(@PathVariable UUID taskId) {
+        return ResponseEntity.ok(taskService.result(taskId));
     }
 
     @PostMapping("/{taskId}/retry")

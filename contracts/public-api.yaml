@@ -54,6 +54,20 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/TaskView' }
+  /tasks/{taskId}/result:
+    get:
+      tags: [tasks]
+      summary: Read the current result content
+      operationId: getTaskResult
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+      responses:
+        '200':
+          description: Current result content and immutable result metadata.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ResultPayload' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /reviews:
     get:
       tags: [reviews]
@@ -69,6 +83,16 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/PageReview' }
+  /reviews/{reviewId}:
+    get:
+      tags: [reviews]
+      summary: Read one human review request
+      operationId: getReview
+      parameters:
+        - { name: reviewId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Review record, content: { application/json: { schema: { $ref: '#/components/schemas/ReviewRecord' } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
   /reviews/{reviewId}/approve:
     post:
       tags: [reviews]
@@ -143,6 +167,7 @@ components:
         status: { type: string, enum: [queued, running, completed, waiting_review, failed, timed_out, rejected] }
         currentStage: { type: string }
         result: { $ref: '#/components/schemas/ResultRef' }
+        errorCode: { type: string }
         error: { type: string }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
@@ -157,6 +182,15 @@ components:
         sourceRefs:
           type: array
           items: { $ref: '#/components/schemas/SourceRef' }
+    ResultPayload:
+      type: object
+      required: [resultId, version, type, contentHash, content]
+      properties:
+        resultId: { type: string, format: uuid }
+        version: { type: integer, minimum: 1 }
+        type: { type: string }
+        contentHash: { type: string }
+        content: {}
     SourceRef:
       type: object
       required: [sourceId, locator]
@@ -190,6 +224,7 @@ components:
         total: { type: integer, format: int64 }
     ReviewDecision:
       type: object
+      required: [resultVersion]
       properties:
         comment: { type: string, maxLength: 5000 }
         resultVersion: { type: integer, minimum: 1 }

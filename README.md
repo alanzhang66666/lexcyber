@@ -1,108 +1,57 @@
-# Lex Multi-Agent Backend v0.2
+# LexCyber v0.3
 
-一个可运行的多智能体后端，带有可注册、可选择、可执行、可审计、可人工复核的法律 Skill Runtime。
+LexCyber is a general-purpose, auditable task-execution platform. It provides a stable Java public API, a Python execution Engine, durable PostgreSQL state, Redis work queues, a neutral Stub workflow, and a small Vue developer console. It intentionally does not make sentencing, liability, crime, or other legal conclusions.
 
-本版本重点完成：
+## Start the complete local demo
 
-> Skill 可注册、可选择、可执行、可审计、可引用法源、可人工复核。
+```powershell
+Copy-Item .env.v03.example .env.v03
+docker compose --env-file .env.v03 up --build
+```
 
-当前版本提供：
+Open `http://127.0.0.1:18080`. The console submits a task, polls its state, displays the result reference, and can approve or reject a development review. The default `WORKFLOW_PROFILE=stub` needs no external model key.
 
-- FastAPI API Gateway：任务、案件、文档、Skill、人工审核
-- LangGraph 工作流：Normalize → Case Context → Supervisor → Skill Router → Policy Gate → Skill Executor → Merge → Reviewer → Human Review / Output
-- Skill Runtime：JSON Schema 校验、权限、超时、错误码、幂等、执行审计
-- Legal Skill Pack v0.2：22 个基础 Skill（10 个升级 + 12 个新增）
-- PostgreSQL：任务、checkpoint、Skill Registry、案件/文档/证据、人工审核、Audit
-- Redis + Dramatiq 异步任务队列
-- MinIO 对象存储
-- Retrieval Gateway：私有知识库契约 + 本地法源样例语料
-- GitHub Actions：Ruff、Pytest、Compose 配置校验
+```powershell
+curl.exe http://127.0.0.1:18080/healthz
+./scripts/ready-check.ps1
+curl.exe -X POST http://127.0.0.1:18080/v1/tasks `
+  -H 'Content-Type: application/json' `
+  -d '{"query":"Summarize this generic workflow input","metadata":{"source":"demo"}}'
+```
 
-本版本不包含定罪、责任认定、案件结果预测等法律结论能力。
+Use `GET /v1/tasks/{id}` for lifecycle and `GET /v1/tasks/{id}/result` for the
+immutable Stub content. Review tasks appear at `GET /v1/reviews?status=pending`.
 
-## 目标工作流
+## Service boundaries
 
 ```text
-用户任务 → Supervisor 制订计划 → Skill Router 选择 Skill
-→ Policy Gate 权限与风险检查 → Skill Executor 执行
-→ 结果写入 AgentState → Reviewer 审核
-→ PASS 生成结果 / RETRY 重试 / NEED_HUMAN 进入人工审核队列
+Browser -> Nginx -> Java public API -> app schema / result & review ownership
+                                  -> Engine internal API (service token)
+                              Python Engine -> Redis/Dramatiq -> engine schema
+                              Python Engine -> optional model/retrieval adapters
 ```
 
-## 快速启动
+The Java service owns the public contract, task lifecycle, result versions, reviews, and business audit. The Engine owns execution leases, checkpoints, Skill execution records, and Engine audit. Internal requests are defined in `contracts/internal-engine-api.yaml`; public requests are defined in `contracts/public-api.yaml`.
 
-```bash
-cp .env.example .env
-docker compose up --build
+The previous v0.2 Compose stack is archived at `legacy/docker-compose.v02.yml` and is not part of the supported runtime.
+
+The console types in `web/src/api-types.ts` are the checked-in snapshot of the
+public contract. Update that snapshot in the same change as an OpenAPI edit.
+
+## Development conventions
+
+- Keep the default workflow and UI generic; add domain behavior as an explicit Skill pack or workflow profile.
+- Existing Legal Skills remain in the repository as an optional `legal` extension and are not used by the default v0.3 Stub path.
+- Database changes are forward-only Flyway migrations. Do not edit released migrations.
+- Every asynchronous boundary must be idempotent, observable, and covered by a failure-path test.
+- Changes are reviewed vertically by all three engineers: the change driver and two cross-service reviewers.
+
+## Checks
+
+```powershell
+python -m ruff check .
+python -m pytest -q
+npm --prefix web run build
 ```
 
-API 默认入口：`http://localhost:8080`
-
-```bash
-curl http://localhost:8080/healthz
-
-curl -X POST http://localhost:8080/v1/tasks \
-  -H 'Content-Type: application/json' \
-  -d '{"query":"提取合同付款条款","metadata":{"text":"第一条 付款。甲方应于2024年1月1日支付人民币10000元。","jurisdiction":"CN"}}'
-```
-
-## 主要 API
-
-```text
-POST   /v1/tasks
-GET    /v1/tasks/{task_id}
-
-GET    /v1/skills
-GET    /v1/skills/{skill_id}
-POST   /v1/skills/{skill_id}/execute
-GET    /v1/skill-executions/{execution_id}
-
-POST   /v1/cases
-GET    /v1/cases/{case_id}
-POST   /v1/cases/{case_id}/tasks
-POST   /v1/cases/{case_id}/documents
-GET    /v1/documents/{document_id}
-POST   /v1/documents/{document_id}/parse
-GET    /v1/documents/{document_id}/content
-
-GET    /v1/reviews
-GET    /v1/reviews/{review_id}
-POST   /v1/reviews/{review_id}/approve
-POST   /v1/reviews/{review_id}/reject
-POST   /v1/reviews/{review_id}/request-retry
-```
-
-Nginx 只暴露统一 API，不直接对外暴露 PostgreSQL、Redis、MinIO 和内部 Gateway。
-
-## 本地测试
-
-```bash
-pip install -e ".[dev]"
-pytest -q
-```
-
-## 目录结构
-
-```text
-lexcyber/
-├── apps/                  # API、Worker、Model/Retrieval/Skill Gateway
-├── agents/                # Supervisor、Worker、Tool、Reviewer
-├── graph/                 # LangGraph state、nodes、routing、workflow
-├── domain/                # 案件、文档、证据、人工审核
-├── models/                # Model Gateway
-├── retrieval/             # Retrieval Gateway 与本地法源样例
-├── tools/                 # Tool Gateway
-├── storage/               # PostgreSQL、Redis、MinIO
-├── audit/                 # Agent Audit Log
-├── skills/                # Skill catalog 与 handler
-├── skill_runtime/         # Registry、Router、Policy、Executor、Validator
-├── migrations/            # PostgreSQL SQL 迁移
-└── tests/                 # 单元、集成、端到端测试
-```
-
-## 安全边界
-
-- Skill 只能从 `skills/catalog.json` 加载，不能执行未注册入口。
-- 高风险法律行为默认进入人工审核，禁止自动化提交法院或签署文件。
-- 引用验证只是检索匹配，不是权威法源真实性证明。
-- 模型 API Key 只从环境变量读取，不写入仓库。
+The CI pipeline additionally compiles Java 21, validates both OpenAPI contracts, and runs a v0.3 Compose smoke test.

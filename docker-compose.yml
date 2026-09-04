@@ -1,135 +1,125 @@
+name: lexcyber-v03
+
 services:
-  api:
-    build: .
-    command: uvicorn apps.api.main:app --host 0.0.0.0 --port 8000
+  web:
+    build: ./web
+    depends_on: [java]
+    expose: [80]
+
+  java:
+    build: ./server
     environment:
-      APP_ENV: ${APP_ENV:-development}
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      DATABASE_URL: ${DATABASE_URL:-postgresql://lex:lex@postgres:5432/lex}
-      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
-      RETRIEVAL_GATEWAY_URL: ${RETRIEVAL_GATEWAY_URL:-http://retrieval-gateway:8002}
-      MODEL_GATEWAY_URL: ${MODEL_GATEWAY_URL:-http://model-gateway:8001}
-      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-http://minio:9000}
-      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
-      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
-      MINIO_BUCKET: ${MINIO_BUCKET:-lexcyber}
+      DATABASE_URL: jdbc:postgresql://postgres:5432/lexcyber
+      DATABASE_USER: lex_app
+      DATABASE_PASSWORD: ${APP_DB_PASSWORD:?APP_DB_PASSWORD is required}
+      SPRING_FLYWAY_LOCATIONS: classpath:db/migration/app
+      ENGINE_BASE_URL: http://engine:8100
+      ENGINE_SERVICE_TOKEN: ${ENGINE_SERVICE_TOKEN:?ENGINE_SERVICE_TOKEN is required}
+      REVIEW_AUTH_MODE: trusted-header
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
+      engine-migrate:
+        condition: service_completed_successfully
+      engine:
         condition: service_healthy
-    expose:
-      - "8000"
+    expose: [8080]
 
-  agent-worker:
-    build: .
-    command: dramatiq apps.worker.tasks --processes 1 --threads 4
+  engine:
+    build: ./engine
     environment:
-      APP_ENV: ${APP_ENV:-development}
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      DATABASE_URL: ${DATABASE_URL:-postgresql://lex:lex@postgres:5432/lex}
-      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
-      RETRIEVAL_GATEWAY_URL: ${RETRIEVAL_GATEWAY_URL:-http://retrieval-gateway:8002}
-      MODEL_GATEWAY_URL: ${MODEL_GATEWAY_URL:-http://model-gateway:8001}
-      KNOWLEDGE_BASE_URL: ${KNOWLEDGE_BASE_URL:-}
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      model-gateway:
-        condition: service_started
-      retrieval-gateway:
-        condition: service_started
-
-  model-gateway:
-    build: .
-    command: uvicorn apps.model_gateway.main:app --host 0.0.0.0 --port 8001
-    environment:
+      ENGINE_DATABASE_URL: postgresql://lex_engine:${ENGINE_DB_PASSWORD:?ENGINE_DB_PASSWORD is required}@postgres:5432/lexcyber
+      REDIS_URL: redis://redis:6379/0
+      SERVICE_TOKEN: ${ENGINE_SERVICE_TOKEN:?ENGINE_SERVICE_TOKEN is required}
+      APP_CALLBACK_BASE_URL: http://java:8080
+      WORKFLOW_PROFILE: ${WORKFLOW_PROFILE:-stub}
       MODEL_PROVIDER: ${MODEL_PROVIDER:-stub}
       MODEL_NAME: ${MODEL_NAME:-stub-general-v1}
       MODEL_API_KEY: ${MODEL_API_KEY:-}
       MODEL_API_BASE_URL: ${MODEL_API_BASE_URL:-https://api.openai.com/v1}
-      MODEL_TIMEOUT_SECONDS: ${MODEL_TIMEOUT_SECONDS:-45}
-      MODEL_MAX_RETRIES: ${MODEL_MAX_RETRIES:-2}
-    expose:
-      - "8001"
-
-  retrieval-gateway:
-    build: .
-    command: uvicorn apps.retrieval_gateway.main:app --host 0.0.0.0 --port 8002
-    environment:
-      KNOWLEDGE_BASE_URL: ${KNOWLEDGE_BASE_URL:-}
-    expose:
-      - "8002"
-
-  skill-gateway:
-    build: .
-    command: uvicorn apps.skill_gateway.main:app --host 0.0.0.0 --port 8003
-    environment:
-      APP_ENV: ${APP_ENV:-development}
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      DATABASE_URL: ${DATABASE_URL:-postgresql://lex:lex@postgres:5432/lex}
-      KNOWLEDGE_BASE_URL: ${KNOWLEDGE_BASE_URL:-}
-      RETRIEVAL_GATEWAY_URL: ${RETRIEVAL_GATEWAY_URL:-http://retrieval-gateway:8002}
     depends_on:
-      retrieval-gateway:
+      engine-migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    expose: [8100]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8100/healthz', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  engine-worker:
+    build: ./engine
+    command: ["dramatiq", "engine.run_api_v03", "--processes", "1", "--threads", "4"]
+    environment:
+      ENGINE_DATABASE_URL: postgresql://lex_engine:${ENGINE_DB_PASSWORD:?ENGINE_DB_PASSWORD is required}@postgres:5432/lexcyber
+      REDIS_URL: redis://redis:6379/0
+      SERVICE_TOKEN: ${ENGINE_SERVICE_TOKEN:?ENGINE_SERVICE_TOKEN is required}
+      APP_CALLBACK_BASE_URL: http://java:8080
+      WORKFLOW_PROFILE: ${WORKFLOW_PROFILE:-stub}
+      MODEL_PROVIDER: ${MODEL_PROVIDER:-stub}
+      MODEL_NAME: ${MODEL_NAME:-stub-general-v1}
+      MODEL_API_KEY: ${MODEL_API_KEY:-}
+      MODEL_API_BASE_URL: ${MODEL_API_BASE_URL:-https://api.openai.com/v1}
+    depends_on:
+      engine:
         condition: service_started
-    expose:
-      - "8003"
+      redis:
+        condition: service_healthy
+
+  engine-migrate:
+    image: flyway/flyway:10.20.1-alpine
+    command: ["migrate", "-url=jdbc:postgresql://postgres:5432/lexcyber", "-user=lex_engine", "-password=${ENGINE_DB_PASSWORD:?ENGINE_DB_PASSWORD is required}", "-locations=filesystem:/flyway/sql"]
+    volumes:
+      - ./engine/migrations:/flyway/sql:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16.4-alpine
     environment:
-      POSTGRES_USER: lex
-      POSTGRES_PASSWORD: lex
-      POSTGRES_DB: lex
+      POSTGRES_USER: lex_migrator
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: lexcyber
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?APP_DB_PASSWORD is required}
+      ENGINE_DB_PASSWORD: ${ENGINE_DB_PASSWORD:?ENGINE_DB_PASSWORD is required}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./migrations:/docker-entrypoint-initdb.d:ro
+      - postgres_v03:/var/lib/postgresql/data
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U lex -d lex"]
+      test: ["CMD-SHELL", "pg_isready -U lex_migrator -d lexcyber"]
       interval: 5s
       timeout: 5s
-      retries: 10
+      retries: 12
 
   redis:
-    image: redis:7-alpine
+    image: redis:7.4.1-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes: [redis_v03:/data]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
-      retries: 10
+      retries: 12
 
   minio:
-    image: minio/minio:latest
+    image: minio/minio:RELEASE.2024-10-13T13-34-11Z
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
-    volumes:
-      - minio_data:/data
-    ports:
-      - "9001:9001"
-
-  minio-init:
-    image: minio/mc:latest
-    depends_on:
-      - minio
-    entrypoint: ["/bin/sh", "-c"]
-    command: >-
-      "until mc alias set local http://minio:9000 ${MINIO_ACCESS_KEY:-minioadmin} ${MINIO_SECRET_KEY:-minioadmin}; do sleep 2; done;
-      mc mb --ignore-existing local/${MINIO_BUCKET:-lexcyber}"
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
+    volumes: [minio_v03:/data]
 
   nginx:
-    image: nginx:1.27-alpine
-    ports:
-      - "8080:8080"
+    image: nginx:1.27.2-alpine
+    ports: ["127.0.0.1:18080:8080"]
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-    depends_on:
-      - api
+      - ./nginx/nginx.v03.conf:/etc/nginx/nginx.conf:ro
+    depends_on: [web, java]
 
 volumes:
-  postgres_data:
-  minio_data:
+  postgres_v03:
+  redis_v03:
+  minio_v03:
