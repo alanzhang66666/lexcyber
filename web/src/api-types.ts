@@ -1,40 +1,80 @@
 /**
- * Generated contract snapshot for contracts/public-api.yaml.
- * Keep this file in sync when the public OpenAPI contract changes; CI validates
- * the source contract and the console build catches incompatible consumers.
+ * TypeScript snapshot of contracts/public-api.yaml.
+ * Keep field names and enum values aligned with the public contract.
  */
-export type TaskStatus = 'queued' | 'running' | 'completed' | 'waiting_review' | 'failed' | 'timed_out' | 'rejected'
+export type TaskStatus =
+  | 'queued'
+  | 'running'
+  | 'completed'
+  | 'waiting_review'
+  | 'failed'
+  | 'timed_out'
+  | 'rejected'
+
+export type ReviewStatus = 'pending' | 'approved' | 'rejected' | 'superseded'
+export type ReviewDecisionValue = 'approve' | 'reject' | 'retry' | 'none'
+
+export type TaskCreate = {
+  query: string
+  caseId?: string
+  sessionId?: string
+  metadata?: Record<string, unknown>
+}
+
+export type SourceRef = {
+  sourceId: string
+  locator: string
+  jurisdiction?: string
+  version?: string
+  effectiveFrom?: string
+  effectiveTo?: string
+}
 
 export type ResultRef = {
   resultId: string
   version: number
   type: string
   contentHash?: string | null
+  sourceRefs?: SourceRef[]
 }
 
 export type TaskView = {
   id: string
   requestId: string
   executionId: string
+  caseId?: string | null
   status: TaskStatus
-  currentStage: string
+  currentStage?: string | null
   result?: ResultRef | null
   errorCode?: string | null
   error?: string | null
   createdAt: string
-  updatedAt: string
+  updatedAt?: string | null
 }
 
 export type ReviewRecord = {
   id: string
-  taskId: string
+  taskId?: string | null
   resultVersion: number
-  status: string
-  decision: string
+  status: ReviewStatus
+  decision: ReviewDecisionValue
+  actor?: string | null
   comment?: string | null
+  authenticated?: boolean | null
+  decidedAt?: string | null
 }
 
-export type ReviewPage = { items: ReviewRecord[]; page: number; size: number; total: number }
+export type ReviewPage = {
+  items: ReviewRecord[]
+  page: number
+  size: number
+  total: number
+}
+
+export type ReviewDecision = {
+  resultVersion: number
+  comment?: string
+}
 
 export type ResultPayload = {
   resultId: string
@@ -42,4 +82,12 @@ export type ResultPayload = {
   type: string
   contentHash: string
   content: unknown
+}
+
+export type ApiErrorPayload = {
+  code?: string
+  message?: string
+  detail?: string
+  traceId?: string
+  retryable?: boolean
 }
