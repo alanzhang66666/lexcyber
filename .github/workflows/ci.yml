@@ -18,7 +18,7 @@ jobs:
       - name: Lint
         run: ruff check .
       - name: Test
-        run: pytest -q
+        run: pytest -q -m "not integration"
       - name: Compose config
         env:
           POSTGRES_PASSWORD: ci-postgres

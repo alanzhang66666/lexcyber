@@ -1,0 +1,12 @@
+.git
+.github
+.vscode
+docs
+legacy
+web/node_modules
+web/dist
+**/__pycache__
+**/.venv
+.pytest_cache
+.env
+.env.v03

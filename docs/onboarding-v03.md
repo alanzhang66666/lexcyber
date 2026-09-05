@@ -4,6 +4,8 @@
 
 1. 复制 `.env.v03.example` 为 `.env.v03`。
 2. 执行 `docker compose --env-file .env.v03 up --build`。
+
+如需使用依赖镜像，可在 `.env.v03` 中设置 `PIP_INDEX_URL`、`NPM_REGISTRY` 和 `MAVEN_MIRROR_URL`；未设置时使用各生态的官方源。
 3. 等待 `postgres`、`redis`、`engine`、`java` 和 `nginx` 就绪。
 4. 在 `http://127.0.0.1:18080` 提交一个普通任务，再提交一个勾选人工复核的任务。
 

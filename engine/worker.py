@@ -25,7 +25,10 @@ def run_execution(payload: dict[str, Any]) -> dict[str, Any]:
         result = build_runner().run(payload)
         waiting = bool(result.get("human_approval_required"))
         status = "waiting_review" if waiting else "completed"
-        complete_execution(execution_id, status, "awaiting_review" if waiting else "output", result.get("final_output"), None, None)
+        output = result.get("final_output")
+        if output is None:
+            output = result
+        complete_execution(execution_id, status, "awaiting_review" if waiting else "output", output, None, None)
         _notify_application(execution_id)
         return result
     except TimeoutError as exc:

@@ -2,17 +2,25 @@ name: lexcyber-v03
 
 services:
   web:
-    build: ./web
+    build:
+      context: ./web
+      args:
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmjs.org}
     depends_on: [java]
     expose: [80]
 
   java:
-    build: ./server
+    build:
+      context: ./server
+      args:
+        MAVEN_MIRROR_URL: ${MAVEN_MIRROR_URL:-}
     environment:
       DATABASE_URL: jdbc:postgresql://postgres:5432/lexcyber
       DATABASE_USER: lex_app
       DATABASE_PASSWORD: ${APP_DB_PASSWORD:?APP_DB_PASSWORD is required}
       SPRING_FLYWAY_LOCATIONS: classpath:db/migration/app
+      SPRING_FLYWAY_SCHEMAS: app
+      SPRING_FLYWAY_DEFAULT_SCHEMA: app
       ENGINE_BASE_URL: http://engine:8100
       ENGINE_SERVICE_TOKEN: ${ENGINE_SERVICE_TOKEN:?ENGINE_SERVICE_TOKEN is required}
       REVIEW_AUTH_MODE: trusted-header
@@ -26,7 +34,12 @@ services:
     expose: [8080]
 
   engine:
-    build: ./engine
+    build:
+      context: .
+      dockerfile: engine/Dockerfile
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+    command: ["uvicorn", "engine.run_api_v03:app", "--host", "0.0.0.0", "--port", "8100"]
     environment:
       ENGINE_DATABASE_URL: postgresql://lex_engine:${ENGINE_DB_PASSWORD:?ENGINE_DB_PASSWORD is required}@postgres:5432/lexcyber
       REDIS_URL: redis://redis:6379/0
@@ -50,7 +63,11 @@ services:
       retries: 12
 
   engine-worker:
-    build: ./engine
+    build:
+      context: .
+      dockerfile: engine/Dockerfile
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
     command: ["dramatiq", "engine.run_api_v03", "--processes", "1", "--threads", "4"]
     environment:
       ENGINE_DATABASE_URL: postgresql://lex_engine:${ENGINE_DB_PASSWORD:?ENGINE_DB_PASSWORD is required}@postgres:5432/lexcyber
@@ -70,7 +87,7 @@ services:
 
   engine-migrate:
     image: flyway/flyway:10.20.1-alpine
-    command: ["migrate", "-url=jdbc:postgresql://postgres:5432/lexcyber", "-user=lex_engine", "-password=${ENGINE_DB_PASSWORD:?ENGINE_DB_PASSWORD is required}", "-locations=filesystem:/flyway/sql"]
+    command: ["migrate", "-url=jdbc:postgresql://postgres:5432/lexcyber", "-user=lex_engine", "-password=${ENGINE_DB_PASSWORD:?ENGINE_DB_PASSWORD is required}", "-schemas=engine", "-locations=filesystem:/flyway/sql"]
     volumes:
       - ./engine/migrations:/flyway/sql:ro
     depends_on:
