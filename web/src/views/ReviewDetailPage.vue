@@ -2,7 +2,9 @@
 import { computed, onMounted, ref } from 'vue'
 import { ApiError, api } from '../api'
 import type { ResultPayload, ReviewRecord, TaskView } from '../api-types'
+import ResultContent from '../components/ResultContent.vue'
 import StatusBadge from '../components/StatusBadge.vue'
+import { toastPlaceholder } from '../lib/toast'
 
 const props = defineProps<{ reviewId: string }>()
 const review = ref<ReviewRecord | null>(null)
@@ -59,11 +61,6 @@ async function decide(decision: 'approve' | 'reject') {
   }
 }
 
-function renderContent(content: unknown) {
-  if (content === null || content === undefined || content === '') return ''
-  return typeof content === 'string' ? content : JSON.stringify(content, null, 2)
-}
-
 onMounted(() => void load())
 </script>
 
@@ -72,7 +69,7 @@ onMounted(() => void load())
     <header class="page-heading compact-heading">
       <div>
         <RouterLink class="back-link" to="/reviews">← 返回复核队列</RouterLink>
-        <p class="eyebrow">VERSIONED DECISION</p>
+        <p class="eyebrow">版本化决定</p>
         <h1>复核结果版本</h1>
         <p class="mono heading-id">{{ reviewId }}</p>
       </div>
@@ -95,8 +92,14 @@ onMounted(() => void load())
           <div><dt>结果类型</dt><dd class="mono">{{ result?.type || '—' }}</dd></div>
           <div><dt>内容哈希</dt><dd class="mono">{{ result?.contentHash || '—' }}</dd></div>
         </dl>
-        <div v-if="result && renderContent(result.content)" class="result-block"><pre>{{ renderContent(result.content) }}</pre></div>
+        <div v-if="result" class="result-block">
+          <ResultContent :content="result.content" />
+        </div>
         <div v-else class="empty-state"><strong>没有可显示的结果内容</strong><p>请核对任务状态或稍后重新读取。</p></div>
+        <div class="compare-placeholder">
+          <small>冲突对照（占位）</small>
+          <p>正式版本将在此并排展示来源冲突。当前 Stub 结果不含结构化争议项。</p>
+        </div>
       </article>
       <aside class="panel decision-panel">
         <div class="panel-heading"><div><p class="section-index">02</p><h2>复核决定</h2></div></div>
@@ -106,15 +109,22 @@ onMounted(() => void load())
         </div>
         <p v-if="versionConflict" class="notice notice-error" role="alert">当前结果为 v{{ result?.version }}，与待复核的 v{{ review.resultVersion }} 不一致。请返回队列刷新，不要提交决定。</p>
         <p v-else-if="review.status === 'pending' && !result" class="notice notice-error" role="alert">结果内容尚未成功加载，当前不能提交复核决定。</p>
+        <div class="checklist">
+          <p><strong>审核清单</strong></p>
+          <label class="check-row"><input type="checkbox" disabled checked /><span>身份与权限核验（开发环境占位）</span></label>
+          <label class="check-row"><input type="checkbox" disabled /><span>事实与证据冲突（待接口）</span></label>
+          <label class="check-row"><input type="checkbox" disabled /><span>调节幅度与理由（待接口）</span></label>
+        </div>
         <label class="decision-comment">
           <span>复核意见 <b aria-hidden="true">*</b></span>
-          <textarea v-model="comment" rows="8" maxlength="5000" :disabled="!canDecide" required placeholder="记录核验依据、风险判断及决定理由" />
+          <textarea v-model="comment" rows="8" maxlength="5000" :disabled="!canDecide" required placeholder="写明依据哪段摘要、为何批准或拒绝，以及残留风险" />
           <small>{{ comment.length.toLocaleString() }} / 5,000</small>
         </label>
-        <div v-if="canDecide" class="decision-actions">
+        <div v-if="canDecide" class="decision-actions decision-actions-three">
           <button class="button button-danger" :disabled="Boolean(deciding) || !comment.trim()" type="button" @click="decide('reject')">
             {{ deciding === 'reject' ? '正在拒绝…' : '拒绝结果' }}
           </button>
+          <button class="button button-quiet" type="button" @click="toastPlaceholder">要求补充 / 重试</button>
           <button class="button button-primary" :disabled="Boolean(deciding) || !comment.trim()" type="button" @click="decide('approve')">
             {{ deciding === 'approve' ? '正在批准…' : '批准结果' }}
           </button>

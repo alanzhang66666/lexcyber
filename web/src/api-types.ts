@@ -84,6 +84,24 @@ export type ResultPayload = {
   content: unknown
 }
 
+export type AuthRegister = {
+  username: string
+  password: string
+  displayName?: string
+}
+
+export type AuthLogin = {
+  username: string
+  password: string
+}
+
+export type SessionView = {
+  token?: string | null
+  username: string
+  displayName: string
+  expiresAt?: string | null
+}
+
 export type ApiErrorPayload = {
   code?: string
   message?: string

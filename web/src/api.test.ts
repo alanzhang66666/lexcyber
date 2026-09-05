@@ -4,6 +4,7 @@ import { ApiError, api } from './api'
 afterEach(() => {
   vi.useRealTimers()
   vi.unstubAllGlobals()
+  localStorage.clear()
 })
 
 function response(body: unknown, status = 200) {
@@ -36,6 +37,33 @@ describe('typed API client', () => {
       method: 'POST',
       body: JSON.stringify({ resultVersion: 3, comment: '证据与结果一致。' }),
     }))
+  })
+
+  it('registers against the Java identity contract', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(response({
+      token: 'tok-1', username: 'reviewer_01', displayName: '审核员',
+    }, 201))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await api.register({ username: 'reviewer_01', password: 'password1', displayName: '审核员' })
+
+    expect(fetchMock).toHaveBeenCalledWith('/v1/auth/register', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ username: 'reviewer_01', password: 'password1', displayName: '审核员' }),
+    }))
+  })
+
+  it('attaches a bearer session token to subsequent API calls', async () => {
+    localStorage.setItem('lexcyber.session', JSON.stringify({
+      token: 'sess-9', username: 'tester', displayName: '测试员',
+    }))
+    const fetchMock = vi.fn().mockResolvedValue(response({ id: 'task-1', status: 'queued' }, 202))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await api.createTask({ query: '核验材料' })
+
+    const init = fetchMock.mock.calls[0][1] as RequestInit
+    expect(init.headers).toEqual(expect.objectContaining({ Authorization: 'Bearer sess-9' }))
   })
 
   it('preserves conflict details for stale result versions', async () => {

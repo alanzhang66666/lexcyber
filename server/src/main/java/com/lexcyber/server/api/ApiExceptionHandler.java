@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.server.ResponseStatusException;
 
-/** Stable public error envelope shared by task and review endpoints. */
+/** Stable public error envelope shared by auth, task and review endpoints. */
 @RestControllerAdvice
 public class ApiExceptionHandler {
     @ExceptionHandler(ResponseStatusException.class)

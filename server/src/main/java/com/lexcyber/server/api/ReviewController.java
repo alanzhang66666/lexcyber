@@ -13,7 +13,7 @@ import com.lexcyber.server.review.ReviewDecision;
 import com.lexcyber.server.review.ReviewIdentity;
 import com.lexcyber.server.review.ReviewService;
 
-/** Public human-review endpoints; identity is supplied only by the configured adapter. */
+/** Public human-review endpoints; actor comes from a bearer session, with trusted-header fallback. */
 @RestController
 @RequestMapping("/v1/reviews")
 public class ReviewController {
@@ -39,13 +39,15 @@ public class ReviewController {
 
     @PostMapping("/{reviewId}/approve")
     public Map<String, Object> approve(@PathVariable UUID reviewId, @Valid @RequestBody ReviewDecision decision,
+                                       @RequestHeader(value = "Authorization", required = false) String authorization,
                                        @RequestHeader(value = "X-Reviewer-Id", required = false) String reviewer) {
-        return reviews.decide(reviewId, "approve", decision.resultVersion(), identity.require(reviewer), decision.comment());
+        return reviews.decide(reviewId, "approve", decision.resultVersion(), identity.require(authorization, reviewer), decision.comment());
     }
 
     @PostMapping("/{reviewId}/reject")
     public Map<String, Object> reject(@PathVariable UUID reviewId, @Valid @RequestBody ReviewDecision decision,
+                                      @RequestHeader(value = "Authorization", required = false) String authorization,
                                       @RequestHeader(value = "X-Reviewer-Id", required = false) String reviewer) {
-        return reviews.decide(reviewId, "reject", decision.resultVersion(), identity.require(reviewer), decision.comment());
+        return reviews.decide(reviewId, "reject", decision.resultVersion(), identity.require(authorization, reviewer), decision.comment());
     }
 }

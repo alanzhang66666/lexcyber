@@ -6,10 +6,71 @@ info:
 servers:
   - url: /v1
 tags:
+  - name: auth
   - name: tasks
   - name: cases
   - name: reviews
 paths:
+  /auth/register:
+    post:
+      tags: [auth]
+      summary: Register an account and open a session
+      operationId: registerAccount
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AuthRegister' }
+      responses:
+        '201':
+          description: Account created and session issued.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionView' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: Authenticate and open a session
+      operationId: loginAccount
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AuthLogin' }
+      responses:
+        '200':
+          description: Session issued.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionView' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: Revoke the current session token
+      operationId: logoutAccount
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Session revoked, or already absent.
+  /auth/session:
+    get:
+      tags: [auth]
+      summary: Read the current session
+      operationId: getSession
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Current account for a valid session.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionView' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
   /tasks:
     post:
       tags: [tasks]
@@ -111,6 +172,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ReviewRecord' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '409': { $ref: '#/components/responses/Conflict' }
   /reviews/{reviewId}/reject:
     post:
@@ -130,6 +192,8 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ReviewRecord' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
 components:
   parameters:
     TaskId:
@@ -147,7 +211,35 @@ components:
     Conflict:
       description: Resource version or state conflict.
       content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } }
+    Unauthorized:
+      description: Authentication is missing or invalid.
+      content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } }
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
   schemas:
+    AuthRegister:
+      type: object
+      required: [username, password]
+      properties:
+        username: { type: string, pattern: '^[A-Za-z0-9_]{3,32}$' }
+        password: { type: string, minLength: 8, maxLength: 128 }
+        displayName: { type: string, maxLength: 32 }
+    AuthLogin:
+      type: object
+      required: [username, password]
+      properties:
+        username: { type: string, maxLength: 32 }
+        password: { type: string, minLength: 8, maxLength: 128 }
+    SessionView:
+      type: object
+      required: [username, displayName]
+      properties:
+        token: { type: string, description: Present on register and login; omitted from session reads. }
+        username: { type: string }
+        displayName: { type: string }
+        expiresAt: { type: string, format: date-time }
     TaskCreate:
       type: object
       required: [query]

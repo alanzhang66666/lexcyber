@@ -8,15 +8,18 @@ snapshot = (ROOT / "web" / "src" / "api-types.ts").read_text(encoding="utf-8")
 
 required_contract_markers = (
     "/tasks/{taskId}/result:",
+    "/auth/login:",
     "resultVersion:",
     "waiting_review",
     "contentHash:",
+    "SessionView:",
 )
 required_snapshot_markers = (
     "export type TaskStatus",
     "export type ResultRef",
     "export type ReviewRecord",
     "export type ResultPayload",
+    "export type SessionView",
     "waiting_review",
 )
 

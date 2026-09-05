@@ -1,12 +1,16 @@
 import type {
   ApiErrorPayload,
+  AuthLogin,
+  AuthRegister,
   ResultPayload,
   ReviewDecision,
   ReviewPage,
   ReviewRecord,
+  SessionView,
   TaskCreate,
   TaskView,
 } from './api-types'
+import { getAccessToken } from './lib/session'
 
 const REQUEST_TIMEOUT_MS = 12_000
 
@@ -26,6 +30,11 @@ export class ApiError extends Error {
   }
 }
 
+function authHeaders(): Record<string, string> {
+  const token = getAccessToken()
+  return token ? { Authorization: `Bearer ${token}` } : {}
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const controller = new AbortController()
   const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
@@ -36,10 +45,14 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
       headers: {
         Accept: 'application/json',
         ...(init.body ? { 'Content-Type': 'application/json' } : {}),
+        ...authHeaders(),
         ...init.headers,
       },
       signal: controller.signal,
     })
+
+    if (response.status === 204) return undefined as T
+
     const payload = await response.json().catch(() => null) as T | ApiErrorPayload | null
 
     if (!response.ok) {
@@ -65,6 +78,22 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 export const api = {
+  register(input: AuthRegister) {
+    return request<SessionView>('/v1/auth/register', { method: 'POST', body: JSON.stringify(input) })
+  },
+
+  login(input: AuthLogin) {
+    return request<SessionView>('/v1/auth/login', { method: 'POST', body: JSON.stringify(input) })
+  },
+
+  logout() {
+    return request<void>('/v1/auth/logout', { method: 'POST' })
+  },
+
+  getSession() {
+    return request<SessionView>('/v1/auth/session')
+  },
+
   createTask(input: TaskCreate) {
     return request<TaskView>('/v1/tasks', { method: 'POST', body: JSON.stringify(input) })
   },

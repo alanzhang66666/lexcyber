@@ -12,4 +12,7 @@ dist/
 build/
 *.egg-info/
 data/
+!web/src/data/
+!web/src/data/**
 logs/
+target/
