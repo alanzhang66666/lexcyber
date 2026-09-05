@@ -87,21 +87,57 @@ jobs:
         run: docker compose -f docker-compose.yml up -d --build
       - name: Wait for API and execute Stub task
         run: |
-          for i in $(seq 1 60); do curl --fail --silent http://127.0.0.1:18080/healthz && break || sleep 2; done
+          set -euo pipefail
+          api_ready=false
+          for _ in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:18080/healthz; then
+              api_ready=true
+              break
+            fi
+            sleep 2
+          done
+          test "$api_ready" = true
+
           response=$(curl --fail --silent -X POST http://127.0.0.1:18080/v1/tasks -H 'Content-Type: application/json' -d '{"query":"ci generic task","metadata":{"source":"ci"}}')
           task=$(python -c 'import json,sys; print(json.load(sys.stdin)["id"])' <<< "$response")
-          for i in $(seq 1 60); do status=$(curl --fail --silent http://127.0.0.1:18080/v1/tasks/$task | python -c 'import json,sys; print(json.load(sys.stdin)["status"])'); case "$status" in completed|failed|timed_out) test "$status" = completed || exit 1; break;; esac; sleep 2; done
+          status=""
+          for _ in $(seq 1 60); do
+            status=$(curl --fail --silent "http://127.0.0.1:18080/v1/tasks/$task" | python -c 'import json,sys; print(json.load(sys.stdin)["status"])')
+            case "$status" in
+              completed) break ;;
+              failed|timed_out|rejected) exit 1 ;;
+            esac
+            sleep 2
+          done
           test "$status" = completed
+
           review_response=$(curl --fail --silent -X POST http://127.0.0.1:18080/v1/tasks -H 'Content-Type: application/json' -d '{"query":"ci review task","metadata":{"demo_requires_review":true}}')
           review_task=$(python -c 'import json,sys; print(json.load(sys.stdin)["id"])' <<< "$review_response")
-          for i in $(seq 1 60); do status=$(curl --fail --silent http://127.0.0.1:18080/v1/tasks/$review_task | python -c 'import json,sys; print(json.load(sys.stdin)["status"])'); test "$status" = waiting_review && break; case "$status" in failed|timed_out) exit 1;; esac; sleep 2; done
+          status=""
+          for _ in $(seq 1 60); do
+            status=$(curl --fail --silent "http://127.0.0.1:18080/v1/tasks/$review_task" | python -c 'import json,sys; print(json.load(sys.stdin)["status"])')
+            case "$status" in
+              waiting_review) break ;;
+              failed|timed_out|rejected) exit 1 ;;
+            esac
+            sleep 2
+          done
           test "$status" = waiting_review
+
           review=$(curl --fail --silent 'http://127.0.0.1:18080/v1/reviews?status=pending')
           review_id=$(python -c 'import json,sys; print(json.load(sys.stdin)["items"][0]["id"])' <<< "$review")
           result_version=$(python -c 'import json,sys; print(json.load(sys.stdin)["items"][0]["resultVersion"])' <<< "$review")
           curl --fail --silent -X POST "http://127.0.0.1:18080/v1/reviews/$review_id/approve" -H 'Content-Type: application/json' -d '{"resultVersion":'"$result_version"'}'
-          for i in $(seq 1 30); do status=$(curl --fail --silent http://127.0.0.1:18080/v1/tasks/$review_task | python -c 'import json,sys; print(json.load(sys.stdin)["status"])'); test "$status" = completed && exit 0; sleep 2; done
-          exit 1
+          status=""
+          for _ in $(seq 1 30); do
+            status=$(curl --fail --silent "http://127.0.0.1:18080/v1/tasks/$review_task" | python -c 'import json,sys; print(json.load(sys.stdin)["status"])')
+            case "$status" in
+              completed) break ;;
+              failed|timed_out|rejected) exit 1 ;;
+            esac
+            sleep 2
+          done
+          test "$status" = completed
       - if: always()
         run: docker compose -f docker-compose.yml logs --no-color
       - if: always()
