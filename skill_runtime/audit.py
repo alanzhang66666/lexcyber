@@ -14,6 +14,7 @@ def execution_record(request: SkillRequest, result: SkillResult) -> dict[str, An
     return {
         "execution_id": result.execution_id,
         "request_id": result.request_id or request.request_id,
+        "parent_execution_id": request.parent_execution_id,
         "case_id": result.case_id or request.case_id,
         "skill_id": result.skill_id,
         "skill_version": result.skill_version,

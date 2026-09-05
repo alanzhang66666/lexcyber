@@ -7,6 +7,7 @@ from skill_runtime.errors import SkillDisabledError, SkillNotFoundError
 from skill_runtime.schemas import SkillManifest
 
 CATALOG_PATH = Path(__file__).resolve().parents[1] / "skills" / "catalog.json"
+CORE_CATALOG_PATH = Path(__file__).resolve().parents[1] / "skills" / "core_catalog.json"
 
 
 def load_catalog(path: Path | None = None) -> list[SkillManifest]:
@@ -18,8 +19,13 @@ def load_catalog(path: Path | None = None) -> list[SkillManifest]:
 class SkillRegistry:
     """Loads registered skills from catalog.json, with optional status overlays."""
 
-    def __init__(self, catalog_path: Path | None = None, manifests: list[SkillManifest] | None = None):
-        self._manifests = {self._key(item): item for item in (manifests or load_catalog(catalog_path))}
+    def __init__(self, catalog_path: Path | None = None, manifests: list[SkillManifest] | None = None, packs: set[str] | None = None):
+        loaded = manifests if manifests is not None else load_catalog(catalog_path)
+        if packs is not None:
+            if "core" in packs:
+                loaded.extend(load_catalog(CORE_CATALOG_PATH))
+            loaded = [item for item in loaded if item.pack in packs]
+        self._manifests = {self._key(item): item for item in loaded}
         self._overrides: dict[tuple[str, str], dict[str, object]] = {}
 
     @staticmethod

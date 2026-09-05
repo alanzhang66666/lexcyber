@@ -1,0 +1,84 @@
+openapi: 3.1.0
+info:
+  title: LexCyber Internal Engine API
+  version: 0.3.0
+servers:
+  - url: http://engine:8100
+paths:
+  /internal/v1/executions:
+    post:
+      summary: Submit one idempotent execution
+      security: [{ serviceToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ExecutionRequest' }
+      responses:
+        '202':
+          description: Accepted or already queued.
+          content: { application/json: { schema: { $ref: '#/components/schemas/ExecutionView' } } }
+        '409': { description: Same execution id with a different input hash. }
+  /internal/v1/executions/{executionId}:
+    get:
+      summary: Read execution state and terminal result
+      security: [{ serviceToken: [] }]
+      parameters:
+        - { name: executionId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Execution state, content: { application/json: { schema: { $ref: '#/components/schemas/ExecutionView' } } } }
+        '404': { description: Execution not found. }
+  /internal/v1/executions/{executionId}/result:
+    post:
+      summary: Deliver one terminal result to the Java application boundary
+      security: [{ serviceToken: [] }]
+      parameters:
+        - { name: executionId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ExecutionView' }
+      responses:
+        '200': { description: Accepted idempotently. }
+        '409': { description: Result content or execution association conflict. }
+components:
+  securitySchemes:
+    serviceToken: { type: apiKey, in: header, name: X-Service-Token }
+  schemas:
+    ExecutionRequest:
+      type: object
+      required: [task_id, execution_id, request_id, result_id, result_version, result_type, query, input_hash, contract_version]
+      properties:
+        task_id: { type: string, format: uuid }
+        execution_id: { type: string, format: uuid }
+        request_id: { type: string, format: uuid }
+        result_id: { type: string, format: uuid }
+        result_version: { type: integer, minimum: 1 }
+        result_type: { type: string }
+        query: { type: string, minLength: 1, maxLength: 20000 }
+        case_id: { type: string, nullable: true }
+        session_id: { type: string, nullable: true }
+        metadata: { type: object, additionalProperties: true }
+        input_hash: { type: string, minLength: 16 }
+        contract_version: { type: string }
+    ExecutionView:
+      type: object
+      required: [execution_id, task_id, status, current_stage]
+      properties:
+        execution_id: { type: string, format: uuid }
+        task_id: { type: string, format: uuid }
+        request_id: { type: string, format: uuid, nullable: true }
+        result_id: { type: string, format: uuid, nullable: true }
+        result_version: { type: integer, minimum: 1, nullable: true }
+        result_type: { type: string, nullable: true }
+        status: { type: string, enum: [queued, running, completed, waiting_review, failed, timed_out] }
+        current_stage: { type: string }
+        content_json: { type: string, nullable: true }
+        content_hash: { type: string, nullable: true }
+        error_code: { type: string, nullable: true }
+        error_message: { type: string, nullable: true }
+        retryable: { type: boolean }
+        result_ref: { type: object, nullable: true, additionalProperties: true }
+        input_hash: { type: string, nullable: true }
+        enqueued_at: { type: string, format: date-time, nullable: true }

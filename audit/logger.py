@@ -14,7 +14,7 @@ def input_hash(value: Any) -> str:
 @contextmanager
 def audit_event(state: dict[str, Any], agent_name: str, **extra: Any) -> Iterator[dict[str, Any]]:
     started = time.perf_counter()
-    event = {"request_id": state.get("request_id", "unknown"), "task_id": state.get("task_id"), "agent_name": agent_name, "input_hash": input_hash(state.get("user_query", "")), **extra}
+    event = {"request_id": state.get("request_id", "unknown"), "task_id": state.get("task_id"), "execution_id": state.get("execution_id"), "agent_name": agent_name, "input_hash": input_hash(state.get("user_query", "")), **extra}
     try:
         yield event
     finally:
@@ -22,4 +22,8 @@ def audit_event(state: dict[str, Any], agent_name: str, **extra: Any) -> Iterato
         try:
             record_audit(event)
         except Exception:
-            pass
+            # Engine-mode audit is part of the execution contract: a failed
+            # write must fail the execution rather than create an untraceable
+            # result. Legacy callers keep the historical best-effort behavior.
+            if state.get("engine_mode"):
+                raise

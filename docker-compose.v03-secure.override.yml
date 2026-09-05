@@ -1,0 +1,5 @@
+services:
+  engine:
+    command: ["uvicorn", "engine.run_api_v03:app", "--host", "0.0.0.0", "--port", "8100"]
+  engine-worker:
+    command: ["dramatiq", "engine.run_api_v03", "--processes", "1", "--threads", "4"]

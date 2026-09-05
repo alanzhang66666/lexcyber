@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from agents.reviewer.agent import ReviewerAgent
 from agents.supervisor.agent import SupervisorAgent
 from agents.tool_agent.agent import ToolAgent
@@ -13,7 +15,7 @@ from skill_runtime.policy import DEFAULT_AGENT_PERMISSIONS, evaluate
 from skill_runtime.registry import SkillRegistry
 from skill_runtime.router import SkillRouter
 from skill_runtime.schemas import SkillRequest
-from storage.postgres.repository import save_checkpoint, update_task_state
+from storage.postgres.repository import update_task_state
 from tools.gateway import ToolGateway
 
 model_gateway = ModelGateway()
@@ -28,6 +30,16 @@ skill_executor_runtime = SkillExecutor(skill_registry, audit_sink=InMemoryAuditS
 
 
 def _checkpoint(state: AgentState, node_name: str) -> None:
+    if state.get("engine_mode"):
+        from engine.store import save_checkpoint
+
+        execution_id = state.get("execution_id")
+        if not execution_id:
+            raise RuntimeError("engine workflow state has no execution_id")
+        sequence_no = int(state.get("_checkpoint_sequence", 0)) + 1
+        state["_checkpoint_sequence"] = sequence_no
+        save_checkpoint(UUID(str(execution_id)), node_name, dict(state), sequence_no)
+        return
     task_id = state.get("task_id")
     if task_id:
         try:
@@ -122,7 +134,7 @@ def case_context_load(state: AgentState) -> AgentState:
     state.setdefault("document_ids", metadata.get("document_ids") or [])
     state["source_text"] = metadata.get("text") or state.get("source_text") or state.get("user_query", "")
     state["available_skills"] = skill_executor_runtime.list_skills()
-    if state.get("case_id"):
+    if state.get("case_id") and not state.get("engine_mode"):
         try:
             from domain.cases.repository import load_matter
 
@@ -186,12 +198,19 @@ def policy_gate(state: AgentState) -> AgentState:
 def skill_executor_node(state: AgentState) -> AgentState:
     results = list(state.get("skill_results") or [])
     usage = list(state.get("skill_usage") or [])
+    runtime = skill_executor_runtime
+    if state.get("engine_mode"):
+        from engine.audit import EngineSkillAuditSink
+
+        runtime = SkillExecutor(skill_registry, audit_sink=EngineSkillAuditSink())
     with audit_event(state, "skill_executor", prompt_version="skill_runtime:v0.2") as event:
         for raw in state.get("skill_requests", []):
             request = SkillRequest.model_validate(raw)
+            if state.get("engine_mode"):
+                request.parent_execution_id = state.get("execution_id")
             manifest = skill_registry.get(request.skill_id, request.skill_version)
             request.input = skill_router._inputs_for(manifest, _context(state).get("source_text", ""), _context(state))
-            result = skill_executor_runtime.execute(request)
+            result = runtime.execute(request)
             dumped = result.model_dump()
             results.append(dumped)
             usage.append({"skill_id": result.skill_id, "status": result.status, "duration_ms": result.duration_ms})
@@ -273,6 +292,12 @@ def reviewer(state: AgentState) -> AgentState:
 
 def human_review(state: AgentState) -> AgentState:
     payload = {"skill_results": state.get("skill_results", []), "query": state.get("user_query"), "review_result": state.get("review_result")}
+    if state.get("engine_mode"):
+        state["review_status"] = "NEED_HUMAN"
+        state["human_approval_required"] = True
+        state["final_output"] = {"status": "NEED_HUMAN", "skill_results": state.get("skill_results", [])}
+        _checkpoint(state, "human_review")
+        return state
     try:
         from domain.reviews.repository import enqueue_review
 

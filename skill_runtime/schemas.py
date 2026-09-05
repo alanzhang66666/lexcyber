@@ -17,6 +17,7 @@ class SkillManifest(BaseModel):
     id: str
     name: str
     version: str
+    pack: str = "legal"
     category: str = "general"
     kind: SkillKind = "python"
     description: str
@@ -65,6 +66,7 @@ class SkillRequest(BaseModel):
     actor: str = "system"
     case_id: str | None = None
     request_id: str | None = None
+    parent_execution_id: str | None = None
     granted_permissions: list[str] | None = None
     human_approved: bool = False
     idempotency_key: str | None = None

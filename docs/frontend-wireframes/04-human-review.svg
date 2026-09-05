@@ -1,0 +1,230 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000">
+  <defs>
+    <filter id="shadow4" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="3" stdDeviation="8" flood-color="#17243A" flood-opacity="0.08"/>
+    </filter>
+    <style>
+      .t { font-family: Inter, "Microsoft YaHei", "PingFang SC", sans-serif; fill: #17243A; }
+      .white { fill: #FFFFFF; }
+      .muted { fill: #6B788B; }
+      .tiny { font-size: 12px; }
+      .small { font-size: 14px; }
+      .body { font-size: 16px; }
+      .h2 { font-size: 19px; font-weight: 700; }
+      .title { font-size: 26px; font-weight: 750; }
+      .label { font-size: 13px; font-weight: 650; }
+      .line { stroke: #E1E7EE; stroke-width: 1; }
+    </style>
+  </defs>
+
+  <rect width="1600" height="1000" fill="#F4F6F9"/>
+  <rect x="0" y="0" width="72" height="1000" fill="#17243A"/>
+  <rect x="17" y="17" width="38" height="38" rx="9" fill="#2F6FED"/>
+  <text class="t white" x="36" y="43" font-size="18" text-anchor="middle" font-weight="800">L</text>
+  <path d="M26 108h20v17H26zM30 104h12l4 4" fill="none" stroke="#8FA0B8" stroke-width="2"/>
+  <rect x="12" y="160" width="48" height="48" rx="10" fill="#2B3E58"/>
+  <circle cx="36" cy="184" r="10" fill="none" stroke="#FFFFFF" stroke-width="2"/>
+  <path d="M31 184l4 4 7-9" fill="none" stroke="#FFFFFF" stroke-width="2"/>
+  <path d="M27 235h18v21H27zM30 240h12M30 245h12M30 250h8" fill="none" stroke="#8FA0B8" stroke-width="2"/>
+  <path d="M36 300v20M27 305h18M31 305l-5 8h10zM41 305l-5 8h10z" fill="none" stroke="#8FA0B8" stroke-width="2"/>
+  <circle cx="36" cy="950" r="18" fill="#354963"/>
+  <text class="t white" x="36" y="956" font-size="14" text-anchor="middle">审</text>
+
+  <!-- Header -->
+  <rect x="72" y="0" width="1528" height="76" fill="#FFFFFF"/>
+  <line x1="72" y1="75" x2="1600" y2="75" class="line"/>
+  <text class="t title" x="104" y="46">人工审核中心</text>
+  <rect x="477" y="18" width="400" height="40" rx="8" fill="#F3F6F9"/>
+  <circle cx="500" cy="38" r="7" fill="none" stroke="#7D8BA0" stroke-width="2"/>
+  <path d="M505 43l6 6" stroke="#7D8BA0" stroke-width="2"/>
+  <text class="t muted small" x="526" y="43">搜索案件、审核编号或提交人</text>
+  <text class="t muted small" x="1400" y="43">审核规范</text>
+  <circle cx="1534" cy="38" r="18" fill="#E9EEF7"/>
+  <text class="t label" x="1534" y="43" text-anchor="middle">王</text>
+
+  <!-- Queue -->
+  <rect x="72" y="76" width="378" height="924" fill="#FFFFFF"/>
+  <line x1="449" y1="76" x2="449" y2="1000" class="line"/>
+  <text class="t h2" x="96" y="116">待审核队列</text>
+  <rect x="346" y="94" width="76" height="28" rx="14" fill="#FFECEE"/>
+  <text class="t label" x="384" y="113" text-anchor="middle" fill="#C43C4C">7 项待办</text>
+
+  <rect x="96" y="140" width="92" height="34" rx="7" fill="#17243A"/>
+  <text class="t white tiny" x="142" y="162" text-anchor="middle">全部 7</text>
+  <rect x="196" y="140" width="92" height="34" rx="7" fill="#F3F6F9"/>
+  <text class="t tiny" x="242" y="162" text-anchor="middle">高风险 2</text>
+  <rect x="296" y="140" width="126" height="34" rx="7" fill="#F3F6F9"/>
+  <text class="t tiny" x="359" y="162" text-anchor="middle">即将超时 1</text>
+
+  <rect x="84" y="194" width="354" height="132" rx="9" fill="#EEF4FF" stroke="#8EB0EF"/>
+  <rect x="100" y="211" width="58" height="24" rx="12" fill="#FFECEE"/>
+  <text class="t tiny" x="129" y="228" text-anchor="middle" fill="#C43C4C">高风险</text>
+  <text class="t tiny muted" x="414" y="227" text-anchor="end">剩余 2h</text>
+  <text class="t body" x="100" y="260" font-weight="750">赵某诈骗案</text>
+  <text class="t tiny muted" x="100" y="283">（2026）沪01刑初098号</text>
+  <text class="t small" x="100" y="309" fill="#B66C08">金额证据冲突 · 调节幅度待确认</text>
+
+  <rect x="84" y="336" width="354" height="118" rx="9" fill="#FFFFFF"/>
+  <rect x="100" y="353" width="58" height="24" rx="12" fill="#FFF3DB"/>
+  <text class="t tiny" x="129" y="370" text-anchor="middle" fill="#A66008">中风险</text>
+  <text class="t tiny muted" x="414" y="369" text-anchor="end">今天 17:00</text>
+  <text class="t body" x="100" y="402" font-weight="700">张某涉嫌盗窃案</text>
+  <text class="t tiny muted" x="100" y="425">3 项量刑情节等待复核</text>
+  <line x1="100" y1="453" x2="422" y2="453" class="line"/>
+
+  <rect x="84" y="464" width="354" height="118" rx="9" fill="#FFFFFF"/>
+  <rect x="100" y="481" width="58" height="24" rx="12" fill="#FFF3DB"/>
+  <text class="t tiny" x="129" y="498" text-anchor="middle" fill="#A66008">中风险</text>
+  <text class="t tiny muted" x="414" y="497" text-anchor="end">明天 10:00</text>
+  <text class="t body" x="100" y="530" font-weight="700">孙某故意伤害案</text>
+  <text class="t tiny muted" x="100" y="553">事实一致性检查未通过</text>
+  <line x1="100" y1="581" x2="422" y2="581" class="line"/>
+
+  <rect x="84" y="592" width="354" height="118" rx="9" fill="#FFFFFF"/>
+  <rect x="100" y="609" width="58" height="24" rx="12" fill="#EAF1FF"/>
+  <text class="t tiny" x="129" y="626" text-anchor="middle" fill="#2F6FED">普通</text>
+  <text class="t tiny muted" x="414" y="625" text-anchor="end">09-05 15:00</text>
+  <text class="t body" x="100" y="658" font-weight="700">李某危险驾驶案</text>
+  <text class="t tiny muted" x="100" y="681">补充材料后重新提交</text>
+  <line x1="100" y1="709" x2="422" y2="709" class="line"/>
+
+  <text class="t label" x="96" y="750">已处理</text>
+  <rect x="84" y="768" width="354" height="86" rx="9" fill="#FAFBFC"/>
+  <circle cx="110" cy="795" r="9" fill="#2E9B72"/>
+  <path d="M106 795l3 3 6-8" fill="none" stroke="#FFFFFF" stroke-width="1.5"/>
+  <text class="t small" x="132" y="798" font-weight="700">钱某案件 · 已批准</text>
+  <text class="t tiny muted" x="132" y="822">王某 · 今天 09:42</text>
+  <text class="t tiny" x="414" y="799" text-anchor="end" fill="#2F6FED">查看</text>
+
+  <rect x="84" y="864" width="354" height="86" rx="9" fill="#FAFBFC"/>
+  <circle cx="110" cy="891" r="9" fill="#D98919"/>
+  <text class="t white tiny" x="110" y="895" text-anchor="middle">↻</text>
+  <text class="t small" x="132" y="894" font-weight="700">吴某案件 · 已要求重试</text>
+  <text class="t tiny muted" x="132" y="918">刘某 · 昨天 18:20</text>
+  <text class="t tiny" x="414" y="895" text-anchor="end" fill="#2F6FED">查看</text>
+
+  <!-- Main review detail -->
+  <rect x="450" y="76" width="752" height="924" fill="#F4F6F9"/>
+  <rect x="474" y="96" width="704" height="112" rx="11" fill="#FFFFFF" filter="url(#shadow4)"/>
+  <rect x="498" y="115" width="62" height="26" rx="13" fill="#FFECEE"/>
+  <text class="t tiny" x="529" y="133" text-anchor="middle" fill="#C43C4C">高风险</text>
+  <text class="t h2" x="574" y="135">赵某诈骗案</text>
+  <text class="t tiny muted" x="498" y="164">审核编号 REV-20260904-027 · 提交人：周法官助理 · 提交时间：今天 10:18</text>
+  <text class="t tiny" x="498" y="188" fill="#B66C08">触发原因：证据金额冲突；包含需要人工裁量的责任与量刑建议</text>
+  <rect x="1053" y="120" width="101" height="36" rx="7" fill="#F5F7FA"/>
+  <text class="t tiny" x="1104" y="143" text-anchor="middle">打开案件 ↗</text>
+
+  <rect x="474" y="226" width="704" height="750" rx="11" fill="#FFFFFF" filter="url(#shadow4)"/>
+  <text class="t label" x="498" y="264" fill="#2F6FED">待审问题　2</text>
+  <text class="t muted label" x="605" y="264">事实与证据</text>
+  <text class="t muted label" x="714" y="264">量刑计算链</text>
+  <text class="t muted label" x="837" y="264">法源依据</text>
+  <text class="t muted label" x="930" y="264">版本差异</text>
+  <line x1="498" y1="282" x2="1154" y2="282" class="line"/>
+  <rect x="498" y="280" width="88" height="3" fill="#2F6FED"/>
+
+  <text class="t tiny muted" x="498" y="316">问题 1 / 2</text>
+  <text class="t h2" x="498" y="347">涉案金额存在两处不一致记录</text>
+  <rect x="1033" y="322" width="121" height="32" rx="7" fill="#FFF3DB"/>
+  <text class="t tiny" x="1094" y="343" text-anchor="middle" fill="#A66008">必须处理后决定</text>
+
+  <rect x="498" y="372" width="315" height="148" rx="9" fill="#F7F9FC" stroke="#DDE4EC"/>
+  <text class="t tiny muted" x="518" y="399">来源 A · 价格认定意见</text>
+  <text class="t" x="518" y="438" font-size="25" font-weight="800">380,000 元</text>
+  <text class="t tiny muted" x="518" y="466">P2 ¶4 · 识别置信度 97%</text>
+  <text class="t tiny" x="518" y="496" fill="#2F6FED">查看原文锚点 ↗</text>
+
+  <rect x="839" y="372" width="315" height="148" rx="9" fill="#FFF9EC" stroke="#E9C87D"/>
+  <text class="t tiny muted" x="859" y="399">来源 B · 转账记录</text>
+  <text class="t" x="859" y="438" font-size="25" font-weight="800">300,000 元</text>
+  <text class="t tiny muted" x="859" y="466">P1 ¶8 · OCR 置信度 76%</text>
+  <text class="t tiny" x="859" y="496" fill="#2F6FED">查看原始扫描件 ↗</text>
+
+  <path d="M822 411v62" stroke="#BFC9D5" stroke-width="2"/>
+  <circle cx="822" cy="442" r="15" fill="#FFECEE"/>
+  <text class="t label" x="822" y="447" text-anchor="middle" fill="#C43C4C">≠</text>
+
+  <text class="t label" x="498" y="559">审核处理</text>
+  <rect x="498" y="574" width="656" height="46" rx="8" fill="#FFFFFF" stroke="#CCD6E2"/>
+  <circle cx="520" cy="597" r="8" fill="#FFFFFF" stroke="#8594A8" stroke-width="2"/>
+  <text class="t small" x="540" y="602">采用价格认定意见：380,000 元</text>
+  <rect x="498" y="630" width="656" height="46" rx="8" fill="#FFFFFF" stroke="#CCD6E2"/>
+  <circle cx="520" cy="653" r="8" fill="#FFFFFF" stroke="#8594A8" stroke-width="2"/>
+  <text class="t small" x="540" y="658">采用转账记录：300,000 元</text>
+  <rect x="498" y="686" width="656" height="46" rx="8" fill="#FFFFFF" stroke="#CCD6E2"/>
+  <circle cx="520" cy="709" r="8" fill="#FFFFFF" stroke="#8594A8" stroke-width="2"/>
+  <text class="t small" x="540" y="714">两者含义不同，保留并补充字段说明</text>
+  <rect x="498" y="742" width="656" height="46" rx="8" fill="#FFF9EC" stroke="#E0BF72"/>
+  <circle cx="520" cy="765" r="8" fill="#D98919"/>
+  <circle cx="520" cy="765" r="3" fill="#FFFFFF"/>
+  <text class="t small" x="540" y="770" font-weight="700">退回补充材料或重新 OCR</text>
+
+  <text class="t label" x="498" y="828">审核意见</text>
+  <rect x="498" y="844" width="656" height="84" rx="8" fill="#FFFFFF" stroke="#CCD6E2"/>
+  <text class="t small muted" x="518" y="873">请核验转账记录原始凭证，并说明两处金额分别对应的事实。</text>
+  <text class="t tiny muted" x="1132" y="911" text-anchor="end">32 / 500</text>
+  <text class="t tiny" x="498" y="954" fill="#2F6FED">下一问题：退赔情节调节幅度缺少选择理由　→</text>
+
+  <!-- Right review checklist/actions -->
+  <rect x="1202" y="76" width="398" height="924" fill="#FFFFFF"/>
+  <text class="t h2" x="1226" y="116">审核清单</text>
+  <text class="t tiny muted" x="1226" y="142">完成全部必审项后方可批准</text>
+
+  <rect x="1226" y="165" width="350" height="50" rx="8" fill="#EAF6F1"/>
+  <circle cx="1250" cy="190" r="9" fill="#2E9B72"/>
+  <path d="M1246 190l3 3 6-8" fill="none" stroke="#FFFFFF" stroke-width="1.5"/>
+  <text class="t small" x="1270" y="195">身份与权限核验</text>
+  <text class="t tiny" x="1552" y="195" text-anchor="end" fill="#248B68">完成</text>
+
+  <rect x="1226" y="225" width="350" height="50" rx="8" fill="#EAF6F1"/>
+  <circle cx="1250" cy="250" r="9" fill="#2E9B72"/>
+  <path d="M1246 250l3 3 6-8" fill="none" stroke="#FFFFFF" stroke-width="1.5"/>
+  <text class="t small" x="1270" y="255">适用法源及版本</text>
+  <text class="t tiny" x="1552" y="255" text-anchor="end" fill="#248B68">完成</text>
+
+  <rect x="1226" y="285" width="350" height="50" rx="8" fill="#FFF8E7"/>
+  <circle cx="1250" cy="310" r="9" fill="#D98919"/>
+  <text class="t white tiny" x="1250" y="314" text-anchor="middle">!</text>
+  <text class="t small" x="1270" y="315">事实与证据冲突</text>
+  <text class="t tiny" x="1552" y="315" text-anchor="end" fill="#A66008">待处理</text>
+
+  <rect x="1226" y="345" width="350" height="50" rx="8" fill="#FFF8E7"/>
+  <circle cx="1250" cy="370" r="9" fill="#D98919"/>
+  <text class="t white tiny" x="1250" y="374" text-anchor="middle">!</text>
+  <text class="t small" x="1270" y="375">调节幅度与理由</text>
+  <text class="t tiny" x="1552" y="375" text-anchor="end" fill="#A66008">待处理</text>
+
+  <rect x="1226" y="405" width="350" height="50" rx="8" fill="#F5F7FA"/>
+  <circle cx="1250" cy="430" r="9" fill="#FFFFFF" stroke="#AAB6C5"/>
+  <text class="t small" x="1270" y="435">结果与说明一致性</text>
+  <text class="t tiny muted" x="1552" y="435" text-anchor="end">未开始</text>
+
+  <line x1="1226" y1="486" x2="1576" y2="486" class="line"/>
+  <text class="t label" x="1226" y="520">提交版本摘要</text>
+  <text class="t tiny muted" x="1226" y="548">分析版本</text>
+  <text class="t small" x="1576" y="548" text-anchor="end" font-weight="700">V3</text>
+  <text class="t tiny muted" x="1226" y="577">规则版本</text>
+  <text class="t small" x="1576" y="577" text-anchor="end">V2026.2</text>
+  <text class="t tiny muted" x="1226" y="606">人工确认字段</text>
+  <text class="t small" x="1576" y="606" text-anchor="end">8 项</text>
+  <text class="t tiny muted" x="1226" y="635">系统生成字段</text>
+  <text class="t small" x="1576" y="635" text-anchor="end">16 项</text>
+  <text class="t tiny muted" x="1226" y="664">未解决风险</text>
+  <text class="t small" x="1576" y="664" text-anchor="end" fill="#C43C4C">2 项</text>
+  <rect x="1226" y="687" width="350" height="38" rx="7" fill="#F5F7FA"/>
+  <text class="t tiny" x="1401" y="711" text-anchor="middle" fill="#2F6FED">查看 V2 → V3 完整差异</text>
+
+  <rect x="1226" y="754" width="350" height="86" rx="8" fill="#F3F6FA"/>
+  <text class="t label" x="1244" y="780">审计提示</text>
+  <text class="t tiny muted" x="1244" y="805">所有选择、修改和意见将写入审核记录，</text>
+  <text class="t tiny muted" x="1244" y="825">批准后锁定当前版本。</text>
+
+  <rect x="1202" y="862" width="398" height="138" fill="#FFFFFF"/>
+  <line x1="1202" y1="862" x2="1600" y2="862" class="line"/>
+  <rect x="1226" y="882" width="104" height="42" rx="8" fill="#FFFFFF" stroke="#D95664"/>
+  <text class="t small" x="1278" y="908" text-anchor="middle" fill="#C43C4C">拒绝</text>
+  <rect x="1340" y="882" width="236" height="42" rx="8" fill="#D98919"/>
+  <text class="t white small" x="1458" y="908" text-anchor="middle" font-weight="700">要求补充 / 重试</text>
+  <rect x="1226" y="934" width="350" height="42" rx="8" fill="#CED5DE"/>
+  <text class="t white small" x="1401" y="960" text-anchor="middle" font-weight="700">批准（完成全部必审项后可用）</text>
+</svg>

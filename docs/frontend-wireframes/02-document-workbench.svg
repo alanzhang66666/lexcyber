@@ -1,0 +1,241 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000">
+  <defs>
+    <filter id="shadow2" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="3" stdDeviation="8" flood-color="#17243A" flood-opacity="0.10"/>
+    </filter>
+    <style>
+      .t { font-family: Inter, "Microsoft YaHei", "PingFang SC", sans-serif; fill: #17243A; }
+      .white { fill: #FFFFFF; }
+      .muted { fill: #6B788B; }
+      .tiny { font-size: 12px; }
+      .small { font-size: 14px; }
+      .body { font-size: 16px; }
+      .h2 { font-size: 19px; font-weight: 700; }
+      .label { font-size: 13px; font-weight: 650; }
+      .line { stroke: #E1E7EE; stroke-width: 1; }
+    </style>
+  </defs>
+
+  <rect width="1600" height="1000" fill="#EEF2F6"/>
+
+  <!-- Global navigation rail -->
+  <rect x="0" y="0" width="72" height="1000" fill="#17243A"/>
+  <rect x="17" y="17" width="38" height="38" rx="9" fill="#2F6FED"/>
+  <text class="t white" x="36" y="43" font-size="18" text-anchor="middle" font-weight="800">L</text>
+  <rect x="12" y="92" width="48" height="48" rx="10" fill="#2B3E58"/>
+  <path d="M26 109h20v17H26zM30 105h12l4 4" fill="none" stroke="#FFFFFF" stroke-width="2"/>
+  <circle cx="36" cy="185" r="10" fill="none" stroke="#8FA0B8" stroke-width="2"/>
+  <path d="M31 185l4 4 7-9" fill="none" stroke="#8FA0B8" stroke-width="2"/>
+  <path d="M27 235h18v21H27zM30 240h12M30 245h12M30 250h8" fill="none" stroke="#8FA0B8" stroke-width="2"/>
+  <path d="M36 300v20M27 305h18M31 305l-5 8h10zM41 305l-5 8h10z" fill="none" stroke="#8FA0B8" stroke-width="2"/>
+  <circle cx="36" cy="950" r="18" fill="#354963"/>
+  <text class="t white" x="36" y="956" font-size="14" text-anchor="middle">审</text>
+
+  <!-- Header -->
+  <rect x="72" y="0" width="1528" height="72" fill="#FFFFFF"/>
+  <line x1="72" y1="71" x2="1600" y2="71" class="line"/>
+  <text class="t muted small" x="104" y="30">案件中心  /</text>
+  <text class="t body" x="196" y="30" font-weight="700">张某涉嫌盗窃案</text>
+  <text class="t muted tiny" x="104" y="53">（2026）沪01刑初128号 · 上海市 · 一审</text>
+
+  <g transform="translate(620,18)">
+    <circle cx="0" cy="18" r="13" fill="#2E9B72"/>
+    <path d="M-5 18l4 4 7-9" fill="none" stroke="#FFFFFF" stroke-width="2"/>
+    <text class="t small" x="22" y="23">材料</text>
+    <line x1="72" y1="18" x2="118" y2="18" stroke="#B9C4D2"/>
+    <circle cx="138" cy="18" r="13" fill="#2F6FED"/>
+    <text class="t white tiny" x="138" y="22" text-anchor="middle">2</text>
+    <text class="t small" x="160" y="23" font-weight="700">要素校对</text>
+    <line x1="248" y1="18" x2="294" y2="18" stroke="#B9C4D2"/>
+    <circle cx="314" cy="18" r="13" fill="#E5EAF0"/>
+    <text class="t tiny" x="314" y="22" text-anchor="middle">3</text>
+    <text class="t muted small" x="336" y="23">量刑分析</text>
+    <line x1="414" y1="18" x2="460" y2="18" stroke="#B9C4D2"/>
+    <circle cx="480" cy="18" r="13" fill="#E5EAF0"/>
+    <text class="t tiny" x="480" y="22" text-anchor="middle">4</text>
+    <text class="t muted small" x="502" y="23">人工审核</text>
+  </g>
+  <rect x="1452" y="17" width="116" height="38" rx="8" fill="#FFFFFF" stroke="#D9E0E8"/>
+  <text class="t small" x="1510" y="41" text-anchor="middle">更多操作 ▾</text>
+
+  <!-- Matter document tree -->
+  <rect x="72" y="72" width="286" height="928" fill="#FFFFFF"/>
+  <line x1="357" y1="72" x2="357" y2="1000" class="line"/>
+  <text class="t h2" x="96" y="111">卷宗材料</text>
+  <rect x="96" y="129" width="238" height="38" rx="7" fill="#F3F6F9"/>
+  <circle cx="116" cy="148" r="6" fill="none" stroke="#7D8BA0" stroke-width="1.5"/>
+  <path d="M121 153l5 5" stroke="#7D8BA0" stroke-width="1.5"/>
+  <text class="t muted tiny" x="137" y="153">搜索文件或页内文字</text>
+
+  <text class="t label" x="96" y="202">▾ 诉讼文书</text>
+  <rect x="84" y="218" width="262" height="64" rx="8" fill="#EAF1FF"/>
+  <rect x="100" y="230" width="28" height="36" rx="3" fill="#FFFFFF" stroke="#85A9EF"/>
+  <path d="M106 240h16M106 246h16M106 252h11" stroke="#85A9EF"/>
+  <text class="t small" x="140" y="244" font-weight="700">起诉书.pdf</text>
+  <text class="t muted tiny" x="140" y="265">12 页 · 已解析 · 当前</text>
+  <circle cx="325" cy="250" r="8" fill="#2E9B72"/>
+  <path d="M321 250l3 3 5-7" fill="none" stroke="#FFFFFF" stroke-width="1.5"/>
+
+  <rect x="84" y="288" width="262" height="58" rx="8" fill="#FFFFFF"/>
+  <rect x="100" y="299" width="25" height="32" rx="3" fill="#F3F6F9" stroke="#B9C4D2"/>
+  <text class="t small" x="140" y="311">拘留决定书.pdf</text>
+  <text class="t muted tiny" x="140" y="331">2 页 · 已解析</text>
+
+  <text class="t label" x="96" y="383">▾ 证据材料</text>
+  <rect x="84" y="400" width="262" height="58" rx="8" fill="#FFFFFF"/>
+  <rect x="100" y="411" width="25" height="32" rx="3" fill="#F3F6F9" stroke="#B9C4D2"/>
+  <text class="t small" x="140" y="423">询问笔录.docx</text>
+  <text class="t muted tiny" x="140" y="443">8 页 · 已解析</text>
+  <rect x="84" y="462" width="262" height="58" rx="8" fill="#FFFFFF"/>
+  <rect x="100" y="473" width="25" height="32" rx="3" fill="#F3F6F9" stroke="#B9C4D2"/>
+  <text class="t small" x="140" y="485">价格认定意见.pdf</text>
+  <text class="t muted tiny" x="140" y="505">4 页 · 已解析</text>
+  <rect x="84" y="524" width="262" height="58" rx="8" fill="#FFFFFF"/>
+  <rect x="100" y="535" width="25" height="32" rx="3" fill="#F3F6F9" stroke="#B9C4D2"/>
+  <text class="t small" x="140" y="547">转账记录.pdf</text>
+  <text class="t muted tiny" x="140" y="567">3 页 · OCR 待校对</text>
+  <circle cx="325" cy="552" r="8" fill="#D98919"/>
+  <text class="t white tiny" x="325" y="556" text-anchor="middle">!</text>
+
+  <text class="t label" x="96" y="620">▸ 其他材料（3）</text>
+  <line x1="96" y1="650" x2="334" y2="650" class="line"/>
+  <text class="t muted tiny" x="96" y="680">解析进度</text>
+  <text class="t label" x="334" y="680" text-anchor="end">9 / 10</text>
+  <rect x="96" y="694" width="238" height="7" rx="4" fill="#E8EDF3"/>
+  <rect x="96" y="694" width="214" height="7" rx="4" fill="#2F6FED"/>
+  <rect x="96" y="730" width="238" height="44" rx="8" fill="#FFFFFF" stroke="#B8C7DA" stroke-dasharray="5 4"/>
+  <text class="t small" x="215" y="757" text-anchor="middle" fill="#2F6FED">＋ 上传材料</text>
+
+  <rect x="88" y="820" width="254" height="136" rx="9" fill="#F7F9FC"/>
+  <text class="t label" x="104" y="846">材料完整性</text>
+  <text class="t small" x="104" y="874">已识别必需材料 8 项</text>
+  <text class="t" x="104" y="899" font-size="13" fill="#C47810">⚠ 缺少退赃凭证</text>
+  <text class="t" x="104" y="923" font-size="13" fill="#C47810">⚠ 1 份 OCR 待校对</text>
+  <text class="t" x="104" y="945" font-size="12" fill="#2F6FED">查看缺失清单 →</text>
+
+  <!-- Document viewer -->
+  <rect x="358" y="72" width="770" height="928" fill="#E9EEF3"/>
+  <rect x="358" y="72" width="770" height="58" fill="#FFFFFF"/>
+  <text class="t body" x="382" y="107" font-weight="700">起诉书.pdf</text>
+  <rect x="804" y="84" width="160" height="34" rx="7" fill="#F3F6F9"/>
+  <text class="t muted tiny" x="826" y="105">搜索文档内容</text>
+  <text class="t small" x="984" y="106">−</text>
+  <text class="t tiny" x="1015" y="105">100%</text>
+  <text class="t small" x="1058" y="106">＋</text>
+  <text class="t small" x="1092" y="106">⋯</text>
+
+  <rect x="358" y="130" width="770" height="48" fill="#F9FBFD"/>
+  <rect x="382" y="138" width="70" height="32" rx="6" fill="#FFFFFF" stroke="#C5D0DE"/>
+  <text class="t tiny" x="417" y="159" text-anchor="middle">原始页</text>
+  <rect x="460" y="138" width="80" height="32" rx="6" fill="#EAF1FF"/>
+  <text class="t tiny" x="500" y="159" text-anchor="middle" fill="#2F6FED">提取文本</text>
+  <rect x="548" y="138" width="80" height="32" rx="6" fill="#FFFFFF" stroke="#C5D0DE"/>
+  <text class="t tiny" x="588" y="159" text-anchor="middle">页码锚点</text>
+  <text class="t muted tiny" x="1088" y="159" text-anchor="end">‹　3 / 12　›</text>
+
+  <rect x="452" y="202" width="584" height="744" rx="3" fill="#FFFFFF" filter="url(#shadow2)"/>
+  <text class="t" x="744" y="250" font-size="19" font-weight="700" text-anchor="middle">起　诉　书</text>
+  <text class="t muted tiny" x="744" y="275" text-anchor="middle">沪检刑诉〔2026〕128号</text>
+
+  <text class="t small" x="502" y="319">被告人：</text>
+  <rect x="570" y="301" width="72" height="24" rx="3" fill="#DCEAFF"/>
+  <text class="t small" x="578" y="319" font-weight="700">张某，男</text>
+  <text class="t small" x="644" y="319">，1992年出生，户籍地上海市……</text>
+  <circle cx="1011" cy="312" r="10" fill="#2F6FED"/>
+  <text class="t white tiny" x="1011" y="316" text-anchor="middle">1</text>
+
+  <text class="t small" x="502" y="357">经依法审查查明：</text>
+  <text class="t small" x="502" y="394">2026年3月12日，被告人进入某商场，取走柜台内财物。</text>
+  <rect x="502" y="408" width="383" height="25" rx="3" fill="#FFF0BD"/>
+  <text class="t small" x="510" y="426">经价格认定，被盗财物价值人民币38,000元。</text>
+  <circle cx="1011" cy="420" r="10" fill="#D98919"/>
+  <text class="t white tiny" x="1011" y="424" text-anchor="middle">2</text>
+
+  <text class="t small" x="502" y="466">案发后，被告人于2026年3月18日主动到案并如实供述。</text>
+  <rect x="502" y="480" width="341" height="25" rx="3" fill="#DFF5EB"/>
+  <text class="t small" x="510" y="498">涉案财物已追回，被告人取得被害人谅解。</text>
+  <circle cx="1011" cy="492" r="10" fill="#2E9B72"/>
+  <text class="t white tiny" x="1011" y="496" text-anchor="middle">3</text>
+
+  <text class="t small" x="502" y="538">认定上述事实的证据如下：</text>
+  <text class="t small" x="518" y="572">1. 被告人供述与辩解；</text>
+  <text class="t small" x="518" y="602">2. 被害人陈述及辨认笔录；</text>
+  <text class="t small" x="518" y="632">3. 价格认定意见、监控录像及转账记录。</text>
+
+  <text class="t small" x="502" y="684">本院认为，被告人的行为应结合相关事实和证据依法审查。</text>
+  <rect x="502" y="698" width="308" height="25" rx="3" fill="#E9E2FF"/>
+  <text class="t small" x="510" y="716">依据《中华人民共和国刑法》相关规定</text>
+  <text class="t small" x="812" y="716">，提起公诉。</text>
+  <circle cx="1011" cy="710" r="10" fill="#795CC5"/>
+  <text class="t white tiny" x="1011" y="714" text-anchor="middle">4</text>
+
+  <text class="t muted tiny" x="744" y="895" text-anchor="middle">— 第 3 页 —</text>
+  <rect x="626" y="961" width="236" height="28" rx="14" fill="#FFFFFF" opacity="0.94"/>
+  <text class="t tiny" x="744" y="980" text-anchor="middle">黄色：待确认　蓝色：主体　绿色：情节</text>
+
+  <!-- Extraction/review panel -->
+  <rect x="1128" y="72" width="472" height="928" fill="#FFFFFF"/>
+  <text class="t h2" x="1154" y="111">智能识别结果</text>
+  <rect x="1470" y="89" width="98" height="30" rx="15" fill="#E7F7F1"/>
+  <text class="t label" x="1519" y="109" text-anchor="middle" fill="#248B68">已完成解析</text>
+
+  <line x1="1154" y1="145" x2="1574" y2="145" class="line"/>
+  <text class="t label" x="1170" y="178" fill="#2F6FED">识别要素　6</text>
+  <text class="t muted label" x="1270" y="178">关联证据　8</text>
+  <text class="t muted label" x="1378" y="178">适用法源　3</text>
+  <text class="t" x="1480" y="178" font-size="13" fill="#C47810">待处理　2</text>
+  <line x1="1154" y1="194" x2="1574" y2="194" class="line"/>
+  <rect x="1154" y="193" width="91" height="3" fill="#2F6FED"/>
+
+  <rect x="1154" y="214" width="420" height="78" rx="8" fill="#F7F9FC"/>
+  <circle cx="1179" cy="239" r="12" fill="#DCEAFF"/>
+  <text class="t label" x="1179" y="244" text-anchor="middle" fill="#2F6FED">1</text>
+  <text class="t tiny muted" x="1201" y="233">被告人</text>
+  <text class="t body" x="1201" y="257" font-weight="700">张某 · 男 · 1992年生</text>
+  <rect x="1453" y="226" width="96" height="24" rx="12" fill="#E7F7F1"/>
+  <text class="t tiny" x="1501" y="243" text-anchor="middle" fill="#248B68">✓ 已人工确认</text>
+  <text class="t tiny" x="1201" y="279" fill="#2F6FED">起诉书 P3 ¶1　定位原文 ↗</text>
+
+  <rect x="1154" y="302" width="420" height="112" rx="8" fill="#FFF9EC" stroke="#EBCB87"/>
+  <circle cx="1179" cy="327" r="12" fill="#FFF0BD"/>
+  <text class="t label" x="1179" y="332" text-anchor="middle" fill="#B66C08">2</text>
+  <text class="t tiny muted" x="1201" y="321">涉案金额 · 置信度 82%</text>
+  <text class="t body" x="1201" y="347" font-weight="700">人民币 38,000 元</text>
+  <text class="t tiny" x="1201" y="370" fill="#B66C08">⚠ 转账记录中另有“30,000 元”</text>
+  <text class="t tiny" x="1201" y="394" fill="#2F6FED">价格认定意见 P2 ¶4　对照证据 ↗</text>
+  <rect x="1467" y="367" width="78" height="28" rx="6" fill="#FFFFFF" stroke="#D6B66E"/>
+  <text class="t tiny" x="1506" y="386" text-anchor="middle">确认 / 编辑</text>
+
+  <rect x="1154" y="424" width="420" height="84" rx="8" fill="#F7F9FC"/>
+  <circle cx="1179" cy="449" r="12" fill="#E7F7F1"/>
+  <text class="t label" x="1179" y="454" text-anchor="middle" fill="#248B68">3</text>
+  <text class="t tiny muted" x="1201" y="444">可能的量刑情节</text>
+  <text class="t body" x="1201" y="468" font-weight="700">主动到案 · 如实供述 · 取得谅解</text>
+  <text class="t tiny" x="1201" y="493" fill="#2F6FED">3 处原文 · 4 份关联证据　展开 ↗</text>
+
+  <rect x="1154" y="518" width="420" height="84" rx="8" fill="#F7F9FC"/>
+  <circle cx="1179" cy="543" r="12" fill="#EEE9FD"/>
+  <text class="t label" x="1179" y="548" text-anchor="middle" fill="#795CC5">4</text>
+  <text class="t tiny muted" x="1201" y="538">法律引用</text>
+  <text class="t body" x="1201" y="562" font-weight="700">《中华人民共和国刑法》相关规定</text>
+  <text class="t tiny" x="1201" y="587" fill="#C47810">引用不完整，需由审核人员补充具体条文</text>
+
+  <text class="t label" x="1154" y="643">要素确认进度</text>
+  <text class="t label" x="1574" y="643" text-anchor="end">4 / 6</text>
+  <rect x="1154" y="656" width="420" height="8" rx="4" fill="#E7EBF1"/>
+  <rect x="1154" y="656" width="280" height="8" rx="4" fill="#2F6FED"/>
+
+  <rect x="1154" y="692" width="420" height="128" rx="9" fill="#F3F6FA"/>
+  <text class="t label" x="1174" y="721">本页校对说明</text>
+  <text class="t small muted" x="1174" y="749">系统只提取事实和可能情节，不自动作出</text>
+  <text class="t small muted" x="1174" y="772">定罪或量刑结论。确认后的字段将被锁定，</text>
+  <text class="t small muted" x="1174" y="795">重新解析时不会覆盖人工修改。</text>
+
+  <rect x="1128" y="866" width="472" height="134" fill="#FFFFFF"/>
+  <line x1="1128" y1="866" x2="1600" y2="866" class="line"/>
+  <text class="t tiny" x="1154" y="895" fill="#C47810">仍有 2 项待确认，确认后可进入下一阶段</text>
+  <rect x="1154" y="916" width="154" height="46" rx="8" fill="#FFFFFF" stroke="#C5D0DE"/>
+  <text class="t body" x="1231" y="945" text-anchor="middle">保存校对</text>
+  <rect x="1322" y="916" width="252" height="46" rx="8" fill="#2F6FED"/>
+  <text class="t white body" x="1448" y="945" text-anchor="middle" font-weight="700">确认要素并进入量刑分析 →</text>
+</svg>

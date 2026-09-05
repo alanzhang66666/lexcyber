@@ -1,0 +1,150 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000">
+  <defs>
+    <filter id="cs" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="4" stdDeviation="11" flood-color="#17243A" flood-opacity="0.10"/>
+    </filter>
+    <style>
+      .t { font-family: Inter, "Microsoft YaHei", "PingFang SC", sans-serif; fill: #17243A; }
+      .white { fill: #FFFFFF; }
+      .muted { fill: #6B788B; }
+      .tiny { font-size: 12px; }
+      .small { font-size: 14px; }
+      .body { font-size: 16px; }
+      .h2 { font-size: 21px; font-weight: 750; }
+      .title { font-size: 34px; font-weight: 800; }
+      .label { font-size: 13px; font-weight: 650; }
+      .line { stroke: #E1E7EE; stroke-width: 1; }
+    </style>
+  </defs>
+
+  <rect width="1600" height="1000" fill="#F4F6F9"/>
+  <text class="t title" x="72" y="68">LexCyber 配色方案</text>
+  <text class="t muted body" x="72" y="100">三套色彩共享同一状态语义；正式工作台推荐 A，长文阅读与夜间审核分别使用 B、C。</text>
+  <rect x="1373" y="48" width="155" height="36" rx="18" fill="#EAF1FF"/>
+  <text class="t label" x="1450" y="71" text-anchor="middle" fill="#2F6FED">Color Tokens v0.1</text>
+
+  <!-- Theme A -->
+  <rect x="72" y="138" width="1456" height="250" rx="18" fill="#FFFFFF" filter="url(#cs)"/>
+  <rect x="72" y="138" width="12" height="250" rx="6" fill="#2F6FED"/>
+  <text class="t h2" x="110" y="179">A · 衡链司法蓝</text>
+  <rect x="297" y="155" width="72" height="28" rx="14" fill="#E7F7F1"/>
+  <text class="t label" x="333" y="174" text-anchor="middle" fill="#248B68">推荐主方案</text>
+  <text class="t small muted" x="110" y="207">克制、可信、适合高密度案件管理；蓝色只用于主操作与可追溯链接。</text>
+
+  <g transform="translate(110,232)">
+    <rect x="0" y="0" width="92" height="64" rx="9" fill="#17243A"/>
+    <text class="t white label" x="10" y="86">衡墨</text><text class="t tiny muted" x="10" y="105">#17243A</text>
+    <rect x="108" y="0" width="92" height="64" rx="9" fill="#2F6FED"/>
+    <text class="t label" x="118" y="86">溯源蓝</text><text class="t tiny muted" x="118" y="105">#2F6FED</text>
+    <rect x="216" y="0" width="92" height="64" rx="9" fill="#2E9B72"/>
+    <text class="t label" x="226" y="86">核验绿</text><text class="t tiny muted" x="226" y="105">#2E9B72</text>
+    <rect x="324" y="0" width="92" height="64" rx="9" fill="#D98919"/>
+    <text class="t label" x="334" y="86">复核金</text><text class="t tiny muted" x="334" y="105">#D98919</text>
+    <rect x="432" y="0" width="92" height="64" rx="9" fill="#D84F5E"/>
+    <text class="t label" x="442" y="86">风险红</text><text class="t tiny muted" x="442" y="105">#D84F5E</text>
+    <rect x="540" y="0" width="92" height="64" rx="9" fill="#795CC5"/>
+    <text class="t label" x="550" y="86">法源紫</text><text class="t tiny muted" x="550" y="105">#795CC5</text>
+    <rect x="648" y="0" width="92" height="64" rx="9" fill="#F4F6F9" stroke="#DFE5EC"/>
+    <text class="t label" x="658" y="86">卷宗灰</text><text class="t tiny muted" x="658" y="105">#F4F6F9</text>
+  </g>
+
+  <g transform="translate(910,164)">
+    <rect x="0" y="0" width="570" height="186" rx="12" fill="#F4F6F9" stroke="#E0E6ED"/>
+    <rect x="0" y="0" width="112" height="186" rx="12" fill="#17243A"/>
+    <rect x="16" y="18" width="32" height="32" rx="8" fill="#2F6FED"/>
+    <path d="M23 31l9-5 9 5M32 27v15M25 44h14" fill="none" stroke="#FFFFFF" stroke-width="1.7" stroke-linecap="round"/>
+    <rect x="10" y="70" width="92" height="30" rx="7" fill="#2B3E58"/>
+    <text class="t white tiny" x="56" y="89" text-anchor="middle">案件中心</text>
+    <text class="t" x="16" y="126" font-size="10" fill="#9FB0C7">待办审核</text>
+    <text class="t" x="16" y="151" font-size="10" fill="#9FB0C7">法源知识库</text>
+    <text class="t label" x="134" y="32">上午好，王法官</text>
+    <text class="t tiny muted" x="134" y="52">今天有 7 项待审核任务</text>
+    <rect x="134" y="70" width="126" height="72" rx="8" fill="#FFFFFF"/>
+    <text class="t tiny muted" x="148" y="93">待人工审核</text>
+    <text class="t" x="148" y="124" font-size="24" font-weight="800" fill="#D84F5E">7</text>
+    <rect x="272" y="70" width="126" height="72" rx="8" fill="#FFFFFF"/>
+    <text class="t tiny muted" x="286" y="93">进行中案件</text>
+    <text class="t" x="286" y="124" font-size="24" font-weight="800">18</text>
+    <rect x="410" y="70" width="136" height="72" rx="8" fill="#FFFFFF"/>
+    <text class="t tiny muted" x="424" y="93">确认完整率</text>
+    <rect x="424" y="111" width="104" height="7" rx="4" fill="#E4EAF1"/>
+    <rect x="424" y="111" width="78" height="7" rx="4" fill="#2E9B72"/>
+    <rect x="134" y="154" width="412" height="16" rx="8" fill="#FFFFFF"/>
+    <rect x="144" y="159" width="190" height="6" rx="3" fill="#2F6FED"/>
+    <circle cx="345" cy="162" r="5" fill="#795CC5"/>
+    <circle cx="370" cy="162" r="5" fill="#2E9B72"/>
+  </g>
+
+  <!-- Theme B -->
+  <rect x="72" y="414" width="706" height="480" rx="18" fill="#FFFCF6" filter="url(#cs)"/>
+  <rect x="72" y="414" width="706" height="12" rx="6" fill="#1F5B62"/>
+  <text class="t h2" x="110" y="466">B · 纸墨阅读色</text>
+  <text class="t small" x="110" y="494" fill="#6A6258">用于长时间阅读卷宗、报告预览和打印校样，降低纯白背景眩光。</text>
+  <g transform="translate(110,524)">
+    <rect x="0" y="0" width="88" height="58" rx="8" fill="#2B2926"/>
+    <text class="t label" x="0" y="80" fill="#2B2926">纸墨黑</text><text class="t tiny" x="0" y="99" fill="#756C61">#2B2926</text>
+    <rect x="104" y="0" width="88" height="58" rx="8" fill="#1F5B62"/>
+    <text class="t label" x="104" y="80" fill="#2B2926">阅卷青</text><text class="t tiny" x="104" y="99" fill="#756C61">#1F5B62</text>
+    <rect x="208" y="0" width="88" height="58" rx="8" fill="#A65F2E"/>
+    <text class="t label" x="208" y="80" fill="#2B2926">批注铜</text><text class="t tiny" x="208" y="99" fill="#756C61">#A65F2E</text>
+    <rect x="312" y="0" width="88" height="58" rx="8" fill="#D9B35F"/>
+    <text class="t label" x="312" y="80" fill="#2B2926">锚点金</text><text class="t tiny" x="312" y="99" fill="#756C61">#D9B35F</text>
+    <rect x="416" y="0" width="88" height="58" rx="8" fill="#F7F2E8" stroke="#D9D0C1"/>
+    <text class="t label" x="416" y="80" fill="#2B2926">案卷纸</text><text class="t tiny" x="416" y="99" fill="#756C61">#F7F2E8</text>
+  </g>
+
+  <rect x="110" y="658" width="630" height="194" rx="11" fill="#EDE7DB"/>
+  <rect x="136" y="676" width="432" height="156" rx="3" fill="#FFFCF6"/>
+  <text class="t" x="352" y="703" font-size="14" font-weight="700" text-anchor="middle" fill="#2B2926">起　诉　书</text>
+  <text class="t tiny" x="164" y="734" fill="#504B44">被告人张某，男，1992年出生……</text>
+  <rect x="164" y="746" width="296" height="22" rx="3" fill="#F3E2AF"/>
+  <text class="t tiny" x="171" y="761" fill="#504B44">经价格认定，涉案财物价值人民币38,000元。</text>
+  <text class="t tiny" x="164" y="792" fill="#504B44">案发后主动到案并如实供述，涉案财物已追回。</text>
+  <rect x="583" y="676" width="131" height="156" rx="8" fill="#FFFCF6"/>
+  <text class="t tiny" x="599" y="701" fill="#1F5B62" font-weight="700">原文锚点</text>
+  <text class="t tiny" x="599" y="727" fill="#756C61">P3 ¶4</text>
+  <text class="t tiny" x="599" y="752" fill="#A65F2E">待确认金额</text>
+  <rect x="599" y="774" width="94" height="28" rx="6" fill="#1F5B62"/>
+  <text class="t white tiny" x="646" y="792" text-anchor="middle">确认并锁定</text>
+
+  <!-- Theme C -->
+  <rect x="804" y="414" width="724" height="480" rx="18" fill="#101827" filter="url(#cs)"/>
+  <rect x="804" y="414" width="724" height="12" rx="6" fill="#66A3FF"/>
+  <text class="t white h2" x="842" y="466">C · 夜审深色</text>
+  <text class="t small" x="842" y="494" fill="#AEBBD0">用于低照度审阅和大屏值守，不作为默认主题；状态色提高亮度保持区分。</text>
+  <g transform="translate(842,524)">
+    <rect x="0" y="0" width="88" height="58" rx="8" fill="#0E1726" stroke="#35445D"/>
+    <text class="t white label" x="0" y="80">夜墨</text><text class="t tiny" x="0" y="99" fill="#AEBBD0">#0E1726</text>
+    <rect x="104" y="0" width="88" height="58" rx="8" fill="#66A3FF"/>
+    <text class="t white label" x="104" y="80">夜溯蓝</text><text class="t tiny" x="104" y="99" fill="#AEBBD0">#66A3FF</text>
+    <rect x="208" y="0" width="88" height="58" rx="8" fill="#4CC9A2"/>
+    <text class="t white label" x="208" y="80">夜核绿</text><text class="t tiny" x="208" y="99" fill="#AEBBD0">#4CC9A2</text>
+    <rect x="312" y="0" width="88" height="58" rx="8" fill="#F2B84B"/>
+    <text class="t white label" x="312" y="80">夜复核金</text><text class="t tiny" x="312" y="99" fill="#AEBBD0">#F2B84B</text>
+    <rect x="416" y="0" width="88" height="58" rx="8" fill="#FF6B78"/>
+    <text class="t white label" x="416" y="80">夜风险红</text><text class="t tiny" x="416" y="99" fill="#AEBBD0">#FF6B78</text>
+    <rect x="520" y="0" width="88" height="58" rx="8" fill="#A88BFF"/>
+    <text class="t white label" x="520" y="80">夜法源紫</text><text class="t tiny" x="520" y="99" fill="#AEBBD0">#A88BFF</text>
+  </g>
+
+  <rect x="842" y="658" width="648" height="194" rx="11" fill="#0E1726" stroke="#2A3950"/>
+  <rect x="862" y="678" width="180" height="154" rx="8" fill="#17243A"/>
+  <text class="t white label" x="880" y="705">待审核队列</text>
+  <rect x="878" y="724" width="148" height="42" rx="7" fill="#243650"/>
+  <circle cx="894" cy="745" r="5" fill="#FF6B78"/>
+  <text class="t tiny" x="908" y="749" fill="#E6ECF5">赵某诈骗案</text>
+  <rect x="878" y="776" width="148" height="42" rx="7" fill="#17243A" stroke="#35445D"/>
+  <circle cx="894" cy="797" r="5" fill="#F2B84B"/>
+  <text class="t tiny" x="908" y="801" fill="#E6ECF5">张某盗窃案</text>
+  <rect x="1058" y="678" width="412" height="154" rx="8" fill="#17243A"/>
+  <text class="t white label" x="1078" y="705">风险问题</text>
+  <rect x="1078" y="721" width="372" height="55" rx="7" fill="#382A2E" stroke="#7A3942"/>
+  <text class="t tiny" x="1094" y="743" fill="#FF9DA6">涉案金额存在两处不一致记录</text>
+  <text class="t tiny" x="1094" y="763" fill="#AEBBD0">380,000 元　≠　300,000 元</text>
+  <rect x="1078" y="789" width="104" height="28" rx="6" fill="#66A3FF"/>
+  <text class="t tiny" x="1130" y="807" text-anchor="middle" fill="#0E1726" font-weight="700">查看原文</text>
+
+  <rect x="72" y="920" width="1456" height="52" rx="10" fill="#FFFFFF"/>
+  <text class="t label" x="96" y="950">使用比例建议：</text>
+  <text class="t small muted" x="214" y="950">中性色 70% · 品牌色 20% · 状态色不超过 10%；任何状态必须同时使用文字或图标，不能只靠颜色。</text>
+</svg>
