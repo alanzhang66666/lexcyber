@@ -119,6 +119,7 @@ public class TaskService {
                 executionId, taskId);
         jdbc.update("INSERT INTO app.task_dispatch_outbox(task_id, execution_id, event_type, payload_json) VALUES (?, ?, 'execution.requested', ?::jsonb)",
                 taskId, executionId, writeJson(envelope));
+        jdbc.update("UPDATE app.documents SET parse_status = 'queued', updated_at = now() WHERE parse_task_id = ?", taskId);
         return find(taskId).orElseThrow();
     }
 

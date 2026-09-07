@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
+from engine.document_parse import DocumentParseRunner
 from engine.settings import settings
 
 
@@ -43,7 +44,20 @@ class LangGraphWorkflowRunner:
         return dict(build_workflow().invoke(state))
 
 
+class DispatchingWorkflowRunner:
+    """Routes document.parse by metadata.taskType; other tasks keep the configured runner."""
+
+    def __init__(self, fallback: WorkflowRunner, parse_runner: DocumentParseRunner | None = None) -> None:
+        self.fallback = fallback
+        self.parse_runner = parse_runner or DocumentParseRunner()
+
+    def run(self, payload: dict[str, Any]) -> dict[str, Any]:
+        metadata = payload.get("metadata") or {}
+        if metadata.get("taskType") == "document.parse":
+            return self.parse_runner.run(payload)
+        return self.fallback.run(payload)
+
+
 def build_runner() -> WorkflowRunner:
-    if settings.workflow_profile == "legal":
-        return LangGraphWorkflowRunner()
-    return StubWorkflowRunner()
+    fallback: WorkflowRunner = LangGraphWorkflowRunner() if settings.workflow_profile == "legal" else StubWorkflowRunner()
+    return DispatchingWorkflowRunner(fallback)

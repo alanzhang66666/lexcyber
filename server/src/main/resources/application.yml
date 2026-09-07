@@ -8,6 +8,10 @@ spring:
   flyway:
     enabled: true
     locations: ${SPRING_FLYWAY_LOCATIONS:classpath:db/migration}
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 50MB
 server:
   port: ${SERVER_PORT:8080}
 engine:
@@ -15,6 +19,11 @@ engine:
   service-token: ${ENGINE_SERVICE_TOKEN}
 review:
   auth-mode: ${REVIEW_AUTH_MODE:disabled}
+minio:
+  endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
+  access-key: ${MINIO_ACCESS_KEY:minio}
+  secret-key: ${MINIO_SECRET_KEY:minio-password}
+  bucket: ${MINIO_BUCKET:lexcyber}
 management:
   endpoints:
     web:

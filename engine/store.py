@@ -87,13 +87,21 @@ def release_enqueue(execution_id: UUID, error: str) -> None:
         conn.execute("UPDATE engine.executions SET enqueue_claim_until=NULL, enqueue_last_error=%s, updated_at=now() WHERE execution_id=%s", (error[:2000], execution_id))
 
 
-def mark_running(execution_id: UUID, owner: str) -> bool:
+def mark_running(execution_id: UUID, owner: str, stage: str = "running") -> bool:
     with connection() as conn:
         row = conn.execute(
-            "UPDATE engine.executions SET status='running', current_stage='running', lease_owner=%s, lease_until=now() + interval '6 minutes', updated_at=now() WHERE execution_id=%s AND (status='queued' OR (status='running' AND lease_until < now())) RETURNING execution_id",
-            (owner, execution_id),
+            "UPDATE engine.executions SET status='running', current_stage=%s, lease_owner=%s, lease_until=now() + interval '6 minutes', updated_at=now() WHERE execution_id=%s AND (status='queued' OR (status='running' AND lease_until < now())) RETURNING execution_id",
+            (stage, owner, execution_id),
         ).fetchone()
     return row is not None
+
+
+def set_current_stage(execution_id: UUID, stage: str) -> None:
+    with connection() as conn:
+        conn.execute(
+            "UPDATE engine.executions SET current_stage=%s, updated_at=now() WHERE execution_id=%s AND status='running'",
+            (stage, execution_id),
+        )
 
 
 def save_checkpoint(execution_id: UUID, stage: str, state: dict[str, Any], sequence_no: int) -> None:

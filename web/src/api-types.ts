@@ -71,6 +71,55 @@ export type ReviewPage = {
   total: number
 }
 
+export type DocumentRole = 'input' | 'annotation'
+
+export type ParseStatus =
+  | 'not_started'
+  | TaskStatus
+
+export type CaseCreate = {
+  title: string
+  jurisdiction?: string | null
+  asOfDate?: string | null
+  metadata?: Record<string, unknown>
+}
+
+export type CaseView = {
+  id: string
+  title: string
+  jurisdiction?: string | null
+  asOfDate?: string | null
+  metadata?: Record<string, unknown> | null
+  createdAt: string
+  updatedAt: string
+}
+
+export type PageCase = {
+  items: CaseView[]
+  page: number
+  size: number
+  total: number
+}
+
+export type DocumentView = {
+  id: string
+  caseId: string
+  filename: string
+  contentType: string
+  size: number
+  role: DocumentRole
+  parseStatus: ParseStatus
+  parseTaskId?: string | null
+  createdAt: string
+}
+
+export type PageDocument = {
+  items: DocumentView[]
+  page: number
+  size: number
+  total: number
+}
+
 export type ReviewDecision = {
   resultVersion: number
   comment?: string

@@ -72,6 +72,7 @@ public class EngineResultService {
         if (current) {
             jdbc.update("UPDATE app.tasks SET status=?, current_stage=?, error_code=?, error=?, updated_at=now() WHERE id=? AND execution_id=?",
                     payload.status(), payload.currentStage(), payload.errorCode(), payload.errorMessage(), taskId, payload.executionId());
+            jdbc.update("UPDATE app.documents SET parse_status=?, updated_at=now() WHERE parse_task_id=?", payload.status(), taskId);
             if ("waiting_review".equals(payload.status()) && payload.resultVersion() >= 1) {
                 jdbc.update("""
                         INSERT INTO app.review_records(id, task_id, result_version, status, decision)

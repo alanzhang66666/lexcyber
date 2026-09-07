@@ -24,6 +24,10 @@ services:
       ENGINE_BASE_URL: http://engine:8100
       ENGINE_SERVICE_TOKEN: ${ENGINE_SERVICE_TOKEN:?ENGINE_SERVICE_TOKEN is required}
       REVIEW_AUTH_MODE: trusted-header
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
+      MINIO_BUCKET: lexcyber
     depends_on:
       postgres:
         condition: service_healthy
@@ -31,6 +35,8 @@ services:
         condition: service_completed_successfully
       engine:
         condition: service_healthy
+      minio:
+        condition: service_started
     expose: [8080]
 
   engine:
@@ -50,11 +56,17 @@ services:
       MODEL_NAME: ${MODEL_NAME:-stub-general-v1}
       MODEL_API_KEY: ${MODEL_API_KEY:-}
       MODEL_API_BASE_URL: ${MODEL_API_BASE_URL:-https://api.openai.com/v1}
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
+      MINIO_BUCKET: lexcyber
     depends_on:
       engine-migrate:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
+      minio:
+        condition: service_started
     expose: [8100]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8100/healthz', timeout=2)"]
@@ -79,11 +91,17 @@ services:
       MODEL_NAME: ${MODEL_NAME:-stub-general-v1}
       MODEL_API_KEY: ${MODEL_API_KEY:-}
       MODEL_API_BASE_URL: ${MODEL_API_BASE_URL:-https://api.openai.com/v1}
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
+      MINIO_BUCKET: lexcyber
     depends_on:
       engine:
         condition: service_started
       redis:
         condition: service_healthy
+      minio:
+        condition: service_started
 
   engine-migrate:
     image: flyway/flyway:10.20.1-alpine

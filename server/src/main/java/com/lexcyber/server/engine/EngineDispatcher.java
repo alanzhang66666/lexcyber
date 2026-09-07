@@ -42,8 +42,9 @@ public class EngineDispatcher {
                 ExecutionRequest request = objectMapper.readValue(rs.getString("payload_json"), ExecutionRequest.class);
                 client.post().uri("/internal/v1/executions").header("X-Service-Token", token).body(request).retrieve().toBodilessEntity();
                 jdbc.update("UPDATE app.task_dispatch_outbox SET published_at=now(), attempts=attempts+1 WHERE id=?", outboxId);
-                jdbc.update("UPDATE app.tasks SET status='running', current_stage='delegated', updated_at=now() WHERE id=? AND execution_id=? AND status='queued'",
-                        request.taskId(), request.executionId());
+                String stage = isDocumentParse(request) ? "document_parsing" : "delegated";
+                jdbc.update("UPDATE app.tasks SET status='running', current_stage=?, updated_at=now() WHERE id=? AND execution_id=? AND status='queued'",
+                        stage, request.taskId(), request.executionId());
             } catch (Exception failure) {
                 int attempts = rs.getInt("attempts") + 1;
                 jdbc.update("UPDATE app.task_dispatch_outbox SET attempts=?, last_error=?, next_attempt_at=now() + make_interval(secs => LEAST(60, CAST(power(2, LEAST(?, 6)) AS integer))) WHERE id=?",
@@ -54,5 +55,9 @@ public class EngineDispatcher {
                 }
             }
         });
+    }
+
+    private static boolean isDocumentParse(ExecutionRequest request) {
+        return request.metadata() != null && "document.parse".equals(request.metadata().get("taskType"));
     }
 }
