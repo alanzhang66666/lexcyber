@@ -185,6 +185,19 @@ class CaseDocumentControllerTest {
     }
 
     @Test
+    void caselessDocumentParseTaskRequiresBearer() throws Exception {
+        UUID taskId = UUID.randomUUID();
+        TaskView view = new TaskView(taskId, UUID.randomUUID(), UUID.randomUUID(), "",
+                "queued", "accepted", null, null, null, OffsetDateTime.now(), OffsetDateTime.now());
+        when(tasks.find(taskId)).thenReturn(Optional.of(view));
+        when(tasks.metadataTaskType(taskId)).thenReturn("document.parse");
+        when(auth.require(isNull())).thenThrow(new ResponseStatusException(HttpStatus.UNAUTHORIZED, "session required"));
+        mvc.perform(get("/v1/tasks/" + taskId))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+    }
+
+    @Test
     void reservedTaskTypesRequireBearer() throws Exception {
         when(auth.require(isNull())).thenThrow(new ResponseStatusException(HttpStatus.UNAUTHORIZED, "session required"));
         mvc.perform(post("/v1/tasks").contentType(MediaType.APPLICATION_JSON)
