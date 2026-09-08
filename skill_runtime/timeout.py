@@ -18,6 +18,15 @@ def _child(queue: Any, func: Callable[..., Any], args: tuple[Any, ...], kwargs: 
         queue.put(("error", exc.__class__.__name__, str(exc)))
 
 
+def _close_queue(queue: Any) -> None:
+    close = getattr(queue, "close", None)
+    if callable(close):
+        close()
+    join_thread = getattr(queue, "join_thread", None)
+    if callable(join_thread):
+        join_thread()
+
+
 def _thread_fallback(func: Callable[..., T], args: tuple[Any, ...], kwargs: dict[str, Any], timeout_seconds: int) -> T:
     pool = ThreadPoolExecutor(max_workers=1)
     future = pool.submit(func, *args, **kwargs)
@@ -43,22 +52,21 @@ def run_with_timeout(func: Callable[..., T], args: tuple[Any, ...] = (), kwargs:
     queue = ctx.Queue(maxsize=1)
     process = ctx.Process(target=_child, args=(queue, func, args, kwargs), daemon=True)
     process.start()
-    process.join(timeout_seconds)
-    if process.is_alive():
-        process.terminate()
-        process.join(2)
-        if process.is_alive() and hasattr(process, "kill"):
-            process.kill()
-            process.join(2)
-        queue.close()
-        raise SkillTimeoutError(f"skill exceeded timeout of {timeout_seconds}s")
     try:
-        message = queue.get(timeout=1)
-    except Exception as exc:
-        queue.close()
-        raise SkillHandlerError("skill process exited without a result") from exc
+        process.join(timeout_seconds)
+        if process.is_alive():
+            process.terminate()
+            process.join(2)
+            if process.is_alive() and hasattr(process, "kill"):
+                process.kill()
+                process.join(2)
+            raise SkillTimeoutError(f"skill exceeded timeout of {timeout_seconds}s")
+        try:
+            message = queue.get(timeout=1)
+        except Exception as exc:
+            raise SkillHandlerError("skill process exited without a result") from exc
     finally:
-        queue.close()
+        _close_queue(queue)
     if message[0] == "ok":
         return message[1]
     raise SkillHandlerError(f"{message[1]}: {message[2]}")

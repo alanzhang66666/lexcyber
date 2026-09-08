@@ -285,6 +285,20 @@ class CaseDocumentControllerTest {
                 .andExpect(jsonPath("$.retryable").value(false));
     }
 
+    @Test
+    void sourceSearchRejectsTopKOutsideRange() throws Exception {
+        mvc.perform(post("/v1/sources/search").header("Authorization", "Bearer token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"query\":\"民法典\",\"topK\":0}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+        mvc.perform(post("/v1/sources/search").header("Authorization", "Bearer token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"query\":\"民法典\",\"topK\":51}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+    }
+
     private static final class DocumentViewContent {
         static final String DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
     }

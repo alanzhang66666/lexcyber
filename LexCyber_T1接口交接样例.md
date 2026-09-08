@@ -3,15 +3,18 @@
 - 依据：技术分工0906.md。
 - 来源：2026-09-08 本地 Compose（`http://127.0.0.1:18080`）实测，不是建议稿。
 - 用途：第一轮「案件 → 上传材料 → 解析任务 → 解析结果」。
-- 约定：上传成功即带 `parseTaskId`。T2 / T3 只轮询，不再 `POST /v1/tasks` 建解析任务。正文只从 `/result` 读。
+- 约定：上传成功即带 `parseTaskId`。T2 / T3 只轮询，不要再 `POST /v1/tasks` 建解析任务。正文只从 `/result` 读。
+- 约定：T2 / T3 **不要**自己传 `storageKey`。服务端从属主材料覆盖；客户端伪造键无效。
 
-本轮实测 ID：
+本轮实测 ID（最近一次本地 closeout）：
 
 | 字段 | 值 |
 | --- | --- |
-| caseId | `case-75a7f5b18e4e4361` |
-| documentId | `doc-925c3fe9100f4fe4` |
-| parseTaskId | `9bc96484-48b3-40da-a98e-a0d1b0b73d29` |
+| caseId | `case-17bcd846f38d49fd` |
+| documentId | `doc-2908dc3ad1474fff` |
+| parseTaskId | `90f80f51-c799-49b5-96b7-056b3f573c5c` |
+
+下文 JSON 正文仍保留更早一次实测（`case-75a7f5b18e4e4361` / `doc-925c3fe9100f4fe4` / `9bc96484-48b3-40da-a98e-a0d1b0b73d29`），结构未变；对接请以表内最新 ID 为准。不要把口令或 API key 写进本文件。
 
 ## 一、实现范围
 
@@ -40,6 +43,20 @@ Authorization: Bearer <token>
   "traceId": "f05ff067-7839-42f3-9845-f39561ee8fa4",
   "retryable": false
 }
+```
+
+保留任务同样要登录。未带 Bearer 时 `POST /v1/tasks` 实测 401（本地 closeout）：
+
+`metadata.taskType=document.parse`（即使带客户端 `storageKey`）：
+
+```json
+{ "code": "UNAUTHORIZED", "message": "session required", "retryable": false }
+```
+
+`metadata.taskType=model.probe`：
+
+```json
+{ "code": "UNAUTHORIZED", "message": "session required", "retryable": false }
 ```
 
 ### 1. 创建案件
@@ -137,7 +154,8 @@ Content-Type: multipart/form-data
 ```
 
 - 上传成功表示文件可恢复，材料记录与解析任务已登记。
-- T2 / T3 拿到 `parseTaskId` 后只轮询。
+- T2 / T3 拿到 `parseTaskId` 后只轮询，不要再手工建解析任务。
+- 不要传客户端 `storageKey`。若仍手工 `POST /v1/tasks` 且 `taskType=document.parse`，服务端用属主材料覆盖 `storageKey` 与 `caseId`（客户端伪造键无效）。
 - 同一用户、案件、`Idempotency-Key` 且内容相同：返回原材料及原任务。
 - 同 Key、内容不同：`409 IDEMPOTENCY_CONFLICT`（「相同幂等键已用于不同内容的上传」）。
 - 非 PDF/DOCX：`415 UNSUPPORTED_DOCUMENT_TYPE`（「仅支持 PDF 或 DOCX 材料」）。
@@ -277,7 +295,7 @@ skills.common.document.parse_docx.execute(payload)
 skills.common.document.parse_pdf.execute(payload)
 ```
 
-字节由服务端从 MinIO 回读后以 `content_base64` 传入。T2 不传存储密钥，不直连 Engine。
+字节由服务端从 MinIO 回读后以 `content_base64` 传入。T2 / T3 不传 `storageKey`、不直连 Engine、不直连对象存储。上传已自动创建 `parseTaskId`，只轮询公开任务接口。
 
 统一结果已含 `locator`（`paragraph:1` / `table:1` / `page:1`）。DOCX 不伪造页码。PDF 表格抽取未宣称支持。
 
@@ -288,6 +306,8 @@ skills.common.document.parse_pdf.execute(payload)
 - 上传后回读存储文件，不再传空文本。
 - 完整保存 paragraphs / tables / locators。
 - `metadata.taskType=document.parse` 分发，不靠 query 猜类型。
+- 未登录创建 `document.parse` / `model.probe` → 401 `UNAUTHORIZED`。
+- 客户端 `storageKey` 由服务端按属主材料覆盖。
 - 契约在 `contracts/public-api.yaml`，类型在 `web/src/api-types.ts`。
 
 事实确认、量刑、法源检索不在本交接范围内。检索口已留：`POST /v1/sources/search` 未接通时为 `501 SOURCE_SEARCH_UNAVAILABLE`。

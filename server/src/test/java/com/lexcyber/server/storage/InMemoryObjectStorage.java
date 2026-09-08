@@ -17,6 +17,11 @@ public class InMemoryObjectStorage implements ObjectStorage {
         return data.clone();
     }
 
+    @Override
+    public void delete(String key) {
+        objects.remove(key);
+    }
+
     public boolean contains(String key) {
         return objects.containsKey(key);
     }

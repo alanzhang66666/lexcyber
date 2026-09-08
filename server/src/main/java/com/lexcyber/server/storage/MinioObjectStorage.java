@@ -6,6 +6,7 @@ import io.minio.GetObjectArgs;
 import io.minio.MakeBucketArgs;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
+import io.minio.RemoveObjectArgs;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import org.springframework.http.HttpStatus;
@@ -50,6 +51,18 @@ public class MinioObjectStorage implements ObjectStorage {
             throw ex;
         } catch (Exception ex) {
             throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "DOCUMENT_STORAGE_FAILED", "文件读取失败", ex);
+        }
+    }
+
+    @Override
+    public void delete(String key) {
+        try {
+            ensureBucket();
+            client.removeObject(RemoveObjectArgs.builder().bucket(bucket).object(key).build());
+        } catch (ApiException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "DOCUMENT_STORAGE_FAILED", "文件删除失败", ex);
         }
     }
 

@@ -9,6 +9,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -16,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class DocumentService {
+    private static final Logger log = LoggerFactory.getLogger(DocumentService.class);
     private static final String PARSE_QUERY = "解析指定材料，提取正文、段落、表格和原文定位";
     private final JdbcTemplate jdbc;
     private final CaseService cases;
@@ -62,33 +65,41 @@ public class DocumentService {
         String documentId = allocateDocumentId();
         String storageKey = DocumentPolicies.storageKey(caseId, documentId, sha256);
         storage.put(storageKey, data, resolvedType);
+        try {
+            Map<String, Object> metadata = new LinkedHashMap<>();
+            metadata.put("taskType", "document.parse");
+            metadata.put("documentId", documentId);
+            metadata.put("schemaVersion", "document.parse.v1");
+            metadata.put("storageKey", storageKey);
+            metadata.put("filename", normalizedName);
+            metadata.put("contentType", resolvedType);
+            metadata.put("role", normalizedRole);
+            metadata.put("format", DocumentPolicies.detectFormat(normalizedName, resolvedType));
+            TaskView task = tasks.create(new TaskCreate(PARSE_QUERY, caseId, null, metadata));
 
-        Map<String, Object> metadata = new LinkedHashMap<>();
-        metadata.put("taskType", "document.parse");
-        metadata.put("documentId", documentId);
-        metadata.put("schemaVersion", "document.parse.v1");
-        metadata.put("storageKey", storageKey);
-        metadata.put("filename", normalizedName);
-        metadata.put("contentType", resolvedType);
-        metadata.put("role", normalizedRole);
-        metadata.put("format", DocumentPolicies.detectFormat(normalizedName, resolvedType));
-        TaskView task = tasks.create(new TaskCreate(PARSE_QUERY, caseId, null, metadata));
-
-        jdbc.update("""
-                INSERT INTO app.documents(id, case_id, filename, content_type, size, role, storage_key, sha256, parse_status, parse_task_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?)
-                """,
-                documentId, caseId, normalizedName, resolvedType, data.length, normalizedRole, storageKey, sha256, task.id());
-
-        if (key != null) {
             jdbc.update("""
-                    UPDATE app.upload_idempotency
-                    SET document_id = ?
-                    WHERE account_id = ? AND case_id = ? AND idempotency_key = ? AND request_hash = ?
+                    INSERT INTO app.documents(id, case_id, filename, content_type, size, role, storage_key, sha256, parse_status, parse_task_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?)
                     """,
-                    documentId, ownerAccountId, caseId, key, requestHash);
+                    documentId, caseId, normalizedName, resolvedType, data.length, normalizedRole, storageKey, sha256, task.id());
+
+            if (key != null) {
+                jdbc.update("""
+                        UPDATE app.upload_idempotency
+                        SET document_id = ?
+                        WHERE account_id = ? AND case_id = ? AND idempotency_key = ? AND request_hash = ?
+                        """,
+                        documentId, ownerAccountId, caseId, key, requestHash);
+            }
+            return requireOwned(ownerAccountId, documentId);
+        } catch (RuntimeException ex) {
+            try {
+                storage.delete(storageKey);
+            } catch (RuntimeException deleteError) {
+                log.warn("failed to delete object {} after upload rollback", storageKey, deleteError);
+            }
+            throw ex;
         }
-        return requireOwned(ownerAccountId, documentId);
     }
 
     @Transactional(readOnly = true)
