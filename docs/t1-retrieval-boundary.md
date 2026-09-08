@@ -2,7 +2,7 @@
 
 会签状态：待 T3。2026-09-08 本地 Compose 未新起向量容器。
 
-本轮不实现法规切分、向量入库或真实检索。公开路径已经留好，T3 只改 adapter。
+T1 已把公开入口留在 main：`POST /v1/sources/search` 仍返回 `501 SOURCE_SEARCH_UNAVAILABLE`。本轮不实现法规切分、向量入库或真实检索。公开路径已经留好，T3 只改 adapter。
 
 ## 入口
 
