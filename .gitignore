@@ -16,3 +16,6 @@ data/
 !web/src/data/**
 logs/
 target/
+.t1-*
+.pr-body-*
+技术分工*
