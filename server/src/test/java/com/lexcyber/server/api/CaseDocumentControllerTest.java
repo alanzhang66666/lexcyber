@@ -7,6 +7,7 @@ import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -17,9 +18,14 @@ import com.lexcyber.server.domain.CaseService;
 import com.lexcyber.server.domain.CaseView;
 import com.lexcyber.server.domain.DocumentService;
 import com.lexcyber.server.domain.DocumentView;
+import com.lexcyber.server.domain.FactItem;
+import com.lexcyber.server.domain.FactService;
+import com.lexcyber.server.domain.FactView;
 import com.lexcyber.server.domain.PageResponse;
+import com.lexcyber.server.domain.SourceSearchRequest;
 import com.lexcyber.server.domain.TaskService;
 import com.lexcyber.server.domain.TaskView;
+import com.lexcyber.server.engine.EngineSourceClient;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -50,6 +56,10 @@ class CaseDocumentControllerTest {
     DocumentService documents;
     @Mock
     TaskService tasks;
+    @Mock
+    FactService facts;
+    @Mock
+    EngineSourceClient sources;
     MockMvc mvc;
 
     private final AuthAccount owner = new AuthAccount(UUID.randomUUID(), "alice", "Alice");
@@ -62,7 +72,9 @@ class CaseDocumentControllerTest {
         mvc = MockMvcBuilders.standaloneSetup(
                         new CaseController(auth, cases),
                         new DocumentController(auth, documents),
-                        new TaskController(tasks, auth, cases))
+                        new TaskController(tasks, auth, cases, false),
+                        new FactController(auth, facts),
+                        new SourceSearchController(auth, sources))
                 .setControllerAdvice(new ApiExceptionHandler())
                 .setValidator(validator)
                 .setMessageConverters(new MappingJackson2HttpMessageConverter(mapper))
@@ -169,6 +181,54 @@ class CaseDocumentControllerTest {
                 "queued", "accepted", null, null, null, OffsetDateTime.now(), OffsetDateTime.now());
         when(tasks.find(taskId)).thenReturn(Optional.of(view));
         mvc.perform(get("/v1/tasks/" + taskId)).andExpect(status().isOk());
+    }
+
+    @Test
+    void sentencingAndUnknownTaskTypesAreRejected() throws Exception {
+        mvc.perform(post("/v1/tasks").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"query\":\"q\",\"metadata\":{\"taskType\":\"sentencing.calculate\"}}"))
+                .andExpect(status().isNotImplemented())
+                .andExpect(jsonPath("$.code").value("SENTENCING_UNAVAILABLE"))
+                .andExpect(jsonPath("$.retryable").value(false));
+        mvc.perform(post("/v1/tasks").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"query\":\"q\",\"metadata\":{\"taskType\":\"nope\"}}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_TASK_TYPE"));
+    }
+
+    @Test
+    void factsRequireOwnerAndReturnDraft() throws Exception {
+        when(auth.require(isNull())).thenThrow(new ResponseStatusException(HttpStatus.UNAUTHORIZED, "session required"));
+        mvc.perform(get("/v1/cases/case-demo-001/facts"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+
+        when(auth.require(any())).thenReturn(owner);
+        when(facts.get(owner.id(), "case-demo-001")).thenReturn(new FactView(
+                "case-demo-001", "case.facts.v1", "draft",
+                List.of(new FactItem("f1", "amount", "100", "paragraph:1", "doc-1")),
+                OffsetDateTime.parse("2026-09-08T10:00:00Z"), null));
+        mvc.perform(get("/v1/cases/case-demo-001/facts").header("Authorization", "Bearer token"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("draft"))
+                .andExpect(jsonPath("$.items[0].key").value("amount"));
+
+        when(facts.get(owner.id(), "hidden")).thenThrow(new ApiException(HttpStatus.NOT_FOUND, "CASE_NOT_FOUND", "案件不存在或不可访问"));
+        mvc.perform(get("/v1/cases/hidden/facts").header("Authorization", "Bearer token"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void sourceSearchIsUnavailableWithoutCorpus() throws Exception {
+        when(auth.require(any())).thenReturn(owner);
+        when(sources.search(any(SourceSearchRequest.class)))
+                .thenThrow(new ApiException(HttpStatus.NOT_IMPLEMENTED, "SOURCE_SEARCH_UNAVAILABLE", "法源检索尚未接通"));
+        mvc.perform(post("/v1/sources/search").header("Authorization", "Bearer token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"query\":\"民法典\"}"))
+                .andExpect(status().isNotImplemented())
+                .andExpect(jsonPath("$.code").value("SOURCE_SEARCH_UNAVAILABLE"))
+                .andExpect(jsonPath("$.retryable").value(false));
     }
 
     private static final class DocumentViewContent {

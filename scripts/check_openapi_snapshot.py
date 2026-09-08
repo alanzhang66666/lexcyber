@@ -11,6 +11,11 @@ required_contract_markers = (
     "/auth/login:",
     "/cases:",
     "/documents/{documentId}:",
+    "/cases/{caseId}/facts:",
+    "/sources/search:",
+    "model.probe",
+    "sentencing.calculate",
+    "SOURCE_SEARCH_UNAVAILABLE",
     "resultVersion:",
     "waiting_review",
     "contentHash:",
@@ -21,15 +26,19 @@ required_contract_markers = (
 )
 required_snapshot_markers = (
     "export type TaskStatus",
+    "export type TaskType",
     "export type ResultRef",
     "export type ReviewRecord",
     "export type ResultPayload",
     "export type SessionView",
     "export type CaseView",
     "export type DocumentView",
+    "export type FactView",
+    "export type SourceSearchRequest",
     "waiting_review",
     "asOfDate",
     "parseTaskId",
+    "model.probe",
 )
 
 missing = [marker for marker in required_contract_markers if marker not in contract]

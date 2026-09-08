@@ -42,7 +42,7 @@ public class EngineDispatcher {
                 ExecutionRequest request = objectMapper.readValue(rs.getString("payload_json"), ExecutionRequest.class);
                 client.post().uri("/internal/v1/executions").header("X-Service-Token", token).body(request).retrieve().toBodilessEntity();
                 jdbc.update("UPDATE app.task_dispatch_outbox SET published_at=now(), attempts=attempts+1 WHERE id=?", outboxId);
-                String stage = isDocumentParse(request) ? "document_parsing" : "delegated";
+                String stage = stageFor(request);
                 jdbc.update("UPDATE app.tasks SET status='running', current_stage=?, updated_at=now() WHERE id=? AND execution_id=? AND status='queued'",
                         stage, request.taskId(), request.executionId());
             } catch (Exception failure) {
@@ -57,7 +57,11 @@ public class EngineDispatcher {
         });
     }
 
-    private static boolean isDocumentParse(ExecutionRequest request) {
-        return request.metadata() != null && "document.parse".equals(request.metadata().get("taskType"));
+    private static String stageFor(ExecutionRequest request) {
+        Object taskType = request.metadata() == null ? null : request.metadata().get("taskType");
+        if ("document.parse".equals(taskType)) return "document_parsing";
+        if ("model.probe".equals(taskType)) return "model_probe";
+        if ("sentencing.calculate".equals(taskType)) return "sentencing";
+        return "delegated";
     }
 }

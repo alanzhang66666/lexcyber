@@ -17,6 +17,8 @@ server:
 engine:
   base-url: ${ENGINE_BASE_URL:http://engine:8100}
   service-token: ${ENGINE_SERVICE_TOKEN}
+sentencing:
+  enabled: ${SENTENCING_ENABLED:false}
 review:
   auth-mode: ${REVIEW_AUTH_MODE:disabled}
 minio:

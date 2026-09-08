@@ -56,7 +56,8 @@ public class ApiExceptionHandler {
         payload.put("code", code);
         payload.put("message", message == null ? status.getReasonPhrase() : message);
         payload.put("traceId", UUID.randomUUID().toString());
-        payload.put("retryable", status == HttpStatus.SERVICE_UNAVAILABLE || status.is5xxServerError());
+        payload.put("retryable", status == HttpStatus.SERVICE_UNAVAILABLE
+                || (status.is5xxServerError() && status != HttpStatus.NOT_IMPLEMENTED));
         return ResponseEntity.status(status).body(payload);
     }
 

@@ -4,8 +4,11 @@ import com.lexcyber.server.auth.AuthAccount;
 import com.lexcyber.server.auth.AuthService;
 import com.lexcyber.server.domain.CaseService;
 import com.lexcyber.server.domain.TaskCreate;
+import com.lexcyber.server.domain.TaskPolicies;
 import com.lexcyber.server.domain.TaskService;
 import com.lexcyber.server.domain.TaskView;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import jakarta.validation.Valid;
 import java.util.Map;
 import java.util.UUID;
@@ -26,17 +29,26 @@ public class TaskController {
     private final TaskService taskService;
     private final AuthService auth;
     private final CaseService cases;
+    private final boolean sentencingEnabled;
 
     public TaskController(TaskService taskService, AuthService auth, CaseService cases) {
+        this(taskService, auth, cases, false);
+    }
+
+    @Autowired
+    public TaskController(TaskService taskService, AuthService auth, CaseService cases,
+                          @Value("${sentencing.enabled:false}") boolean sentencingEnabled) {
         this.taskService = taskService;
         this.auth = auth;
         this.cases = cases;
+        this.sentencingEnabled = sentencingEnabled;
     }
 
     @PostMapping
     public ResponseEntity<TaskView> create(@Valid @RequestBody TaskCreate request,
                                            @RequestHeader(value = "Authorization", required = false) String authorization) {
         authorizeCase(request.caseId(), authorization);
+        TaskPolicies.requireSupported(request.metadata(), sentencingEnabled);
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(taskService.create(request));
     }
 

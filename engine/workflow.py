@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
+from engine.adapters.sentencing import SentencingRunner
 from engine.document_parse import DocumentParseRunner
+from engine.model_probe import ModelProbeRunner
 from engine.settings import settings
 
 
@@ -45,16 +47,29 @@ class LangGraphWorkflowRunner:
 
 
 class DispatchingWorkflowRunner:
-    """Routes document.parse by metadata.taskType; other tasks keep the configured runner."""
+    """Routes reserved task types by metadata.taskType; other tasks keep the configured runner."""
 
-    def __init__(self, fallback: WorkflowRunner, parse_runner: DocumentParseRunner | None = None) -> None:
+    def __init__(
+        self,
+        fallback: WorkflowRunner,
+        parse_runner: DocumentParseRunner | None = None,
+        probe_runner: ModelProbeRunner | None = None,
+        sentencing_runner: SentencingRunner | None = None,
+    ) -> None:
         self.fallback = fallback
         self.parse_runner = parse_runner or DocumentParseRunner()
+        self.probe_runner = probe_runner or ModelProbeRunner()
+        self.sentencing_runner = sentencing_runner or SentencingRunner()
 
     def run(self, payload: dict[str, Any]) -> dict[str, Any]:
         metadata = payload.get("metadata") or {}
-        if metadata.get("taskType") == "document.parse":
+        task_type = metadata.get("taskType")
+        if task_type == "document.parse":
             return self.parse_runner.run(payload)
+        if task_type == "model.probe":
+            return self.probe_runner.run(payload)
+        if task_type == "sentencing.calculate":
+            return self.sentencing_runner.run(payload)
         return self.fallback.run(payload)
 
 

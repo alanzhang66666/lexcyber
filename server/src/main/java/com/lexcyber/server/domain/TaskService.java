@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.lexcyber.server.engine.ExecutionRequest;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.sql.ResultSet;
@@ -26,19 +28,28 @@ import org.springframework.web.server.ResponseStatusException;
 public class TaskService {
     private final JdbcTemplate jdbc;
     private final ObjectMapper objectMapper;
+    private final boolean sentencingEnabled;
 
     public TaskService(JdbcTemplate jdbc, ObjectMapper objectMapper) {
+        this(jdbc, objectMapper, false);
+    }
+
+    @Autowired
+    public TaskService(JdbcTemplate jdbc, ObjectMapper objectMapper,
+                       @Value("${sentencing.enabled:false}") boolean sentencingEnabled) {
         this.jdbc = jdbc;
         this.objectMapper = objectMapper;
+        this.sentencingEnabled = sentencingEnabled;
     }
 
     @Transactional
     public TaskView create(TaskCreate request) {
+        Map<String, Object> metadata = request.metadata() == null ? Map.of() : request.metadata();
+        TaskPolicies.requireSupported(metadata, sentencingEnabled);
         UUID id = UUID.randomUUID();
         UUID requestId = UUID.randomUUID();
         UUID executionId = UUID.randomUUID();
         UUID resultId = UUID.randomUUID();
-        Map<String, Object> metadata = request.metadata() == null ? Map.of() : request.metadata();
         String caseId = request.caseId() == null ? "" : request.caseId();
         String inputHash = hashInput(request.query(), caseId, request.sessionId(), metadata);
         ExecutionRequest envelope = new ExecutionRequest(id, executionId, requestId, resultId, 1, "workflow.output",
@@ -107,6 +118,7 @@ public class TaskService {
         int resultVersion = Optional.ofNullable(jdbc.queryForObject("SELECT COALESCE(MAX(version), 0) + 1 FROM app.result_versions WHERE task_id = ?", Integer.class, taskId)).orElse(1);
         UUID resultId = UUID.randomUUID();
         Map<String, Object> metadata = parseMap(task.get("metadata_json"));
+        TaskPolicies.requireSupported(metadata, sentencingEnabled);
         String query = String.valueOf(task.get("query_text"));
         String caseId = task.get("case_id") == null ? null : String.valueOf(task.get("case_id"));
         String sessionId = task.get("session_id") == null ? null : String.valueOf(task.get("session_id"));

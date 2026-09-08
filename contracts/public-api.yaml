@@ -10,6 +10,7 @@ tags:
   - name: tasks
   - name: cases
   - name: reviews
+  - name: sources
 paths:
   /auth/register:
     post:
@@ -124,6 +125,64 @@ paths:
               schema: { $ref: '#/components/schemas/CaseView' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
+  /cases/{caseId}/facts:
+    get:
+      tags: [cases]
+      summary: Read the case facts envelope
+      operationId: getCaseFacts
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CaseId'
+      responses:
+        '200':
+          description: Facts envelope. Missing rows return an empty draft.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FactView' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [cases]
+      summary: Replace draft facts
+      operationId: putCaseFacts
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CaseId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FactUpdate' }
+      responses:
+        '200':
+          description: Draft facts replaced.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FactView' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /cases/{caseId}/facts/confirm:
+    post:
+      tags: [cases]
+      summary: Lock the current draft facts
+      operationId: confirmCaseFacts
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CaseId'
+      responses:
+        '200':
+          description: Facts confirmed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FactView' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /cases/{caseId}/documents:
     post:
       tags: [cases]
@@ -214,6 +273,7 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '501': { $ref: '#/components/responses/NotImplemented' }
   /tasks/{taskId}:
     get:
       tags: [tasks]
@@ -333,6 +393,28 @@ paths:
               schema: { $ref: '#/components/schemas/ReviewRecord' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '409': { $ref: '#/components/responses/Conflict' }
+  /sources/search:
+    post:
+      tags: [sources]
+      summary: Search legal sources
+      operationId: searchSources
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SourceSearchRequest' }
+      responses:
+        '200':
+          description: Matching legal sources.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SourceSearchResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '501': { $ref: '#/components/responses/NotImplemented' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
 components:
   parameters:
     TaskId:
@@ -381,6 +463,9 @@ components:
       content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } }
     ServiceUnavailable:
       description: Object storage or a dependent service is unavailable.
+      content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } }
+    NotImplemented:
+      description: The capability is reserved but not wired yet. Codes include SOURCE_SEARCH_UNAVAILABLE and SENTENCING_UNAVAILABLE.
       content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } }
   securitySchemes:
     bearerAuth:
@@ -456,6 +541,9 @@ components:
         page: { type: integer }
         size: { type: integer }
         total: { type: integer, format: int64 }
+    TaskType:
+      type: string
+      enum: [document.parse, model.probe, sentencing.calculate]
     TaskCreate:
       type: object
       required: [query]
@@ -463,7 +551,58 @@ components:
         query: { type: string, minLength: 1, maxLength: 20000 }
         caseId: { type: string }
         sessionId: { type: string }
-        metadata: { type: object, additionalProperties: true }
+        metadata:
+          type: object
+          additionalProperties: true
+          properties:
+            taskType: { $ref: '#/components/schemas/TaskType' }
+    FactItem:
+      type: object
+      required: [key, value]
+      properties:
+        id: { type: string }
+        key: { type: string }
+        value: { type: string }
+        locator: { type: string }
+        sourceDocumentId: { type: string }
+    FactUpdate:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/FactItem' } }
+    FactView:
+      type: object
+      required: [caseId, schemaVersion, status, items, updatedAt]
+      properties:
+        caseId: { type: string }
+        schemaVersion: { type: string, enum: [case.facts.v1] }
+        status: { type: string, enum: [draft, confirmed] }
+        items: { type: array, items: { $ref: '#/components/schemas/FactItem' } }
+        updatedAt: { type: string, format: date-time }
+        confirmedAt: { type: string, format: date-time }
+    SourceSearchRequest:
+      type: object
+      required: [query]
+      properties:
+        query: { type: string, minLength: 1, maxLength: 4000 }
+        jurisdiction: { type: string, maxLength: 32 }
+        asOfDate: { type: string, format: date }
+        topK: { type: integer, minimum: 1, maximum: 50, default: 5 }
+    SourceSearchHit:
+      type: object
+      required: [sourceId, locator]
+      properties:
+        sourceId: { type: string }
+        locator: { type: string }
+        title: { type: string }
+        quote: { type: string }
+        version: { type: string }
+        jurisdiction: { type: string }
+    SourceSearchResponse:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/SourceSearchHit' } }
     TaskView:
       type: object
       required: [id, requestId, status, executionId, createdAt]

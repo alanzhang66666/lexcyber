@@ -42,6 +42,20 @@ paths:
       responses:
         '200': { description: Accepted idempotently. }
         '409': { description: Result content or execution association conflict. }
+  /internal/v1/sources/search:
+    post:
+      summary: Search legal sources without using the public sample corpus
+      security: [{ serviceToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SourceSearchRequest' }
+      responses:
+        '200':
+          description: Matching sources.
+          content: { application/json: { schema: { $ref: '#/components/schemas/SourceSearchResponse' } } }
+        '501': { description: Retrieval adapter is not wired. }
 components:
   securitySchemes:
     serviceToken: { type: apiKey, in: header, name: X-Service-Token }
@@ -82,3 +96,26 @@ components:
         result_ref: { type: object, nullable: true, additionalProperties: true }
         input_hash: { type: string, nullable: true }
         enqueued_at: { type: string, format: date-time, nullable: true }
+    SourceSearchRequest:
+      type: object
+      required: [query]
+      properties:
+        query: { type: string, minLength: 1, maxLength: 4000 }
+        jurisdiction: { type: string, nullable: true }
+        as_of_date: { type: string, nullable: true }
+        top_k: { type: integer, minimum: 1, maximum: 50, default: 5 }
+    SourceSearchHit:
+      type: object
+      required: [source_id, locator]
+      properties:
+        source_id: { type: string }
+        locator: { type: string }
+        title: { type: string, nullable: true }
+        quote: { type: string, nullable: true }
+        version: { type: string, nullable: true }
+        jurisdiction: { type: string, nullable: true }
+    SourceSearchResponse:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/SourceSearchHit' } }

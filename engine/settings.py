@@ -21,6 +21,11 @@ class EngineSettings(BaseSettings):
     minio_secret_key: str = ""
     minio_bucket: str = "lexcyber"
     document_parse_timeout_seconds: int = 60
+    knowledge_base_url: str = ""
+    sentencing_enabled: bool = False
+    embedding_provider: str = ""
+    embedding_model: str = ""
+    embedding_api_key: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", case_sensitive=False)
 

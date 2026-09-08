@@ -2,11 +2,15 @@ import type {
   ApiErrorPayload,
   AuthLogin,
   AuthRegister,
+  FactUpdate,
+  FactView,
   ResultPayload,
   ReviewDecision,
   ReviewPage,
   ReviewRecord,
   SessionView,
+  SourceSearchRequest,
+  SourceSearchResponse,
   TaskCreate,
   TaskView,
 } from './api-types'
@@ -124,6 +128,28 @@ export const api = {
 
   decideReview(reviewId: string, decision: 'approve' | 'reject', input: ReviewDecision) {
     return request<ReviewRecord>(`/v1/reviews/${encodeURIComponent(reviewId)}/${decision}`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    })
+  },
+
+  getCaseFacts(caseId: string) {
+    return request<FactView>(`/v1/cases/${encodeURIComponent(caseId)}/facts`)
+  },
+
+  putCaseFacts(caseId: string, input: FactUpdate) {
+    return request<FactView>(`/v1/cases/${encodeURIComponent(caseId)}/facts`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    })
+  },
+
+  confirmCaseFacts(caseId: string) {
+    return request<FactView>(`/v1/cases/${encodeURIComponent(caseId)}/facts/confirm`, { method: 'POST' })
+  },
+
+  searchSources(input: SourceSearchRequest) {
+    return request<SourceSearchResponse>('/v1/sources/search', {
       method: 'POST',
       body: JSON.stringify(input),
     })

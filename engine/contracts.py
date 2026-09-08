@@ -34,6 +34,26 @@ class ExecutionRequest(BaseModel):
     contract_version: str = "public-api-0.3"
 
 
+class SourceSearchRequest(BaseModel):
+    query: str = Field(min_length=1, max_length=4000)
+    jurisdiction: str | None = None
+    as_of_date: str | None = None
+    top_k: int = Field(default=5, ge=1, le=50)
+
+
+class SourceSearchHit(BaseModel):
+    source_id: str
+    locator: str
+    title: str | None = None
+    quote: str | None = None
+    version: str | None = None
+    jurisdiction: str | None = None
+
+
+class SourceSearchResponse(BaseModel):
+    items: list[SourceSearchHit] = Field(default_factory=list)
+
+
 class ExecutionView(BaseModel):
     execution_id: UUID
     task_id: UUID

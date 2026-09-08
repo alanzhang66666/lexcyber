@@ -33,6 +33,7 @@ class CaseDocumentServiceTest {
 
     private CaseService cases;
     private DocumentService documents;
+    private FactService facts;
     private JdbcTemplate jdbc;
     private InMemoryObjectStorage storage;
     private UUID alice;
@@ -53,6 +54,7 @@ class CaseDocumentServiceTest {
         TaskService tasks = new TaskService(jdbc, mapper);
         storage = new InMemoryObjectStorage();
         documents = new DocumentService(jdbc, cases, tasks, storage);
+        facts = new FactService(jdbc, mapper, cases);
         alice = insertAccount("alice");
         bob = insertAccount("bob");
     }
@@ -124,6 +126,42 @@ class CaseDocumentServiceTest {
         ApiException hiddenDoc = assertThrows(ApiException.class, () -> documents.requireOwned(bob, document.id()));
         assertEquals("DOCUMENT_NOT_FOUND", hiddenDoc.code());
         assertEquals(0, cases.list(bob, 0, 20).total());
+    }
+
+    @Test
+    void factsDraftCanBeReplacedThenLocked() {
+        CaseView created = cases.create(alice, new CaseCreate("facts", "CN", null, Map.of()));
+        FactView empty = facts.get(alice, created.id());
+        assertEquals("draft", empty.status());
+        assertEquals(0, empty.items().size());
+
+        FactView written = facts.replace(alice, created.id(),
+                new FactUpdate(java.util.List.of(new FactItem(null, "amount", "100", "paragraph:1", "doc-1"))));
+        assertEquals("draft", written.status());
+        assertEquals(1, written.items().size());
+        assertEquals("amount", written.items().get(0).key());
+
+        FactView confirmed = facts.confirm(alice, created.id());
+        assertEquals("confirmed", confirmed.status());
+        ApiException locked = assertThrows(ApiException.class, () -> facts.replace(alice, created.id(),
+                new FactUpdate(java.util.List.of(new FactItem(null, "amount", "200", null, null)))));
+        assertEquals("FACTS_CONFIRMED", locked.code());
+        ApiException again = assertThrows(ApiException.class, () -> facts.confirm(alice, created.id()));
+        assertEquals("FACTS_CONFIRMED", again.code());
+        ApiException hidden = assertThrows(ApiException.class, () -> facts.get(bob, created.id()));
+        assertEquals("CASE_NOT_FOUND", hidden.code());
+    }
+
+    @Test
+    void unknownAndSentencingTaskTypesAreRejected() {
+        TaskService gated = new TaskService(jdbc, new ObjectMapper().findAndRegisterModules(), false);
+        ApiException unknown = assertThrows(ApiException.class,
+                () -> gated.create(new TaskCreate("q", null, null, Map.of("taskType", "nope"))));
+        assertEquals("INVALID_TASK_TYPE", unknown.code());
+        ApiException sentencing = assertThrows(ApiException.class,
+                () -> gated.create(new TaskCreate("q", null, null, Map.of("taskType", "sentencing.calculate"))));
+        assertEquals(HttpStatus.NOT_IMPLEMENTED, sentencing.status());
+        assertEquals("SENTENCING_UNAVAILABLE", sentencing.code());
     }
 
     private UUID insertAccount(String username) {
