@@ -37,4 +37,13 @@ class TaskPoliciesTest {
         TaskPolicies.requireSupported(Map.of("taskType", "model.probe"), false);
         TaskPolicies.requireSupported(Map.of("taskType", "sentencing.calculate"), true);
     }
+
+    @Test
+    void reservedTaskTypesRequireAuth() {
+        assertEquals(true, TaskPolicies.requiresAuth("document.parse"));
+        assertEquals(true, TaskPolicies.requiresAuth("model.probe"));
+        assertEquals(true, TaskPolicies.requiresAuth("sentencing.calculate"));
+        assertEquals(false, TaskPolicies.requiresAuth(null));
+        assertEquals(false, TaskPolicies.requiresAuth(""));
+    }
 }

@@ -41,7 +41,7 @@ public class FactService {
 
     @Transactional
     public FactView replace(UUID ownerAccountId, String caseId, FactUpdate update) {
-        cases.requireOwned(ownerAccountId, caseId);
+        cases.lockOwned(ownerAccountId, caseId);
         FactView current = lockedOrEmpty(caseId);
         if ("confirmed".equals(current.status())) {
             throw new ApiException(HttpStatus.CONFLICT, "FACTS_CONFIRMED", "已确认的事实不能再修改");
@@ -53,7 +53,7 @@ public class FactService {
 
     @Transactional
     public FactView confirm(UUID ownerAccountId, String caseId) {
-        cases.requireOwned(ownerAccountId, caseId);
+        cases.lockOwned(ownerAccountId, caseId);
         FactView current = lockedOrEmpty(caseId);
         if ("confirmed".equals(current.status())) {
             throw new ApiException(HttpStatus.CONFLICT, "FACTS_CONFIRMED", "事实已确认");
@@ -71,7 +71,7 @@ public class FactService {
     }
 
     private void upsert(String caseId, String status, List<FactItem> items, OffsetDateTime confirmedAt) {
-        jdbc.update("""
+        int changed = jdbc.update("""
                 INSERT INTO app.case_facts(case_id, schema_version, status, items_json, updated_at, confirmed_at)
                 VALUES (?, ?, ?, ?::jsonb, now(), ?)
                 ON CONFLICT (case_id) DO UPDATE
@@ -80,8 +80,12 @@ public class FactService {
                     items_json = EXCLUDED.items_json,
                     updated_at = now(),
                     confirmed_at = EXCLUDED.confirmed_at
+                WHERE app.case_facts.status <> 'confirmed'
                 """,
                 caseId, SCHEMA_VERSION, status, writeJson(items), confirmedAt);
+        if (changed == 0) {
+            throw new ApiException(HttpStatus.CONFLICT, "FACTS_CONFIRMED", "已确认的事实不能再修改");
+        }
     }
 
     private FactView requireRow(String caseId) {

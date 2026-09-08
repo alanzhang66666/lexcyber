@@ -64,6 +64,15 @@ public class TaskService {
     }
 
     @Transactional(readOnly = true)
+    public String metadataTaskType(UUID taskId) {
+        return jdbc.query("SELECT metadata_json FROM app.tasks WHERE id = ?",
+                        (rs, ignored) -> TaskPolicies.taskType(parseMap(rs.getString("metadata_json"))), taskId)
+                .stream()
+                .findFirst()
+                .orElse(null);
+    }
+
+    @Transactional(readOnly = true)
     public Optional<TaskView> find(UUID taskId) {
         return jdbc.query("""
                 SELECT t.id, t.request_id, t.execution_id, t.case_id, t.status, t.current_stage, t.error_code, t.error, t.created_at, t.updated_at,

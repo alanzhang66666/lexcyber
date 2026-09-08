@@ -68,6 +68,20 @@ public class CaseService {
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "CASE_NOT_FOUND", "案件不存在或不可访问"));
     }
 
+    @Transactional
+    public CaseView lockOwned(UUID ownerAccountId, String caseId) {
+        List<CaseView> rows = jdbc.query("""
+                SELECT id, title, jurisdiction, as_of_date, metadata_json, created_at, updated_at
+                FROM app.cases
+                WHERE id = ? AND owner_account_id = ?
+                FOR UPDATE
+                """, this::map, caseId, ownerAccountId);
+        if (rows.isEmpty()) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "CASE_NOT_FOUND", "案件不存在或不可访问");
+        }
+        return rows.get(0);
+    }
+
     @Transactional(readOnly = true)
     public Optional<CaseView> findOwned(UUID ownerAccountId, String caseId) {
         return jdbc.query("""

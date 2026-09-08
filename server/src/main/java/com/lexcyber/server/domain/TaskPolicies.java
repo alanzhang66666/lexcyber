@@ -33,4 +33,8 @@ public final class TaskPolicies {
             throw new ApiException(HttpStatus.NOT_IMPLEMENTED, "SENTENCING_UNAVAILABLE", "量刑计算尚未接通");
         }
     }
+
+    public static boolean requiresAuth(String type) {
+        return type != null && KNOWN.contains(type);
+    }
 }

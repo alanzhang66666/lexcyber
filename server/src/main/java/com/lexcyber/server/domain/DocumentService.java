@@ -115,6 +115,30 @@ public class DocumentService {
         return new PageResponse<>(items, page, size, total == null ? 0L : total);
     }
 
+    public record StoredDocument(String id, String caseId, String storageKey, String filename, String contentType) {
+    }
+
+    @Transactional(readOnly = true)
+    public StoredDocument requireOwnedForParse(UUID ownerAccountId, String documentId) {
+        List<StoredDocument> rows = jdbc.query("""
+                SELECT d.id, d.case_id, d.storage_key, d.filename, d.content_type
+                FROM app.documents d
+                JOIN app.cases c ON c.id = d.case_id
+                WHERE d.id = ? AND c.owner_account_id = ?
+                """,
+                (rs, ignored) -> new StoredDocument(
+                        rs.getString("id"),
+                        rs.getString("case_id"),
+                        rs.getString("storage_key"),
+                        rs.getString("filename"),
+                        rs.getString("content_type")),
+                documentId, ownerAccountId);
+        if (rows.isEmpty()) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "DOCUMENT_NOT_FOUND", "材料不存在或不可访问");
+        }
+        return rows.get(0);
+    }
+
     @Transactional(readOnly = true)
     public DocumentView requireOwned(UUID ownerAccountId, String documentId) {
         List<DocumentView> rows = jdbc.query(documentSelect() + """
