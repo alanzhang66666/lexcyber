@@ -53,6 +53,15 @@ public class TaskService {
     }
 
     @Transactional(readOnly = true)
+    public String metadataTaskType(UUID taskId) {
+        return jdbc.query("SELECT metadata_json FROM app.tasks WHERE id = ?",
+                        (rs, ignored) -> taskType(parseMap(rs.getString("metadata_json"))), taskId)
+                .stream()
+                .findFirst()
+                .orElse(null);
+    }
+
+    @Transactional(readOnly = true)
     public Optional<TaskView> find(UUID taskId) {
         return jdbc.query("""
                 SELECT t.id, t.request_id, t.execution_id, t.case_id, t.status, t.current_stage, t.error_code, t.error, t.created_at, t.updated_at,
@@ -133,6 +142,14 @@ public class TaskService {
 
     private String toJson(Map<String, Object> metadata) {
         return writeJson(metadata == null ? Map.of() : metadata);
+    }
+
+    private static String taskType(Map<String, Object> metadata) {
+        if (metadata == null) return null;
+        Object value = metadata.get("taskType");
+        if (value == null) return null;
+        String type = String.valueOf(value).trim();
+        return type.isBlank() ? null : type;
     }
 
     private Map<String, Object> parseMap(Object value) {

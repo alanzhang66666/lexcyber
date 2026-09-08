@@ -18,6 +18,7 @@ import com.lexcyber.server.domain.CaseView;
 import com.lexcyber.server.domain.DocumentService;
 import com.lexcyber.server.domain.DocumentView;
 import com.lexcyber.server.domain.PageResponse;
+import com.lexcyber.server.domain.TaskCreate;
 import com.lexcyber.server.domain.TaskService;
 import com.lexcyber.server.domain.TaskView;
 import java.time.LocalDate;
@@ -62,7 +63,7 @@ class CaseDocumentControllerTest {
         mvc = MockMvcBuilders.standaloneSetup(
                         new CaseController(auth, cases),
                         new DocumentController(auth, documents),
-                        new TaskController(tasks, auth, cases))
+                        new TaskController(tasks, auth, cases, documents))
                 .setControllerAdvice(new ApiExceptionHandler())
                 .setValidator(validator)
                 .setMessageConverters(new MappingJackson2HttpMessageConverter(mapper))
@@ -169,6 +170,52 @@ class CaseDocumentControllerTest {
                 "queued", "accepted", null, null, null, OffsetDateTime.now(), OffsetDateTime.now());
         when(tasks.find(taskId)).thenReturn(Optional.of(view));
         mvc.perform(get("/v1/tasks/" + taskId)).andExpect(status().isOk());
+    }
+
+    @Test
+    void caselessDocumentParseTaskRequiresBearer() throws Exception {
+        UUID taskId = UUID.randomUUID();
+        TaskView view = new TaskView(taskId, UUID.randomUUID(), UUID.randomUUID(), "",
+                "queued", "accepted", null, null, null, OffsetDateTime.now(), OffsetDateTime.now());
+        when(tasks.find(taskId)).thenReturn(Optional.of(view));
+        when(tasks.metadataTaskType(taskId)).thenReturn("document.parse");
+        when(auth.require(isNull())).thenThrow(new ResponseStatusException(HttpStatus.UNAUTHORIZED, "session required"));
+        mvc.perform(get("/v1/tasks/" + taskId))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+    }
+
+    @Test
+    void reservedTaskTypesRequireBearer() throws Exception {
+        when(auth.require(isNull())).thenThrow(new ResponseStatusException(HttpStatus.UNAUTHORIZED, "session required"));
+        mvc.perform(post("/v1/tasks").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"query\":\"q\",\"metadata\":{\"taskType\":\"document.parse\",\"storageKey\":\"stolen\"}}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+    }
+
+    @Test
+    void documentParseUsesOwnedStorageKeyNotClientMetadata() throws Exception {
+        when(auth.require(any())).thenReturn(owner);
+        when(documents.requireOwnedForParse(owner.id(), "doc-demo-001"))
+                .thenReturn(new DocumentService.StoredDocument("doc-demo-001", "case-demo-001",
+                        "cases/case-demo-001/owned", "案情材料.docx", "application/pdf"));
+        when(cases.requireOwned(owner.id(), "case-demo-001"))
+                .thenReturn(new CaseView("case-demo-001", "测试案例 001", "CN", null, Map.of(),
+                        OffsetDateTime.now(), OffsetDateTime.now()));
+        UUID taskId = UUID.randomUUID();
+        when(tasks.create(any())).thenAnswer(invocation -> {
+            TaskCreate bound = invocation.getArgument(0);
+            org.junit.jupiter.api.Assertions.assertEquals("cases/case-demo-001/owned", bound.metadata().get("storageKey"));
+            org.junit.jupiter.api.Assertions.assertEquals("case-demo-001", bound.caseId());
+            return new TaskView(taskId, UUID.randomUUID(), UUID.randomUUID(), bound.caseId(),
+                    "queued", "accepted", null, null, null, OffsetDateTime.now(), OffsetDateTime.now());
+        });
+        mvc.perform(post("/v1/tasks").header("Authorization", "Bearer token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"query\":\"parse\",\"caseId\":\"\",\"metadata\":{\"taskType\":\"document.parse\",\"documentId\":\"doc-demo-001\",\"storageKey\":\"stolen-key\"}}"))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.caseId").value("case-demo-001"));
     }
 
     private static final class DocumentViewContent {

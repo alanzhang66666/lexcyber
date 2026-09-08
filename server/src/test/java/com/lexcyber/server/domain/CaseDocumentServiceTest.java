@@ -123,6 +123,12 @@ class CaseDocumentServiceTest {
         assertEquals("CASE_NOT_FOUND", hiddenCase.code());
         ApiException hiddenDoc = assertThrows(ApiException.class, () -> documents.requireOwned(bob, document.id()));
         assertEquals("DOCUMENT_NOT_FOUND", hiddenDoc.code());
+        ApiException hiddenParse = assertThrows(ApiException.class, () -> documents.requireOwnedForParse(bob, document.id()));
+        assertEquals("DOCUMENT_NOT_FOUND", hiddenParse.code());
+        DocumentService.StoredDocument owned = documents.requireOwnedForParse(alice, document.id());
+        assertEquals(document.id(), owned.id());
+        assertEquals(created.id(), owned.caseId());
+        assertNotNull(owned.storageKey());
         assertEquals(0, cases.list(bob, 0, 20).total());
     }
 
