@@ -10,9 +10,9 @@
 
 | 字段 | 值 |
 | --- | --- |
-| caseId | `case-17bcd846f38d49fd` |
-| documentId | `doc-2908dc3ad1474fff` |
-| parseTaskId | `90f80f51-c799-49b5-96b7-056b3f573c5c` |
+| caseId | `case-60069ef659ae4ded` |
+| documentId | `doc-0f6c101b05fd4ea6` |
+| parseTaskId | `c8606cbe-ac23-4db0-9a53-c5fe005865b4` |
 
 下文 JSON 正文仍保留更早一次实测（`case-75a7f5b18e4e4361` / `doc-925c3fe9100f4fe4` / `9bc96484-48b3-40da-a98e-a0d1b0b73d29`），结构未变；对接请以表内最新 ID 为准。不要把口令或 API key 写进本文件。
 
