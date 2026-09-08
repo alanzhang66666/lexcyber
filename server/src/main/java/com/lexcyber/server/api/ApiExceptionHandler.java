@@ -4,6 +4,8 @@ import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -16,6 +18,7 @@ import org.springframework.web.server.ResponseStatusException;
 /** Stable public error envelope shared by auth, task and review endpoints. */
 @RestControllerAdvice
 public class ApiExceptionHandler {
+    private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);
     @ExceptionHandler(ApiException.class)
     public ResponseEntity<Map<String, Object>> api(ApiException error) {
         return body(error.status(), error.code(), error.getMessage());
@@ -48,6 +51,7 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> unexpected(Exception error) {
+        log.error("unhandled public API error", error);
         return body(HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", "unexpected server error");
     }
 

@@ -6,7 +6,8 @@ from uuid import UUID
 import dramatiq
 from fastapi import Depends, FastAPI, Header, HTTPException, status
 
-from engine.adapters.sources import SourceSearchUnavailable, search as search_sources_adapter
+from engine.adapters.sources import SourceSearchUnavailable
+from engine.adapters.sources import search as search_sources_adapter
 from engine.contracts import ExecutionRequest, ExecutionView, SourceSearchRequest, SourceSearchResponse, canonical_input_hash
 from engine.settings import settings
 from engine.store import claim_enqueue, create_execution, get_execution, mark_enqueued, release_enqueue

@@ -3,6 +3,7 @@ package com.lexcyber.server.api;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
@@ -12,6 +13,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import com.lexcyber.server.auth.AuthAccount;
 import com.lexcyber.server.auth.AuthService;
 import com.lexcyber.server.domain.CaseService;
@@ -69,7 +71,8 @@ class CaseDocumentControllerTest {
     void setup() {
         LocalValidatorFactoryBean validator = new LocalValidatorFactoryBean();
         validator.afterPropertiesSet();
-        ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
+        ObjectMapper mapper = new ObjectMapper().findAndRegisterModules()
+                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
         mvc = MockMvcBuilders.standaloneSetup(
                         new CaseController(auth, cases),
                         new DocumentController(auth, documents),
@@ -254,7 +257,7 @@ class CaseDocumentControllerTest {
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
 
-        when(auth.require(any())).thenReturn(owner);
+        doReturn(owner).when(auth).require(any());
         when(facts.get(owner.id(), "case-demo-001")).thenReturn(new FactView(
                 "case-demo-001", "case.facts.v1", "draft",
                 List.of(new FactItem("f1", "amount", "100", "paragraph:1", "doc-1")),
