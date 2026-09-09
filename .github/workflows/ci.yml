@@ -80,7 +80,7 @@ jobs:
     needs: [test, java, web, contracts]
     steps:
       - uses: actions/checkout@v4
-      - name: Start v0.3 stack
+      - name: Start 0.8 stack
         env:
           POSTGRES_PASSWORD: ci-postgres
           APP_DB_PASSWORD: ci-app

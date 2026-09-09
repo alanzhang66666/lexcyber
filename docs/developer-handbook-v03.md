@@ -1,4 +1,4 @@
-# LexCyber v0.3 开发手册
+# LexCyber 0.8 开发手册
 
 ## 本地入口
 

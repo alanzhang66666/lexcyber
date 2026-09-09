@@ -2,7 +2,7 @@
   {
     "id": "core.echo",
     "name": "Core deterministic echo",
-    "version": "0.3.0",
+    "version": "0.8.0",
     "pack": "core",
     "category": "core",
     "description": "A deterministic development Skill for contract and pipeline checks.",

@@ -1,7 +1,7 @@
-# v0.2 -> v0.3 迁移清单
+# v0.2 -> 0.8 迁移清单
 
-- [ ] 新环境使用 Compose project `lexcyber-v03`，入口 `127.0.0.1:18080`。
-- [ ] 根目录 `docker-compose.yml` 是 v0.3 默认配置；`legacy/docker-compose.v02.yml` 仅归档，不再维护。
+- [ ] 新环境使用 Compose project `lexcyber-v03`（历史工程名），入口 `127.0.0.1:18080`。产品版本为 **0.8**。
+- [ ] 根目录 `docker-compose.yml` 是当前默认配置；`legacy/docker-compose.v02.yml` 仅归档，不再维护。
 - [ ] 新库采用 `app` 与 `engine` schema，分别使用独立数据库账号。
 - [ ] Flyway 是唯一建表/迁移入口；Python 启动时不执行建表 SQL。
 - [ ] Java 不写 `engine` 表；Python 不读写 `app` 业务表。

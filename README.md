@@ -6,12 +6,14 @@ Redis work queues, MinIO object storage, a default Stub workflow, and a small
 Vue developer console. It intentionally does not make sentencing, liability,
 crime, or other legal conclusions.
 
-The supported local runtime is still the v0.3 Compose stack. **T1 backend
-contracts are on `main`**: owner-scoped cases and documents with upload-time
-auto-parse, facts, reserved-task auth, owned `storageKey` bind, and
-`model.probe`. Source search and sentencing stay gated at `501`. T2 frontend
-case-center (list/create/workspace/facts) is on `main`; formal docket/analysis
-pages stay empty until those APIs exist. T3 retrieval is **not** done.
+**LexCyber 0.8.** The supported local runtime is the Compose stack in
+`docker-compose.yml` (project name remains `lexcyber-v03`; env file is still
+`.env.v03`). **T1 backend contracts are on `main`**: owner-scoped cases and
+documents with upload-time auto-parse, facts, reserved-task auth, owned
+`storageKey` bind, and `model.probe`. Source search and sentencing stay gated
+at `501`. T2 frontend case-center (list/create/workspace/facts) is on `main`;
+formal docket/analysis pages stay empty until those APIs exist. T3 retrieval
+is **not** done.
 
 ## Start the complete local demo
 
@@ -127,4 +129,4 @@ npm --prefix web run build
 ```
 
 The checked-in CI workflow additionally compiles Java 21, validates both
-OpenAPI contracts, and runs a v0.3 Compose smoke test.
+OpenAPI contracts, and runs a Compose smoke test.

@@ -4,7 +4,7 @@
       <div>
         <p class="eyebrow">关于我们</p>
         <h1>LexCyber 网域衡鉴</h1>
-        <p>涉外互联网犯罪刑事合规与量刑辅助系统。</p>
+        <p>涉外互联网犯罪刑事合规与量刑辅助系统。当前版本 0.8。</p>
       </div>
     </header>
     <section class="work-grid">

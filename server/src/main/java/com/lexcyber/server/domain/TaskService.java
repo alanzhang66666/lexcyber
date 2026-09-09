@@ -53,7 +53,7 @@ public class TaskService {
         String caseId = request.caseId() == null ? "" : request.caseId();
         String inputHash = hashInput(request.query(), caseId, request.sessionId(), metadata);
         ExecutionRequest envelope = new ExecutionRequest(id, executionId, requestId, resultId, 1, "workflow.output",
-                request.query(), caseId, request.sessionId(), metadata, inputHash, "public-api-0.3");
+                request.query(), caseId, request.sessionId(), metadata, inputHash, "public-api-0.8");
         jdbc.update("""
                 INSERT INTO app.tasks(id, request_id, execution_id, case_id, session_id, query_text, status, current_stage, metadata_json)
                 VALUES (?, ?, ?, ?, ?, ?, 'queued', 'accepted', ?::jsonb)
@@ -137,7 +137,7 @@ public class TaskService {
         UUID requestId = (UUID) task.get("request_id");
         String inputHash = hashInput(query, caseId, sessionId, metadata);
         ExecutionRequest envelope = new ExecutionRequest(taskId, executionId, requestId, resultId, resultVersion, "workflow.output",
-                query, caseId, sessionId, metadata, inputHash, "public-api-0.3");
+                query, caseId, sessionId, metadata, inputHash, "public-api-0.8");
         jdbc.update("UPDATE app.task_dispatch_outbox SET published_at=COALESCE(published_at, now()), last_error='superseded_by_retry' WHERE task_id=? AND published_at IS NULL", taskId);
         jdbc.update("UPDATE app.tasks SET execution_id = ?, status = 'queued', current_stage = 'retry_requested', error_code = NULL, error = NULL, updated_at = now() WHERE id = ?",
                 executionId, taskId);

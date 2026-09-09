@@ -33,7 +33,7 @@ def create_execution(payload: dict[str, Any]) -> dict[str, Any]:
                       content_json, content_hash, error_code, error_message, retryable, result_json, updated_at, input_hash, enqueued_at
             """,
             (payload["execution_id"], payload["task_id"], payload["request_id"], payload["result_id"], payload["result_version"],
-             payload.get("result_type", "workflow.output"), payload.get("contract_version", "public-api-0.3"), payload["input_hash"]),
+             payload.get("result_type", "workflow.output"), payload.get("contract_version", "public-api-0.8"), payload["input_hash"]),
         ).fetchone()
         if row is None:
             row = conn.execute(

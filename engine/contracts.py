@@ -31,7 +31,7 @@ class ExecutionRequest(BaseModel):
     session_id: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
     input_hash: str = Field(min_length=16, max_length=128)
-    contract_version: str = "public-api-0.3"
+    contract_version: str = "public-api-0.8"
 
 
 class SourceSearchRequest(BaseModel):

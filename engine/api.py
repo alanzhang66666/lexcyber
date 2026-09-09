@@ -12,7 +12,7 @@ from engine.contracts import ExecutionRequest, ExecutionView, SourceSearchReques
 from engine.settings import settings
 from engine.store import claim_enqueue, create_execution, get_execution, mark_enqueued, release_enqueue
 
-app = FastAPI(title="LexCyber Execution Engine", version="0.3.0")
+app = FastAPI(title="LexCyber Execution Engine", version="0.8.0")
 
 
 def require_service_token(x_service_token: str = Header(default="")) -> None:
@@ -22,7 +22,7 @@ def require_service_token(x_service_token: str = Header(default="")) -> None:
 
 @app.get("/healthz")
 def healthz() -> dict[str, str]:
-    return {"status": "ok", "service": "lexcyber-engine", "version": "0.3.0"}
+    return {"status": "ok", "service": "lexcyber-engine", "version": "0.8.0"}
 
 
 @app.post("/internal/v1/executions", status_code=status.HTTP_202_ACCEPTED, dependencies=[Depends(require_service_token)])
