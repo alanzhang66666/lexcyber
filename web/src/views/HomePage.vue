@@ -1,8 +1,13 @@
 <script setup lang="ts">
+import { computed, onMounted } from 'vue'
 import { CORE_MODULES, modulePath } from '../data/modules'
-import { lastCaseId } from '../data/placeholder-cases'
+import { currentCaseId, resolveT1CaseId } from '../lib/current-case'
 
-const features = CORE_MODULES.map((module) => ({ ...module, to: modulePath(module, lastCaseId()) }))
+const features = computed(() => CORE_MODULES.map((module) => ({ ...module, to: modulePath(module, currentCaseId.value) })))
+
+onMounted(() => {
+  void resolveT1CaseId()
+})
 </script>
 
 <template>

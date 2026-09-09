@@ -10,7 +10,8 @@ The supported local runtime is still the v0.3 Compose stack. **T1 backend
 contracts are on `main`**: owner-scoped cases and documents with upload-time
 auto-parse, facts, reserved-task auth, owned `storageKey` bind, and
 `model.probe`. Source search and sentencing stay gated at `501`. T2 frontend
-case-center pages and T3 retrieval are **not** done.
+case-center (list/create/workspace/facts) is on `main`; formal docket/analysis
+pages stay empty until those APIs exist. T3 retrieval is **not** done.
 
 ## Start the complete local demo
 
@@ -53,8 +54,10 @@ response samples for T2/T3 are in [`LexCyber_T1接口交接样例.md`](LexCyber_
 | Owned `storageKey` | Clients must not send object keys. The server overwrites `storageKey` / `caseId` from the owned document; a forged key is ignored. |
 | `model.probe` | Authenticated task; Engine calls ModelGateway. A real provider + key in Compose `.env.v03` is required for a non-stub result. |
 
-The Vue case-center / docket / analysis screens still use placeholder data.
-They are not a working T2 cases list against these APIs.
+The Vue case-center list, create, workspace, upload, parse polling, and facts
+confirm are wired to these APIs. Docket and analysis do not render placeholder
+林某 excerpts as the open case; they show 未接通 until formal T2 extraction
+and sentencing are connected.
 
 T2/T3 should poll `parseTaskId` after upload and read body text from
 `/v1/tasks/{id}/result` only. Do not create a second parse task and do not

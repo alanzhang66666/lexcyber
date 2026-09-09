@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { lastCaseId } from './data/placeholder-cases'
+import { formalCasePath } from './lib/current-case'
 import { isAuthenticated } from './lib/auth'
 import AboutPage from './views/AboutPage.vue'
 import AnalysisPage from './views/AnalysisPage.vue'
@@ -35,8 +36,8 @@ const router = createRouter({
     { path: '/cases/:caseId', name: 'case-workspace', component: CaseWorkspacePage, props: true, meta: { title: '案件工作区' } },
     { path: '/cases/:caseId/docket', name: 'docket', component: DocketPage, props: true, meta: { title: '智能阅卷' } },
     { path: '/cases/:caseId/analysis', name: 'analysis', component: AnalysisPage, props: true, meta: { title: '量刑分析' } },
-    { path: '/docket', redirect: () => `/cases/${lastCaseId()}/docket` },
-    { path: '/analysis', redirect: () => `/cases/${lastCaseId()}/analysis` },
+    { path: '/docket', redirect: () => formalCasePath('docket', lastCaseId()) },
+    { path: '/analysis', redirect: () => formalCasePath('analysis', lastCaseId()) },
     { path: '/sources', name: 'sources', component: SourcesPage, meta: { title: '法源与类案' } },
     { path: '/rules', name: 'rules', component: RulesPage, meta: { title: '量刑规则' } },
     { path: '/audit', name: 'audit', component: AuditPage, meta: { title: '统计与审计' } },

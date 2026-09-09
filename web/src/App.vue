@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
-import { lastCaseId } from './data/placeholder-cases'
+import { currentCaseId, formalCasePath, resolveT1CaseId, syncCurrentCaseFromStorage } from './lib/current-case'
 import { logout, refreshSession, session } from './lib/auth'
 import { onToast, toastPlaceholder } from './lib/toast'
 import { applySettings, loadSettings } from './lib/ui-settings'
@@ -14,8 +14,8 @@ const layout = ref(loadSettings().layout)
 let stopToast: (() => void) | undefined
 let timer: number | undefined
 
-const docketTo = computed(() => `/cases/${lastCaseId()}/docket`)
-const analysisTo = computed(() => `/cases/${lastCaseId()}/analysis`)
+const docketTo = computed(() => formalCasePath('docket', currentCaseId.value))
+const analysisTo = computed(() => formalCasePath('analysis', currentCaseId.value))
 const showDock = computed(() => (
   layout.value === 'side'
   && route.name !== 'home'
@@ -45,6 +45,7 @@ function refreshLayout() {
 onMounted(() => {
   applySettings(loadSettings())
   void refreshSession()
+  void resolveT1CaseId()
   stopToast = onToast((message) => {
     toastMessage.value = message
     window.clearTimeout(timer)
@@ -61,6 +62,7 @@ onUnmounted(() => {
 
 watch(() => route.path, () => {
   profileOpen.value = false
+  syncCurrentCaseFromStorage()
 })
 </script>
 

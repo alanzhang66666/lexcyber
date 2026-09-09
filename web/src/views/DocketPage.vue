@@ -1,43 +1,47 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
+import { api } from '../api'
+import type { CaseView } from '../api-types'
 import CasePhaseBar from '../components/CasePhaseBar.vue'
 import PlaceholderBanner from '../components/PlaceholderBanner.vue'
-import { findCase, rememberCase, type PlaceholderField } from '../data/placeholder-cases'
-import { toastPlaceholder } from '../lib/toast'
+import { isPlaceholderCaseId } from '../data/placeholder-cases'
+import { rememberT1Case } from '../lib/current-case'
 
 const route = useRoute()
-const router = useRouter()
-const item = computed(() => findCase(String(route.params.caseId)))
-const activeDoc = ref(item.value.documents[0]?.id)
-const tab = ref<PlaceholderField['tab']>('elements')
-const tabs: { id: PlaceholderField['tab']; label: string }[] = [
-  { id: 'elements', label: '要素' },
-  { id: 'evidence', label: '证据' },
-  { id: 'sources', label: '法源' },
-  { id: 'issues', label: '待处理' },
-]
+const caseId = computed(() => String(route.params.caseId || ''))
+const loading = ref(true)
+const error = ref('')
+const caseItem = ref<CaseView | null>(null)
 
-const currentDoc = computed(() => item.value.documents.find((doc) => doc.id === activeDoc.value) ?? item.value.documents[0])
-const fields = computed(() => item.value.fields.filter((field) => field.tab === tab.value))
-const groups = computed(() => [...new Set(item.value.documents.map((doc) => doc.group))])
+const workspaceTo = computed(() => (caseItem.value ? `/cases/${caseItem.value.id}` : '/cases'))
+const analysisTo = computed(() => (caseItem.value ? `/cases/${caseItem.value.id}/analysis` : '/cases'))
+
+async function load() {
+  loading.value = true
+  error.value = ''
+  caseItem.value = null
+  if (!caseId.value || isPlaceholderCaseId(caseId.value)) {
+    loading.value = false
+    return
+  }
+  try {
+    caseItem.value = await api.getCase(caseId.value)
+    rememberT1Case(caseItem.value.id)
+  } catch (caught) {
+    error.value = caught instanceof Error ? caught.message : '案件读取失败。'
+  } finally {
+    loading.value = false
+  }
+}
 
 onMounted(() => {
-  rememberCase(item.value.id)
-  activeDoc.value = item.value.documents[0]?.id
+  void load()
 })
 
-watch(() => item.value.id, (id) => {
-  rememberCase(id)
-  activeDoc.value = item.value.documents[0]?.id
-  tab.value = 'elements'
+watch(caseId, () => {
+  void load()
 })
-
-const fieldState: Record<PlaceholderField['state'], string> = {
-  confirmed: '已确认',
-  pending: '待确认',
-  conflict: '存在冲突',
-}
 </script>
 
 <template>
@@ -45,74 +49,21 @@ const fieldState: Record<PlaceholderField['state'], string> = {
     <PlaceholderBanner />
     <header class="workbench-header">
       <div>
-        <p class="breadcrumb">案件中心 / {{ item.shortName }}</p>
+        <p class="breadcrumb">案件中心 / {{ caseItem?.title || '未接通案件' }}</p>
         <h1>智能阅卷</h1>
       </div>
       <CasePhaseBar current="docket" />
-      <RouterLink class="button button-primary" :to="`/cases/${item.id}/analysis`">进入量刑分析</RouterLink>
+      <RouterLink class="button button-primary" :to="analysisTo">进入量刑分析</RouterLink>
     </header>
-    <section class="workbench">
-      <aside class="panel document-tree">
-        <div class="panel-heading">
-          <div><p class="section-index">FILES</p><h2>卷宗材料</h2></div>
-          <button class="button button-quiet" type="button" @click="toastPlaceholder">上传</button>
-        </div>
-        <template v-for="group in groups" :key="group">
-          <p class="tree-label">{{ group }}</p>
-          <button
-            v-for="doc in item.documents.filter((entry) => entry.group === group)"
-            :key="doc.id"
-            class="file-item"
-            :class="{ active: doc.id === currentDoc?.id, warning: doc.status === 'ocr' }"
-            type="button"
-            @click="activeDoc = doc.id"
-          >
-            <b>{{ doc.name }}<small>{{ doc.pages }} 页 · {{ doc.status === 'ocr' ? 'OCR 待校对' : '已解析' }}</small></b>
-          </button>
-        </template>
-      </aside>
-      <article class="panel document-viewer">
-        <header>
-          <strong>{{ currentDoc?.name }}</strong>
-          <small>提取文本 · 示例占位</small>
-        </header>
-        <div class="paper">
-          <p>{{ currentDoc?.excerpt || item.summary }}</p>
-          <p v-for="field in item.fields.slice(0, 3)" :key="field.id">
-            <mark :class="`mark-${field.state}`">{{ field.value }}</mark>
-            <small> {{ field.locator }}</small>
-          </p>
-        </div>
-      </article>
-      <aside class="panel extraction-panel">
-        <div class="panel-heading">
-          <div><p class="section-index">TRACE</p><h2>识别结果</h2></div>
-        </div>
-        <div class="result-tabs">
-          <button
-            v-for="entry in tabs"
-            :key="entry.id"
-            :class="{ 'is-active': tab === entry.id }"
-            type="button"
-            @click="tab = entry.id"
-          >
-            {{ entry.label }}
-          </button>
-        </div>
-        <article v-for="field in fields" :key="field.id" class="result-card" :class="field.state">
-          <small>{{ field.label }}<template v-if="field.confidence"> · {{ field.confidence }}%</template></small>
-          <strong>{{ field.value }}</strong>
-          <p v-if="field.note">{{ field.note }}</p>
-          <footer>
-            <button class="text-button" type="button" @click="toastPlaceholder">{{ field.locator }}</button>
-            <em>{{ fieldState[field.state] }}</em>
-          </footer>
-        </article>
-        <p v-if="!fields.length" class="panel-note">该分类暂无占位字段。</p>
-        <button class="button button-primary" type="button" @click="router.push(`/cases/${item.id}/analysis`)">
-          保存并进入量刑分析
-        </button>
-      </aside>
+    <div v-if="loading" class="panel empty-state" aria-live="polite">正在读取案件…</div>
+    <div v-else-if="error" class="panel">
+      <p class="notice notice-error" role="alert">{{ error }}</p>
+      <button class="button button-quiet" type="button" @click="load">重试</button>
+    </div>
+    <section v-else class="panel empty-state">
+      <strong>阅卷结果未接通</strong>
+      <p>本页不展示示例摘录或占位要素。请到案件工作区查看上传、解析正文与事实确认。</p>
+      <RouterLink class="button button-primary" :to="workspaceTo">前往案件工作区</RouterLink>
     </section>
   </div>
 </template>

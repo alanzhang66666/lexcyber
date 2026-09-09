@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { api } from '../api'
+import { rememberT1Case } from '../lib/current-case'
 
 const router = useRouter()
 const title = ref('')
@@ -19,6 +20,7 @@ async function submit() {
       ...(jurisdiction.value.trim() ? { jurisdiction: jurisdiction.value.trim() } : {}),
       ...(asOfDate.value ? { asOfDate: asOfDate.value } : {}),
     })
+    rememberT1Case(created.id)
     await router.push(`/cases/${created.id}`)
   } catch (caught) {
     error.value = caught instanceof Error ? caught.message : '案件创建失败。'

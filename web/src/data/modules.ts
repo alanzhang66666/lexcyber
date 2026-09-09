@@ -1,3 +1,5 @@
+import { isPlaceholderCaseId } from './placeholder-cases'
+
 export type CoreIcon = 'compliance' | 'conviction' | 'sentencing' | 'review'
 
 export type CoreModule = {
@@ -51,7 +53,9 @@ export const CORE_MODULES: CoreModule[] = [
   },
 ]
 
-/** 把模块 to 里的 ':caseId' 替换成真实案件 id */
-export function modulePath(module: CoreModule, caseId: string): string {
+/** 把模块 to 里的 ':caseId' 替换成真实 T1 案件 id；没有真案时回到案件中心 */
+export function modulePath(module: CoreModule, caseId: string | null | undefined): string {
+  if (!module.to.includes(':caseId')) return module.to
+  if (!caseId || isPlaceholderCaseId(caseId)) return '/cases'
   return module.to.replace(':caseId', caseId)
 }

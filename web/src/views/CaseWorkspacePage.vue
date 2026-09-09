@@ -6,6 +6,7 @@ import type { CaseView, DocumentRole, DocumentView, ParseStatus, ResultPayload, 
 import CaseFactsPanel from '../components/CaseFactsPanel.vue'
 import DocumentParseResult from '../components/DocumentParseResult.vue'
 import StatusBadge from '../components/StatusBadge.vue'
+import { rememberT1Case } from '../lib/current-case'
 
 const route = useRoute()
 const caseId = computed(() => String(route.params.caseId))
@@ -50,6 +51,7 @@ async function loadCase() {
   error.value = ''
   try {
     caseItem.value = await api.getCase(caseId.value)
+    rememberT1Case(caseItem.value.id)
   } catch (caught) {
     error.value = caught instanceof Error ? caught.message : '案件读取失败。'
   } finally {
