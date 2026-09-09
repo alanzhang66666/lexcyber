@@ -1,35 +1,8 @@
 <script setup lang="ts">
+import { CORE_MODULES, modulePath } from '../data/modules'
 import { lastCaseId } from '../data/placeholder-cases'
 
-const docketTo = `/cases/${lastCaseId()}/docket`
-const analysisTo = `/cases/${lastCaseId()}/analysis`
-
-const features = [
-  {
-    to: docketTo,
-    title: '智能阅卷',
-    desc: '卷宗材料、原文定位与要素校对同屏联动，每一处识别结果都能回到页段。',
-    icon: 'docket',
-  },
-  {
-    to: docketTo,
-    title: '资金与证据',
-    desc: '追踪跨境收款、跑分链路与平台日志，还原涉外互联网犯罪的资金与行为脉络。',
-    icon: 'flow',
-  },
-  {
-    to: analysisTo,
-    title: '量刑分析',
-    desc: '将已确认要素展开为可检查的推导链：法定刑档、基准刑、情节调节与辅助区间。',
-    icon: 'analysis',
-  },
-  {
-    to: '/reviews',
-    title: '人工复核',
-    desc: '对不可变结果版本作出批准或拒绝，留下意见、清单与审计标识。',
-    icon: 'review',
-  },
-]
+const features = CORE_MODULES.map((module) => ({ ...module, to: modulePath(module, lastCaseId()) }))
 </script>
 
 <template>
@@ -130,21 +103,21 @@ const features = [
     </section>
 
     <section id="home-functions" class="home-functions">
-      <RouterLink v-for="item in features" :key="item.title" class="home-feature" :to="item.to">
+      <RouterLink v-for="item in features" :key="item.key" class="home-feature" :class="{ 'is-dev': item.dev }" :to="item.to">
         <span class="home-feature-icon" :data-icon="item.icon" aria-hidden="true">
-          <svg v-if="item.icon === 'docket'" viewBox="0 0 32 32" fill="none">
+          <svg v-if="item.icon === 'conviction'" viewBox="0 0 32 32" fill="none">
             <circle cx="8" cy="10" r="3" stroke="currentColor" stroke-width="1.6" />
             <circle cx="24" cy="8" r="3" stroke="currentColor" stroke-width="1.6" />
             <circle cx="18" cy="22" r="3" stroke="currentColor" stroke-width="1.6" />
             <path d="M11 11.5 15.5 20M21.5 10.2 19.6 19" stroke="currentColor" stroke-width="1.6" />
           </svg>
-          <svg v-else-if="item.icon === 'flow'" viewBox="0 0 32 32" fill="none">
+          <svg v-else-if="item.icon === 'compliance'" viewBox="0 0 32 32" fill="none">
             <path d="M7 16h12" stroke="currentColor" stroke-width="1.6" />
             <path d="M16 11h9v10h-9" stroke="currentColor" stroke-width="1.6" />
             <path d="M7 16c0-5 3-8 8-8M7 16c0 5 3 8 8 8" stroke="currentColor" stroke-width="1.6" />
             <path d="M21 16h5l-3-3M26 16l-3 3" stroke="currentColor" stroke-width="1.6" />
           </svg>
-          <svg v-else-if="item.icon === 'analysis'" viewBox="0 0 32 32" fill="none">
+          <svg v-else-if="item.icon === 'sentencing'" viewBox="0 0 32 32" fill="none">
             <path d="M8 24V12M16 24V8M24 24v-8" stroke="currentColor" stroke-width="1.6" />
             <path d="M6 24h20" stroke="currentColor" stroke-width="1.6" />
           </svg>
@@ -155,8 +128,15 @@ const features = [
         </span>
         <h2>{{ item.title }}</h2>
         <p>{{ item.desc }}</p>
-        <span class="home-feature-enter">进入 →</span>
+        <span v-if="item.dev" class="subtle-chip">开发中</span>
+        <span v-else class="home-feature-enter">进入 →</span>
       </RouterLink>
     </section>
   </div>
 </template>
+
+<style scoped>
+.home-feature.is-dev { opacity: 0.72; }
+.home-feature.is-dev .home-feature-icon { color: var(--lc-muted); }
+.home-feature.is-dev .subtle-chip { margin-top: auto; width: fit-content; }
+</style>

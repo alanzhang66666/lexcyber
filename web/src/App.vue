@@ -8,7 +8,6 @@ import { applySettings, loadSettings } from './lib/ui-settings'
 
 const route = useRoute()
 const router = useRouter()
-const moreOpen = ref(false)
 const profileOpen = ref(false)
 const toastMessage = ref('')
 const layout = ref(loadSettings().layout)
@@ -24,9 +23,10 @@ const showDock = computed(() => (
   && route.name !== 'login'
 ))
 
-const moreActive = computed(() => ['sources', 'rules', 'tasks', 'task-detail', 'audit'].includes(String(route.name)))
 const signedIn = computed(() => Boolean(session.value))
 const homeActive = computed(() => route.path === '/')
+const functionsActive = computed(() => route.path === '/functions')
+const aboutActive = computed(() => route.path === '/about')
 const authActive = computed(() => route.name === 'login')
 const displayName = computed(() => session.value?.displayName || '未登录')
 const avatarText = computed(() => displayName.value.slice(0, 1))
@@ -37,9 +37,6 @@ async function signOut() {
   void router.push({ name: 'home' })
 }
 const casesActive = computed(() => route.path === '/cases' || route.path === '/cases/new' || /^\/cases\/[^/]+$/.test(route.path))
-const docketActive = computed(() => route.path.includes('/docket'))
-const analysisActive = computed(() => route.path.includes('/analysis'))
-const reviewsActive = computed(() => route.path.startsWith('/reviews'))
 
 function refreshLayout() {
   layout.value = loadSettings().layout
@@ -63,13 +60,13 @@ onUnmounted(() => {
 })
 
 watch(() => route.path, () => {
-  moreOpen.value = false
   profileOpen.value = false
 })
 </script>
 
 <template>
-  <div class="app-shell" :class="{ 'has-dock': showDock, 'is-home': homeActive, 'is-auth': authActive }">
+  <!-- 所有非登录页统一使用浅色顶栏（与首页一致）；登录页仍走 is-auth -->
+  <div class="app-shell" :class="{ 'has-dock': showDock, 'is-home': !authActive, 'is-auth': authActive }">
     <a class="skip-link" href="#main-content">跳到主要内容</a>
     <header class="topbar">
       <RouterLink class="brand" to="/" aria-label="LexCyber 网域衡鉴首页">
@@ -80,19 +77,9 @@ watch(() => route.path, () => {
       </RouterLink>
       <nav v-if="!authActive" class="primary-nav" aria-label="主要导航">
         <RouterLink to="/" active-class="" exact-active-class="" :class="{ 'router-link-active': homeActive }">首页</RouterLink>
+        <RouterLink to="/functions" active-class="" exact-active-class="" :class="{ 'router-link-active': functionsActive }">功能中心</RouterLink>
         <RouterLink to="/cases" active-class="" exact-active-class="" :class="{ 'router-link-active': casesActive }">案件中心</RouterLink>
-        <RouterLink :to="docketTo" active-class="" exact-active-class="" :class="{ 'router-link-active': docketActive }">智能阅卷</RouterLink>
-        <RouterLink :to="analysisTo" active-class="" exact-active-class="" :class="{ 'router-link-active': analysisActive }">量刑分析</RouterLink>
-        <RouterLink to="/reviews" active-class="" exact-active-class="" :class="{ 'router-link-active': reviewsActive }">人工复核</RouterLink>
-        <div class="more-nav">
-          <button :class="{ 'router-link-active': moreOpen || moreActive }" type="button" @click="moreOpen = !moreOpen">更多</button>
-          <div v-if="moreOpen" class="more-menu">
-            <RouterLink to="/sources">法源与类案</RouterLink>
-            <RouterLink to="/rules">量刑规则</RouterLink>
-            <RouterLink to="/tasks">执行任务</RouterLink>
-            <RouterLink to="/audit">统计与审计</RouterLink>
-          </div>
-        </div>
+        <RouterLink to="/about" active-class="" exact-active-class="" :class="{ 'router-link-active': aboutActive }">关于我们</RouterLink>
       </nav>
       <div v-if="!authActive" class="top-actions">
         <label v-if="signedIn" class="home-search">
