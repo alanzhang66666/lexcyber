@@ -1,5 +1,7 @@
 # v0.2 -> 0.8 迁移清单
 
+这是过程核对表，不是现役状态板。当前能力以 [`README.md`](../README.md) 和 [`lexcyber-0.8.zh-CN.md`](lexcyber-0.8.zh-CN.md) 为准。下面未勾选项不要当成「整栈没迁完」。
+
 - [ ] 新环境使用 Compose project `lexcyber-v03`（历史工程名），入口 `127.0.0.1:18080`。产品版本为 **0.8**。
 - [ ] 根目录 `docker-compose.yml` 是当前默认配置；`legacy/docker-compose.v02.yml` 仅归档，不再维护。
 - [ ] 新库采用 `app` 与 `engine` schema，分别使用独立数据库账号。

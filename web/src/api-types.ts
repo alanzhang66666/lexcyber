@@ -60,6 +60,7 @@ export type TaskView = {
 export type ReviewRecord = {
   id: string
   taskId?: string | null
+  caseId?: string | null
   resultVersion: number
   status: ReviewStatus
   decision: ReviewDecisionValue

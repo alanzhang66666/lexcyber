@@ -26,7 +26,7 @@ T1 范围与状态表见 [README 的 T1 on main](../README.md#t1-on-main)。请�
 - 属主 `storageKey`：客户端不要自己传对象键。服务端从属主材料覆盖 `storageKey` / `caseId`。
 - `model.probe`：已鉴权任务；Engine 走 ModelGateway。非 stub 结果需要 Compose `.env.v03` 里的真实 provider 与 key。
 
-仍为 `501`（T3 未接线）：`POST /v1/sources/search` → `SOURCE_SEARCH_UNAVAILABLE`；`metadata.taskType=sentencing.calculate` → `SENTENCING_UNAVAILABLE`。检索会签仍见 [`t1-retrieval-boundary.md`](t1-retrieval-boundary.md)（pending）。T2 案件中心页、T3 数据集 / 规则 / 索引 **未做**。
+仍为 `501`（T3 未接线）：`POST /v1/sources/search` → `SOURCE_SEARCH_UNAVAILABLE`；`metadata.taskType=sentencing.calculate` → `SENTENCING_UNAVAILABLE`。检索会签仍见 [`t1-retrieval-boundary.md`](t1-retrieval-boundary.md)（pending）。T2 案件中心主路径（列表 / 新建 / 工作区 / 上传 / facts）**已在 `main`**；正式阅卷 / 量刑页显示「未接通」。T3 数据集 / 规则 / 索引 **未做**。
 
 上传成功后只轮询 `parseTaskId`，正文只从 `GET /v1/tasks/{id}/result` 读。不要再 `POST /v1/tasks` 建解析任务，也不要从浏览器打 Engine 或 MinIO。
 
@@ -85,13 +85,13 @@ Java 只能写 `app` schema，Engine 只能写 `engine` schema。跨服务数据
 2. 新增一个不含业务规则的 core Skill，并为成功、拒绝和超时分别增加测试。
 3. 为复核记录增加一个状态展示字段，完成 Java DTO、数据库迁移、前端显示和回调兼容。
 
-属主案件 / 上传 / 解析的对接以 [`LexCyber_T1接口交接样例.md`](../LexCyber_T1接口交接样例.md) 为准，不要另造第二套解析入口。
+属主案件 / 上传 / 解析的对接以 [`LexCyber_T1接口交接样例.md`](../LexCyber_T1接口交接样例.md) 为准，不要另造第二套解析入口。三案增量字段与复核属主范围见 [`t1-api-01-increment.md`](t1-api-01-increment.md)。
 
 ## 常见问题
 
 - 任务长时间排队：检查 `app.task_dispatch_outbox.last_error` 和 Engine service token。
 - 任务执行完成但 API 未更新：检查 Java callback 日志，随后确认 reconciliation poller 是否运行。
-- 复核操作返回 503：确认当前环境的 `REVIEW_AUTH_MODE`；生产默认关闭，开发 Compose 使用代理注入的 `local-reviewer`。
+- 复核列表/详情/决定需要 Bearer，且只返回属主案件上的记录；未登录不再倒出全局队列。`REVIEW_AUTH_MODE=trusted-header` 只在已有会话时作为决定人回退，不能代替登录。
 - Legal Skill 未出现：这是默认行为；设置 `WORKFLOW_PROFILE=legal` 仅用于显式扩展测试。
 - 案件 / 上传 / 预留任务返回 401：需要 Bearer；caseless stub 任务仍可无会话创建。
 - `sources/search` 或 `sentencing.calculate` 返回 501：预期。T3 未接线，不要改 adapter 绕过会签。

@@ -331,33 +331,41 @@ paths:
   /reviews:
     get:
       tags: [reviews]
-      summary: List human review requests
+      summary: List human review requests for cases owned by the current account
       operationId: listReviews
+      security:
+        - bearerAuth: []
       parameters:
         - { name: status, in: query, schema: { type: string } }
         - { name: page, in: query, schema: { type: integer, minimum: 0, default: 0 } }
         - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
       responses:
         '200':
-          description: Page of review requests.
+          description: Page of review requests whose task.case_id belongs to an owned case. Caseless reviews are omitted.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/PageReview' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
   /reviews/{reviewId}:
     get:
       tags: [reviews]
-      summary: Read one human review request
+      summary: Read one owned-case human review request
       operationId: getReview
+      security:
+        - bearerAuth: []
       parameters:
         - { name: reviewId, in: path, required: true, schema: { type: string, format: uuid } }
       responses:
         '200': { description: Review record, content: { application/json: { schema: { $ref: '#/components/schemas/ReviewRecord' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
   /reviews/{reviewId}/approve:
     post:
       tags: [reviews]
       summary: Approve the current immutable result version
       operationId: approveReview
+      security:
+        - bearerAuth: []
       parameters:
         - { name: reviewId, in: path, required: true, schema: { type: string, format: uuid } }
       requestBody:
@@ -372,12 +380,15 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ReviewRecord' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
   /reviews/{reviewId}/reject:
     post:
       tags: [reviews]
       summary: Reject the current result version
       operationId: rejectReview
+      security:
+        - bearerAuth: []
       parameters:
         - { name: reviewId, in: path, required: true, schema: { type: string, format: uuid } }
       requestBody:
@@ -392,6 +403,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ReviewRecord' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
   /sources/search:
     post:
@@ -500,7 +512,12 @@ components:
         title: { type: string, minLength: 1, maxLength: 200 }
         jurisdiction: { type: string, maxLength: 32 }
         asOfDate: { type: string, format: date }
-        metadata: { type: object, additionalProperties: true }
+        metadata:
+          type: object
+          additionalProperties: true
+          description: >
+            Opaque case bag. Three-case actor/organization/account/event relations
+            go in metadata.relations (see docs/t1-api-01-increment.md). No graph tables this round.
     CaseView:
       type: object
       required: [id, title, createdAt, updatedAt]
@@ -509,7 +526,10 @@ components:
         title: { type: string }
         jurisdiction: { type: string }
         asOfDate: { type: string, format: date }
-        metadata: { type: object, additionalProperties: true }
+        metadata:
+          type: object
+          additionalProperties: true
+          description: Echo of CaseCreate.metadata, including optional relations.
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
     PageCase:
@@ -531,7 +551,10 @@ components:
         size: { type: integer, format: int64 }
         role: { type: string, enum: [input, annotation] }
         parseStatus: { type: string, enum: [not_started, queued, running, completed, waiting_review, failed, timed_out, rejected] }
-        parseTaskId: { type: string, format: uuid }
+        parseTaskId:
+          type: string
+          format: uuid
+          description: Auto-created document.parse task. Poll this id; do not create another parse task.
         createdAt: { type: string, format: date-time }
     PageDocument:
       type: object
@@ -560,7 +583,7 @@ components:
       type: object
       required: [key, value]
       properties:
-        id: { type: string }
+        id: { type: string, description: Stable factId. Server assigns a UUID when omitted. }
         key: { type: string }
         value: { type: string }
         locator: { type: string }
@@ -654,6 +677,9 @@ components:
       properties:
         id: { type: string, format: uuid }
         taskId: { type: string, format: uuid }
+        caseId:
+          type: string
+          description: Owner case of the related task (from tasks.case_id). Omitted from lists when the task has no case.
         resultVersion: { type: integer, minimum: 1 }
         status: { type: string, enum: [pending, approved, rejected, superseded] }
         decision: { type: string, enum: [approve, reject, retry, none] }

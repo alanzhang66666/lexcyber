@@ -1,5 +1,7 @@
 # LexCyber
 
+Product notes with architecture diagrams: [中文 0.8](docs/lexcyber-0.8.zh-CN.md) · [English 0.8](docs/lexcyber-0.8.en.md).
+
 LexCyber is a general-purpose, auditable task-execution platform. It provides a
 stable Java public API, a Python execution Engine, durable PostgreSQL state,
 Redis work queues, MinIO object storage, a default Stub workflow, and a small
@@ -37,19 +39,22 @@ curl.exe -X POST http://127.0.0.1:18080/v1/tasks `
 ```
 
 Use `GET /v1/tasks/{id}` for lifecycle and `GET /v1/tasks/{id}/result` for the
-immutable Stub content. Review tasks appear at `GET /v1/reviews?status=pending`.
-Caseless stub tasks stay public so this path still works without a session.
+immutable Stub content. Caseless stub tasks stay public so this path still works
+without a session. Reviews require Bearer and are scoped to cases the account
+owns (`GET /v1/reviews`); see [`docs/t1-api-01-increment.md`](docs/t1-api-01-increment.md).
 
 ## T1 on main
 
 Measured against the public API (`contracts/public-api.yaml`). Request and
 response samples for T2/T3 are in [`LexCyber_T1接口交接样例.md`](LexCyber_T1接口交接样例.md).
+Three-case field increment and owner-scoped reviews: [`docs/t1-api-01-increment.md`](docs/t1-api-01-increment.md).
 
 | Area | Status on `main` |
 | --- | --- |
 | Cases / documents | Bearer + owner scope. Upload stores bytes in MinIO, then creates a `document.parse` task (`parseTaskId`). PDF/DOCX only. |
 | Auto-parse | Engine re-reads stored bytes and returns `workflow.output` with `content.schemaVersion=document.parse.v1` (locators). Fatal/timeout map to `DOCUMENT_PARSE_FAILED` / `DOCUMENT_PARSE_TIMEOUT`. |
 | Facts | `GET`/`PUT /v1/cases/{id}/facts` and `POST .../facts/confirm`. Confirm locks further `PUT` (`409`). |
+| Reviews | Bearer + owner case via `tasks.case_id`. Payload includes `caseId`. Other-case / missing → `404`; unauthenticated list is `401`, not the global queue. |
 | Source search | `POST /v1/sources/search` returns `501 SOURCE_SEARCH_UNAVAILABLE`. Adapter is not wired; T3 retrieval is not done. |
 | Sentencing | `metadata.taskType=sentencing.calculate` returns `501 SENTENCING_UNAVAILABLE` while `SENTENCING_ENABLED=false`. |
 | Reserved-task auth | `document.parse` and `model.probe` require `Authorization: Bearer`. Unauthenticated create is `401`. |
@@ -107,7 +112,12 @@ requests are defined in `contracts/internal-engine-api.yaml`; public requests
 are defined in `contracts/public-api.yaml`.
 
 The previous v0.2 Compose stack is archived at `legacy/docker-compose.v02.yml`
-and is not part of the supported runtime.
+and is not part of the supported runtime. Do not treat `apps/` as the public
+API: that is the pre-0.8 Python surface. Compose does not run it. The live tree
+is `web/`, `server/`, `engine/`, `contracts/`, and `nginx/nginx.v03.conf`.
+Engine still imports `models/`, `graph/`, `skill_runtime/`, `skills/`, and
+`retrieval/` — do not delete those to “clean up.” Use `.env.v03.example`, not
+the leftover `.env.example`.
 
 The console types in `web/src/api-types.ts` are the checked-in snapshot of the
 public contract. Update that snapshot in the same change as an OpenAPI edit.
