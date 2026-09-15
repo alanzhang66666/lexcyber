@@ -125,6 +125,34 @@ paths:
               schema: { $ref: '#/components/schemas/CaseView' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
+  /cases/{caseId}/metadata/relations/events/{eventId}/document:
+    patch:
+      tags: [cases]
+      summary: Bind an existing relation event to an uploaded document in the same owned case
+      operationId: bindCaseEventDocument
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CaseId'
+        - name: eventId
+          in: path
+          required: true
+          schema: { type: string, minLength: 1 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CaseEventDocumentUpdate' }
+      responses:
+        '200':
+          description: Updated case; unrelated metadata is preserved. Repeating the same binding is safe.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CaseView' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /cases/{caseId}/facts:
     get:
       tags: [cases]
@@ -532,6 +560,18 @@ components:
           description: Echo of CaseCreate.metadata, including optional relations.
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+    CaseEventDocumentUpdate:
+      type: object
+      required: [documentId]
+      properties:
+        documentId:
+          type: string
+          minLength: 1
+          description: Use DocumentView.id returned by POST /cases/{caseId}/documents.
+        locator:
+          type: string
+          minLength: 1
+          description: Optional source locator; omitted values preserve the existing locator.
     PageCase:
       type: object
       required: [items, page, size, total]
