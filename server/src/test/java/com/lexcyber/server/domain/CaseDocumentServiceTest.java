@@ -161,6 +161,10 @@ class CaseDocumentServiceTest {
         assertEquals(bound.metadata(), cases.requireOwned(alice, owned.id()).metadata());
         assertEquals(bound.metadata(), cases.bindEventDocument(alice, owned.id(), "evt-a",
                 new CaseEventDocumentUpdate(uploaded.id(), "paragraph:3")).metadata());
+        CaseView locatorPreserved = cases.bindEventDocument(alice, owned.id(), "evt-a",
+                new CaseEventDocumentUpdate(uploaded.id(), null));
+        assertEquals("paragraph:3", ((Map<?, ?>) ((List<?>) ((Map<?, ?>) locatorPreserved.metadata()
+                .get("relations")).get("events")).get(0)).get("locator"));
 
         ApiException hidden = assertThrows(ApiException.class, () -> cases.bindEventDocument(
                 bob, owned.id(), "evt-a", new CaseEventDocumentUpdate(uploaded.id(), null)));
