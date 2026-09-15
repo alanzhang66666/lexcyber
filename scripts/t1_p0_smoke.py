@@ -117,7 +117,12 @@ def main() -> None:
         "title": "测试案例 001",
         "jurisdiction": "CN",
         "asOfDate": "2026-09-06",
-        "metadata": {"datasetCaseNo": "001", "isDevelopmentSample": True},
+        "metadata": {
+            "datasetCaseId": "001",
+            "isDevelopmentSample": True,
+            "relations": {"events": [{"eventId": "evt-smoke-001", "stage": "help",
+                                         "documentId": "doc-pending-upload"}]},
+        },
     })
     add("POST /v1/cases", status, body)
     if status != 201:
@@ -148,6 +153,12 @@ def main() -> None:
     parse_task_id = body.get("parseTaskId")
     if not parse_task_id:
         raise SystemExit("parseTaskId missing")
+
+    status, body = request("PATCH", f"/v1/cases/{case_id}/metadata/relations/events/evt-smoke-001/document",
+                           token=token_a, json_body={"documentId": doc_id, "locator": "paragraph:1"})
+    add("PATCH event document binding", status, body)
+    if status != 200 or body.get("metadata", {}).get("relations", {}).get("events", [{}])[0].get("documentId") != doc_id:
+        raise SystemExit(f"event document binding failed {status} {body}")
 
     status, body = request(
         "POST", f"/v1/cases/{case_id}/documents", token=token_a,

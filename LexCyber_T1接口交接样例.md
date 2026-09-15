@@ -76,7 +76,7 @@ Authorization: Bearer <token>
   "jurisdiction": "CN",
   "asOfDate": "2026-09-06",
   "metadata": {
-    "datasetCaseNo": "001",
+    "datasetCaseId": "001",
     "isDevelopmentSample": true
   }
 }
@@ -91,7 +91,7 @@ Authorization: Bearer <token>
   "jurisdiction": "CN",
   "asOfDate": "2026-09-06",
   "metadata": {
-    "datasetCaseNo": "001",
+    "datasetCaseId": "001",
     "isDevelopmentSample": true
   },
   "createdAt": "2026-09-08T09:29:42.17171Z",
@@ -112,7 +112,7 @@ Authorization: Bearer <token>
       "jurisdiction": "CN",
       "asOfDate": "2026-09-06",
       "metadata": {
-        "datasetCaseNo": "001",
+        "datasetCaseId": "001",
         "isDevelopmentSample": true
       },
       "createdAt": "2026-09-08T09:29:42.17171Z",

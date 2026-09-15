@@ -17,6 +17,7 @@
 | --- | --- | --- |
 | `caseId` | **现有复用** | `CaseView.id`、`DocumentView.caseId`、`FactView.caseId`、`TaskView.caseId` |
 | `documentId` | **现有复用** | `DocumentView.id`；解析结果 `content.documentId` |
+| 事件来源回填 | **本轮新增** | `PATCH /v1/cases/{caseId}/metadata/relations/events/{eventId}/document`；只更新该事件的 `documentId` 和可选 `locator` |
 | `locator` | **现有复用** | `FactItem.locator`；`document.parse.v1` 的 `paragraphs[].locator` / `tables[].locator` |
 | `parseTaskId` | **现有复用** | `DocumentView.parseTaskId`；只轮询，不重建 |
 | `factId` | **现有复用** | `FactItem.id`；`PUT` 省略时服务端发 UUID |
@@ -51,7 +52,7 @@
   "jurisdiction": "CN",
   "asOfDate": "2026-03-01",
   "metadata": {
-    "datasetCaseNo": "A",
+    "datasetCaseId": "A",
     "relations": {
       "actors": [
         { "actorId": "actor-a-01", "label": "张某", "roleHint": "被调查人" }
@@ -78,7 +79,17 @@
 }
 ```
 
-`GET /v1/cases/{caseId}` 原样回传 `metadata`。`documentId` 在实际上传后换成真实 id；导入脚本不要为此再建解析任务。
+`GET /v1/cases/{caseId}` 原样回传 `metadata`。`datasetCaseId` 只保存 T3 原始编号；所有公开接口的 `caseId` 都使用创建响应的 `CaseView.id`。上传后调用一次下述接口回填真实 `DocumentView.id`；同一请求重复调用安全，其他事件和元数据不变。接口要求 Bearer，并拒绝他人案件、别案材料、无此事件。导入脚本不要为此再建解析任务。
+
+```http
+PATCH /v1/cases/{caseId}/metadata/relations/events/evt-a-01/document
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{"documentId":"doc-925c3fe9100f4fe4","locator":"paragraph:3"}
+```
+
+`locator` 可省略，此时保留事件原定位。若创建案件时已有真实材料 ID，也可以直接在 `metadata.relations.events[]` 写入，无需调用回填接口。
 
 ## 样例 2：事实快照（现有 `FactView`）
 

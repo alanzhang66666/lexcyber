@@ -11,6 +11,7 @@ import com.lexcyber.server.api.ApiException;
 import com.lexcyber.server.storage.InMemoryObjectStorage;
 import java.time.LocalDate;
 import java.util.Map;
+import java.util.List;
 import java.util.UUID;
 import javax.sql.DataSource;
 import org.flywaydb.core.Flyway;
@@ -62,7 +63,7 @@ class CaseDocumentServiceTest {
     @Test
     void createListGetAndUploadPersistAcrossReload() {
         CaseView created = cases.create(alice, new CaseCreate("测试案例 001", "CN", LocalDate.parse("2026-09-06"),
-                Map.of("datasetCaseNo", "001", "isDevelopmentSample", true)));
+                Map.of("datasetCaseId", "001", "isDevelopmentSample", true)));
         assertTrue(created.id().startsWith("case-"));
         assertEquals("CN", created.jurisdiction());
         assertEquals(LocalDate.parse("2026-09-06"), created.asOfDate());
@@ -132,6 +133,49 @@ class CaseDocumentServiceTest {
         assertEquals(created.id(), owned.caseId());
         assertNotNull(owned.storageKey());
         assertEquals(0, cases.list(bob, 0, 20).total());
+    }
+
+    @Test
+    void uploadedDocumentCanBeBoundOnlyToAnOwnedCaseEvent() {
+        Map<String, Object> metadata = Map.of(
+                "datasetCaseId", "A",
+                "relations", Map.of("actors", List.of(Map.of("actorId", "actor-a")),
+                        "events", List.of(Map.of("eventId", "evt-a", "stage", "help",
+                                "documentId", "doc-pending-upload"), Map.of("eventId", "evt-b", "stage", "transfer"))));
+        CaseView owned = cases.create(alice, new CaseCreate("case A", "CN", null, metadata));
+        CaseView other = cases.create(alice, new CaseCreate("case B", "CN", null, metadata));
+        DocumentView uploaded = documents.upload(alice, owned.id(), "evidence.docx", DocumentPolicies.DOCX,
+                "document-body".getBytes(), "input", null);
+        DocumentView wrongCase = documents.upload(alice, other.id(), "other.docx", DocumentPolicies.DOCX,
+                "other-body".getBytes(), "input", null);
+
+        CaseView bound = cases.bindEventDocument(alice, owned.id(), "evt-a",
+                new CaseEventDocumentUpdate(uploaded.id(), "paragraph:3"));
+        Map<?, ?> relations = (Map<?, ?>) bound.metadata().get("relations");
+        List<?> events = (List<?>) relations.get("events");
+        assertEquals(uploaded.id(), ((Map<?, ?>) events.get(0)).get("documentId"));
+        assertEquals("paragraph:3", ((Map<?, ?>) events.get(0)).get("locator"));
+        assertEquals(Map.of("eventId", "evt-b", "stage", "transfer"), events.get(1));
+        assertEquals(List.of(Map.of("actorId", "actor-a")), relations.get("actors"));
+        assertEquals("A", bound.metadata().get("datasetCaseId"));
+        assertEquals(bound.metadata(), cases.requireOwned(alice, owned.id()).metadata());
+        assertEquals(bound.metadata(), cases.bindEventDocument(alice, owned.id(), "evt-a",
+                new CaseEventDocumentUpdate(uploaded.id(), "paragraph:3")).metadata());
+        CaseView locatorPreserved = cases.bindEventDocument(alice, owned.id(), "evt-a",
+                new CaseEventDocumentUpdate(uploaded.id(), null));
+        assertEquals("paragraph:3", ((Map<?, ?>) ((List<?>) ((Map<?, ?>) locatorPreserved.metadata()
+                .get("relations")).get("events")).get(0)).get("locator"));
+
+        ApiException hidden = assertThrows(ApiException.class, () -> cases.bindEventDocument(
+                bob, owned.id(), "evt-a", new CaseEventDocumentUpdate(uploaded.id(), null)));
+        assertEquals("CASE_NOT_FOUND", hidden.code());
+        ApiException crossCase = assertThrows(ApiException.class, () -> cases.bindEventDocument(
+                alice, owned.id(), "evt-a", new CaseEventDocumentUpdate(wrongCase.id(), null)));
+        assertEquals("DOCUMENT_NOT_FOUND", crossCase.code());
+        ApiException missingEvent = assertThrows(ApiException.class, () -> cases.bindEventDocument(
+                alice, owned.id(), "evt-missing", new CaseEventDocumentUpdate(uploaded.id(), null)));
+        assertEquals("EVENT_NOT_FOUND", missingEvent.code());
+        assertEquals(bound.metadata(), cases.requireOwned(alice, owned.id()).metadata());
     }
 
     @Test

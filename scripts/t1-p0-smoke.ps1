@@ -84,7 +84,11 @@ $created = Invoke-Json -Method Post -Path "/v1/cases" -Headers $authA -Body (@{
     title = "测试案例 001"
     jurisdiction = "CN"
     asOfDate = "2026-09-06"
-    metadata = @{ datasetCaseNo = "001"; isDevelopmentSample = $true }
+    metadata = @{
+        datasetCaseId = "001"
+        isDevelopmentSample = $true
+        relations = @{ events = @(@{ eventId = "evt-smoke-001"; stage = "help"; documentId = "doc-pending-upload" }) }
+    }
 } | ConvertTo-Json)
 Add-Section "POST /v1/cases" $created.Status $created.Body
 if ($created.Status -ne 201) { throw "create case failed $($created.Status)" }
@@ -135,6 +139,15 @@ if ($upload.Status -ne 201) { throw "upload failed $($upload.Status)" }
 $docId = $upload.Body.id
 $parseTaskId = $upload.Body.parseTaskId
 if (-not $parseTaskId) { throw "parseTaskId missing" }
+
+$bound = Invoke-Json -Method Patch -Path "/v1/cases/$caseId/metadata/relations/events/evt-smoke-001/document" -Headers $authA -Body (@{
+    documentId = $docId
+    locator = "paragraph:1"
+} | ConvertTo-Json)
+Add-Section "PATCH event document binding" $bound.Status $bound.Body
+if ($bound.Status -ne 200 -or $bound.Body.metadata.relations.events[0].documentId -ne $docId) {
+    throw "event document binding failed"
+}
 
 $replay = Upload-Doc -File $docx -Role "input" -Idem "upload-demo-$suffix" -Headers $authA
 Add-Section "POST upload idempotent replay" $replay.Status $replay.Body

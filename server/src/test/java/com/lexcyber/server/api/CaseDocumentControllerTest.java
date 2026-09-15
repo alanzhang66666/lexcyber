@@ -7,6 +7,7 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -17,6 +18,7 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.lexcyber.server.auth.AuthAccount;
 import com.lexcyber.server.auth.AuthService;
 import com.lexcyber.server.domain.CaseService;
+import com.lexcyber.server.domain.CaseEventDocumentUpdate;
 import com.lexcyber.server.domain.CaseView;
 import com.lexcyber.server.domain.DocumentService;
 import com.lexcyber.server.domain.DocumentView;
@@ -98,14 +100,14 @@ class CaseDocumentControllerTest {
     void createsAndListsOwnedCases() throws Exception {
         when(auth.require(any())).thenReturn(owner);
         CaseView view = new CaseView("case-demo-001", "测试案例 001", "CN", LocalDate.parse("2026-09-06"),
-                Map.of("datasetCaseNo", "001"), OffsetDateTime.parse("2026-09-06T10:00:00Z"), OffsetDateTime.parse("2026-09-06T10:00:00Z"));
+                Map.of("datasetCaseId", "001"), OffsetDateTime.parse("2026-09-06T10:00:00Z"), OffsetDateTime.parse("2026-09-06T10:00:00Z"));
         when(cases.create(eq(owner.id()), any())).thenReturn(view);
         when(cases.list(eq(owner.id()), eq(0), eq(20))).thenReturn(new PageResponse<>(List.of(view), 0, 20, 1));
         when(cases.requireOwned(owner.id(), "case-demo-001")).thenReturn(view);
 
         mvc.perform(post("/v1/cases").header("Authorization", "Bearer token")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"title\":\"测试案例 001\",\"jurisdiction\":\"CN\",\"asOfDate\":\"2026-09-06\",\"metadata\":{\"datasetCaseNo\":\"001\"}}"))
+                        .content("{\"title\":\"测试案例 001\",\"jurisdiction\":\"CN\",\"asOfDate\":\"2026-09-06\",\"metadata\":{\"datasetCaseId\":\"001\"}}"))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id").value("case-demo-001"))
                 .andExpect(jsonPath("$.asOfDate").value("2026-09-06"));
@@ -128,6 +130,29 @@ class CaseDocumentControllerTest {
         mvc.perform(get("/v1/cases/case-other").header("Authorization", "Bearer token"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("CASE_NOT_FOUND"));
+    }
+
+    @Test
+    void eventDocumentBindingRequiresBearerAndValidPayload() throws Exception {
+        String path = "/v1/cases/case-demo-001/metadata/relations/events/evt-a/document";
+        when(auth.require(isNull())).thenThrow(new ResponseStatusException(HttpStatus.UNAUTHORIZED, "session required"));
+        mvc.perform(patch(path).contentType(MediaType.APPLICATION_JSON).content("{\"documentId\":\"doc-demo-001\"}"))
+                .andExpect(status().isUnauthorized());
+
+        when(auth.require(any())).thenReturn(owner);
+        mvc.perform(patch(path).header("Authorization", "Bearer token")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"documentId\":\"\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+        CaseView view = new CaseView("case-demo-001", "demo", "CN", null,
+                Map.of("relations", Map.of("events", List.of(Map.of("eventId", "evt-a", "documentId", "doc-demo-001")))),
+                OffsetDateTime.now(), OffsetDateTime.now());
+        when(cases.bindEventDocument(eq(owner.id()), eq("case-demo-001"), eq("evt-a"), any(CaseEventDocumentUpdate.class)))
+                .thenReturn(view);
+        mvc.perform(patch(path).header("Authorization", "Bearer token")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"documentId\":\"doc-demo-001\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.metadata.relations.events[0].documentId").value("doc-demo-001"));
     }
 
     @Test

@@ -100,6 +100,11 @@ export type CaseView = {
   updatedAt: string
 }
 
+export type CaseEventDocumentUpdate = {
+  documentId: string
+  locator?: string
+}
+
 export type PageCase = {
   items: CaseView[]
   page: number

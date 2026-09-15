@@ -8,6 +8,8 @@ import java.sql.SQLException;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -80,6 +82,59 @@ public class CaseService {
             throw new ApiException(HttpStatus.NOT_FOUND, "CASE_NOT_FOUND", "案件不存在或不可访问");
         }
         return rows.get(0);
+    }
+
+    @Transactional
+    public CaseView bindEventDocument(UUID ownerAccountId, String caseId, String eventId,
+                                      CaseEventDocumentUpdate request) {
+        CaseView current = lockOwned(ownerAccountId, caseId);
+        if (eventId == null || eventId.isBlank()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", "eventId is required");
+        }
+        String documentId = request.documentId() == null ? "" : request.documentId().trim();
+        if (documentId.isEmpty() || (request.locator() != null && request.locator().isBlank())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", "documentId and locator must be nonblank");
+        }
+        Long count = jdbc.queryForObject("SELECT COUNT(*) FROM app.documents WHERE id = ? AND case_id = ?",
+                Long.class, documentId, caseId);
+        if (count == null || count == 0L) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "DOCUMENT_NOT_FOUND", "材料不存在或不属于该案件");
+        }
+
+        Map<String, Object> metadata = new LinkedHashMap<>(current.metadata());
+        Object relationsValue = metadata.get("relations");
+        if (!(relationsValue instanceof Map<?, ?> relationsRaw)) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "EVENT_NOT_FOUND", "关系事件不存在");
+        }
+        Map<String, Object> relations = new LinkedHashMap<>();
+        relationsRaw.forEach((key, value) -> relations.put(String.valueOf(key), value));
+        Object eventsValue = relations.get("events");
+        if (!(eventsValue instanceof List<?> eventsRaw)) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "EVENT_NOT_FOUND", "关系事件不存在");
+        }
+        List<Object> events = new ArrayList<>(eventsRaw);
+        int matches = 0;
+        for (int i = 0; i < events.size(); i++) {
+            if (!(events.get(i) instanceof Map<?, ?> eventRaw)
+                    || !eventId.equals(eventRaw.get("eventId"))) continue;
+            matches++;
+            Map<String, Object> event = new LinkedHashMap<>();
+            eventRaw.forEach((key, value) -> event.put(String.valueOf(key), value));
+            event.put("documentId", documentId);
+            if (request.locator() != null) event.put("locator", request.locator().trim());
+            events.set(i, event);
+        }
+        if (matches == 0) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "EVENT_NOT_FOUND", "关系事件不存在");
+        }
+        if (matches > 1) {
+            throw new ApiException(HttpStatus.CONFLICT, "DUPLICATE_EVENT_ID", "关系事件 ID 不唯一");
+        }
+        relations.put("events", events);
+        metadata.put("relations", relations);
+        jdbc.update("UPDATE app.cases SET metadata_json = ?::jsonb, updated_at = now() WHERE id = ? AND owner_account_id = ?",
+                writeJson(metadata), caseId, ownerAccountId);
+        return requireOwned(ownerAccountId, caseId);
     }
 
     @Transactional(readOnly = true)
