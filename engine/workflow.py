@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
-from engine.runners import DocumentParseRunner, SentencingRunner
+from engine.adapters.sentencing import SentencingRunner
+from engine.document_parse import DocumentParseRunner
+from engine.model_probe import ModelProbeRunner
 from engine.settings import settings
 
 
@@ -44,17 +46,33 @@ class LangGraphWorkflowRunner:
         return dict(build_workflow().invoke(state))
 
 
-def _task_type(payload: dict[str, Any]) -> str:
-    metadata = payload.get("metadata") or {}
-    return str(metadata.get("task_type") or metadata.get("operation") or payload.get("result_type") or "")
+class DispatchingWorkflowRunner:
+    """Routes reserved task types by metadata.taskType; other tasks keep the configured runner."""
+
+    def __init__(
+        self,
+        fallback: WorkflowRunner,
+        parse_runner: DocumentParseRunner | None = None,
+        probe_runner: ModelProbeRunner | None = None,
+        sentencing_runner: SentencingRunner | None = None,
+    ) -> None:
+        self.fallback = fallback
+        self.parse_runner = parse_runner or DocumentParseRunner()
+        self.probe_runner = probe_runner or ModelProbeRunner()
+        self.sentencing_runner = sentencing_runner or SentencingRunner()
+
+    def run(self, payload: dict[str, Any]) -> dict[str, Any]:
+        metadata = payload.get("metadata") or {}
+        task_type = metadata.get("taskType")
+        if task_type == "document.parse":
+            return self.parse_runner.run(payload)
+        if task_type == "model.probe":
+            return self.probe_runner.run(payload)
+        if task_type == "sentencing.calculate":
+            return self.sentencing_runner.run(payload)
+        return self.fallback.run(payload)
 
 
-def build_runner(payload: dict[str, Any] | None = None) -> WorkflowRunner:
-    task_type = _task_type(payload or {})
-    if task_type in {"document.parse", "document.parse.v1"}:
-        return DocumentParseRunner()
-    if task_type == "sentencing.calculate":
-        return SentencingRunner()
-    if settings.workflow_profile == "legal":
-        return LangGraphWorkflowRunner()
-    return StubWorkflowRunner()
+def build_runner() -> WorkflowRunner:
+    fallback: WorkflowRunner = LangGraphWorkflowRunner() if settings.workflow_profile == "legal" else StubWorkflowRunner()
+    return DispatchingWorkflowRunner(fallback)

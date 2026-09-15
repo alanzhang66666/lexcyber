@@ -28,7 +28,7 @@
 
 | 字段 | 含义 | T1/T2 使用要求 |
 | --- | --- | --- |
-| `case_id` / `case_code` | T3 数据集稳定标识和演示简称 | 分别写入 `metadata.datasetCaseId` / `metadata.datasetCaseNo`；绝不冒充 T1 `CaseView.id` |
+| `case_id` / `case_code` | T3 数据包稳定标识和 A/B/C 简称 | `case_code` 写入 PR5 固定的 `metadata.datasetCaseId`，`case_id` 保存为 `metadata.t3BundleId`；绝不冒充 T1 `CaseView.id` |
 | `documents[].role` | `case_material` 是案件材料；`benchmark_annotation` 是待核标注 | 标注绝不能计入支持定罪的证据数 |
 | `documents[].sha256` / `source_version` | 原文件内容身份 | 解析结果、事实快照应绑定该版本 |
 | `actors[]` | 人或单位及其材料角色 | 角色不等于主从犯等法律身份 |
@@ -64,7 +64,7 @@
 
 ## T1 API-01 接口映射（已对齐）
 
-`build_t1_case_create()` 输出 T1 `CaseCreate`，不输出 `caseId`；创建后必须使用 T1 返回的 `CaseView.id`。上传前事件文档使用 `doc-pending-upload`，上传后传入 `{T3 document_id: DocumentView.id}` 映射重建 metadata；不得重建解析任务。
+`build_t1_case_create()` 输出 T1 `CaseCreate`，不输出 `caseId`；创建后必须使用 T1 返回的 `CaseView.id`。上传前事件文档使用 `doc-pending-upload`，上传后通过 PR5 PATCH 接口逐事件回填真实 `DocumentView.id`；不得重建解析任务。
 
 ```json
 {
@@ -72,8 +72,8 @@
   "jurisdiction": "CN",
   "asOfDate": "2026-09-14",
   "metadata": {
-    "datasetCaseNo": "B",
-    "datasetCaseId": "demo-case-b-proceeds",
+    "datasetCaseId": "B",
+    "t3BundleId": "demo-case-b-proceeds",
     "relations": {
       "actors": [],
       "organizations": [],
@@ -99,22 +99,23 @@
 
 ## Engine 内部接入契约
 
-T3 只接入 Engine 现有调用链，不新建公开 API。任务分派优先读取 `metadata.task_type` / `metadata.operation`，否则读取 `result_type`。
+T3 只接入 Engine 现有调用链，不新建公开 API。任务分派使用 T1 已固定的 `metadata.taskType`。
 
 ### `document.parse.v1` / `DocumentParseRunner`
 
-上传成功后由 T1 自动建立解析任务。T1 内部调用 Engine 时提供真实 `DocumentView.id`和已取出的文档内容；浏览器或 T2 不传 `storageKey`。
+上传成功后由 T1 自动建立解析任务。浏览器或 T2 只提交文件，不传 `storageKey`；T1 在内部执行包的 metadata 顶层注入真实 `documentId` / `storageKey` / `filename` / `contentType`，Engine 的 `DocumentParseRunner` 再从 MinIO 回读字节。
 
 ```json
 {
-  "result_type": "document.parse.v1",
+  "result_type": "workflow.output",
   "case_id": "case-server-id",
   "metadata": {
-    "document": {
-      "documentId": "doc-server-id",
-      "filename": "material.docx",
-      "content_base64": "..."
-    }
+    "taskType": "document.parse",
+    "documentId": "doc-server-id",
+    "storageKey": "objects/sha256",
+    "filename": "material.docx",
+    "contentType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "schemaVersion": "document.parse.v1"
   }
 }
 ```
@@ -124,16 +125,20 @@ T3 只接入 Engine 现有调用链，不新建公开 API。任务分派优先�
 ```json
 {
   "schemaVersion": "document.parse.v1",
+  "taskType": "document.parse",
   "documentId": "doc-server-id",
+  "format": "docx",
   "paragraphs": [{"paragraph": 1, "locator": "paragraph:1", "text": "...", "style": null}],
   "tables": [],
   "pages": [],
   "text": "...",
-  "warnings": []
+  "warnings": [],
+  "missing": [],
+  "errors": []
 }
 ```
 
-DOCX 使用 `paragraph:n` / `table:n`，PDF 使用 `page:n`。缺少 ID、文件名或内容时返回结构化非重试错误。
+DOCX 使用 `paragraph:n` / `table:n`，PDF 使用 `page:n`。缺少对象存储键、文件为空或解析失败时，沿用 T1 错误码 `DOCUMENT_PARSE_FAILED`；超时为 `DOCUMENT_PARSE_TIMEOUT`。
 
 ### `sentencing.calculate` / `SentencingRunner`
 
@@ -141,23 +146,25 @@ DOCX 使用 `paragraph:n` / `table:n`，PDF 使用 `page:n`。缺少 ID、文件
 
 ```json
 {
-  "result_type": "sentencing.calculate",
+  "result_type": "workflow.output",
   "case_id": "case-server-id",
   "metadata": {
+    "taskType": "sentencing.calculate",
     "sentencing": {
-      "datasetCaseId": "demo-case-b-proceeds",
+      "datasetCaseId": "B",
       "actorId": "actor-b-li"
     }
   }
 }
 ```
 
-会签后也可在 `metadata.sentencing` 中显式传入 `parameters[]` 和 `rule`。输出中 `caseId` 仍是 T1 服务端 ID，`datasetCaseId` 是 T3 数据集 ID。缺少已确认事实或已批准规则时：
+会签后也可在 `metadata.sentencing` 中显式传入 `parameters[]` 和 `rule`。输出中 `caseId` 是 T1 服务端 ID，`datasetCaseId` 是 A/B/C，`t3BundleId` 是 T3 内部稳定 ID。缺少已确认事实或已批准规则时：
 
 ```json
 {
   "caseId": "case-server-id",
-  "datasetCaseId": "demo-case-b-proceeds",
+  "datasetCaseId": "B",
+  "t3BundleId": "demo-case-b-proceeds",
   "actorId": "actor-b-li",
   "analysisStatus": "blocked",
   "termMonths": null,
@@ -166,7 +173,7 @@ DOCX 使用 `paragraph:n` / `table:n`，PDF 使用 `page:n`。缺少 ID、文件
 }
 ```
 
-Worker 必须完整保存该 content，并将任务置为 `waiting_review`；不返回 500，不丢弃 `blockers`。
+Worker 必须完整保存该 content，并将任务置为 `waiting_review`；不返回 500，不丢弃 `blockers`。会签前 `SENTENCING_ENABLED=false`，T1 公开入口仍返回 501。
 
 ### `search_legal_sources()` / 内部同步路由
 
@@ -175,29 +182,28 @@ T1 使用 `X-Service-Token` 调用 `POST /internal/v1/sources/search`，公开 `
 ```json
 {
   "query": "2025掩隐解释",
-  "asOfDate": "2026-09-14",
-  "sourceIds": [],
+  "as_of_date": "2026-09-14",
   "jurisdiction": "CN",
-  "topK": 5
+  "top_k": 5
 }
 ```
 
-输出 `status=ok|unsupported_query`、`documents[]`、`effective_status`、`checked_as_of` 和 `warnings[]`。未覆盖查询是可读业务结果 `unsupported_query`，不是系统异常。
+内部响应严格使用 T1 `SourceSearchResponse.items[]`，每项为 `source_id/locator/title/quote/version/jurisdiction`。未覆盖查询返回空 `items`。会签前 `LEGAL_SOURCE_SEARCH_ENABLED=false`，路由仍返回 `501 SOURCE_SEARCH_UNAVAILABLE`。
 
 ### 统一错误格式
 
-Runner 输入错误使用：
+`sentencing.calculate` 输入错误使用：
 
 ```json
 {
-  "code": "document_parse_input_invalid",
-  "path": "metadata.document",
-  "message": "one of content_base64, text, or pages is required",
+  "code": "DATASET_CASE_ID_MISSING",
+  "path": "metadata.sentencing.datasetCaseId",
+  "message": "T3 dataset case id is required",
   "retryable": false
 }
 ```
 
-该 JSON 写入 Engine `error_message`，`code` 同时写入 `error_code`。未覆盖案件返回 `sentencing_case_unsupported`；此类输入错误不重试。
+该 JSON 写入 Engine `error_message`，`code` 同时写入 `error_code`。未覆盖案件返回 `SENTENCING_CASE_UNSUPPORTED`；此类输入错误不重试。文档解析继续使用 T1 已固定的错误码。
 
 ## PR5 文档回填依赖
 
@@ -208,7 +214,7 @@ PR5 合并后，上传和事件定位的固定顺序是：
 3. `PATCH /v1/cases/{caseId}/metadata/relations/events/{eventId}/document`，请求体为 `{"documentId":"...","locator":"paragraph:3"}`。
 4. 使用返回的最新 `CaseView`。
 
-PR5 未合并前，T3 只生成 `doc-pending-upload`，不自行新建替代公开接口。
+PR5 已合并。创建案件时 T3 先生成 `doc-pending-upload`，上传后通过上述 PATCH 逐事件回填，不新建替代公开接口。
 
 ## T2 展示要求
 

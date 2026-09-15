@@ -7,7 +7,7 @@ for ($index = 1; $index -le $Attempts; $index++) {
     try {
         $response = Invoke-RestMethod -Uri "$BaseUrl/healthz" -TimeoutSec 3
         if ($response.status -eq "ok") {
-            Write-Output "LexCyber v0.3 is ready at $BaseUrl"
+            Write-Output "LexCyber 0.8 is ready at $BaseUrl"
             exit 0
         }
     } catch {

@@ -16,6 +16,17 @@ class EngineSettings(BaseSettings):
     model_api_base_url: str = "https://api.openai.com/v1"
     model_timeout_seconds: float = 45.0
     model_max_retries: int = 2
+    minio_endpoint: str = "http://localhost:9000"
+    minio_access_key: str = ""
+    minio_secret_key: str = ""
+    minio_bucket: str = "lexcyber"
+    document_parse_timeout_seconds: int = 60
+    knowledge_base_url: str = ""
+    legal_source_search_enabled: bool = False
+    sentencing_enabled: bool = False
+    embedding_provider: str = ""
+    embedding_model: str = ""
+    embedding_api_key: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", case_sensitive=False)
 

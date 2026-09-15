@@ -13,6 +13,6 @@ RUN mvn -B package -DskipTests
 
 FROM eclipse-temurin:21-jre
 WORKDIR /app
-COPY --from=build /app/target/lexcyber-server-0.3.0-SNAPSHOT.jar app.jar
+COPY --from=build /app/target/lexcyber-server-0.8.0-SNAPSHOT.jar app.jar
 EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "app.jar"]

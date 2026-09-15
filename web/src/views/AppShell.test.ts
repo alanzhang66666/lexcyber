@@ -3,11 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { api } from '../api'
 import App from '../App.vue'
 import { restoreSession } from '../lib/auth'
+import { currentCaseId } from '../lib/current-case'
 import router from '../router'
 
 beforeEach(() => {
   localStorage.clear()
   sessionStorage.clear()
+  currentCaseId.value = null
   restoreSession()
   window.scrollTo = () => {}
 })
@@ -23,6 +25,7 @@ function seedSession() {
 
 async function mountApp(path: string) {
   vi.spyOn(api, 'listReviews').mockResolvedValue({ items: [], page: 0, size: 20, total: 0 })
+  vi.spyOn(api, 'listCases').mockResolvedValue({ items: [], page: 0, size: 50, total: 0 })
   vi.spyOn(api, 'getSession').mockResolvedValue({ username: 'tester', displayName: '测试员' })
   await router.push(path)
   await router.isReady()
@@ -51,7 +54,10 @@ describe('product shell', () => {
     expect(wrapper.text()).toContain('穿透数据迷雾，锚定资金踪迹。')
     expect(wrapper.text()).toContain('规则可核，过程可溯。')
     expect(wrapper.text()).toContain('让智能辅助研判，让裁量归于人心。')
-    expect(wrapper.text()).toContain('智能阅卷')
+    expect(wrapper.text()).toContain('合规筛查')
+    expect(wrapper.text()).toContain('定罪研判')
+    expect(wrapper.text()).toContain('量刑分析')
+    expect(wrapper.text()).toContain('复核归档')
     expect(wrapper.text()).toContain('立即体验')
     wrapper.unmount()
   })
@@ -70,6 +76,49 @@ describe('product shell', () => {
     expect(router.currentRoute.value.name).toBe('login')
     expect(wrapper.text()).toContain('登录')
     expect(wrapper.text()).toContain('注册')
+    wrapper.unmount()
+  })
+
+  it('points the home sentencing card at a real T1 case, not lin-128', async () => {
+    seedSession()
+    vi.spyOn(api, 'listReviews').mockResolvedValue({ items: [], page: 0, size: 20, total: 0 })
+    vi.spyOn(api, 'getSession').mockResolvedValue({ username: 'tester', displayName: '测试员' })
+    vi.spyOn(api, 'listCases').mockResolvedValue({
+      items: [{ id: 't1-case-9', title: '交接样例案', createdAt: 't', updatedAt: 't' }],
+      page: 0,
+      size: 50,
+      total: 1,
+    })
+    await router.push('/')
+    await router.isReady()
+    const wrapper = mount(App, { global: { plugins: [router] } })
+    await flushPromises()
+    const sentencing = wrapper.findAll('a').find((item) => item.text().includes('量刑分析'))
+    expect(sentencing?.attributes('href')).toBe('/cases/t1-case-9/analysis')
+    expect(wrapper.html()).not.toContain('lin-128')
+    wrapper.unmount()
+  })
+
+  it('redirects /docket away from placeholder lin-128', async () => {
+    seedSession()
+    sessionStorage.setItem('lexcyber.last-case-id', 'lin-128')
+    const wrapper = await mountApp('/docket')
+    expect(router.currentRoute.value.path).toBe('/cases')
+    expect(router.currentRoute.value.path).not.toContain('lin-128')
+    wrapper.unmount()
+  })
+
+  it('redirects /analysis to the remembered T1 case', async () => {
+    seedSession()
+    sessionStorage.setItem('lexcyber.last-case-id', 't1-case-9')
+    currentCaseId.value = 't1-case-9'
+    vi.spyOn(api, 'getCase').mockResolvedValue({
+      id: 't1-case-9', title: '交接样例案', createdAt: 't', updatedAt: 't',
+    })
+    const wrapper = await mountApp('/analysis')
+    expect(router.currentRoute.value.path).toBe('/cases/t1-case-9/analysis')
+    expect(wrapper.text()).toContain('量刑结果未接通')
+    expect(wrapper.text()).not.toContain('林某')
     wrapper.unmount()
   })
 })

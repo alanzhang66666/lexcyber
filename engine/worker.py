@@ -9,22 +9,42 @@ from uuid import UUID
 
 import httpx
 
+from engine.adapters.sentencing import SentencingInputError, SentencingUnavailable
 from engine.contracts import ExecutionView
-from engine.runners import RunnerInputError
+from engine.document_parse import DocumentParseError
 from engine.settings import settings
 from engine.store import complete_execution, get_execution, mark_running, record_callback_failure
 from engine.workflow import build_runner
+from models.errors import ModelError, ModelTimeoutError
 
 logger = logging.getLogger(__name__)
+
+
+def _task_type(payload: dict[str, Any]) -> str | None:
+    metadata = payload.get("metadata") or {}
+    value = metadata.get("taskType")
+    return str(value) if value else None
+
+
+def _running_stage(task_type: str | None) -> str:
+    if task_type == "document.parse":
+        return "document_parsing"
+    if task_type == "model.probe":
+        return "model_probe"
+    if task_type == "sentencing.calculate":
+        return "sentencing"
+    return "running"
 
 
 def run_execution(payload: dict[str, Any]) -> dict[str, Any]:
     execution_id = UUID(str(payload["execution_id"]))
     owner = f"{socket.gethostname()}:{os.getpid()}"
-    if not mark_running(execution_id, owner):
+    task_type = _task_type(payload)
+    running_stage = _running_stage(task_type)
+    if not mark_running(execution_id, owner, running_stage):
         return get_execution(execution_id) or {}
     try:
-        result = build_runner(payload).run(payload)
+        result = build_runner().run(payload)
         waiting = bool(result.get("human_approval_required"))
         status = "waiting_review" if waiting else "completed"
         output = result.get("final_output")
@@ -33,12 +53,12 @@ def run_execution(payload: dict[str, Any]) -> dict[str, Any]:
         complete_execution(execution_id, status, "awaiting_review" if waiting else "output", output, None, None)
         _notify_application(execution_id)
         return result
-    except RunnerInputError as exc:
+    except SentencingInputError as exc:
         error = exc.as_dict()
         complete_execution(
             execution_id,
             "failed",
-            "invalid_input",
+            "sentencing",
             None,
             exc.code,
             json.dumps(error, ensure_ascii=False, sort_keys=True),
@@ -46,12 +66,36 @@ def run_execution(payload: dict[str, Any]) -> dict[str, Any]:
         )
         _notify_application(execution_id)
         raise
-    except TimeoutError as exc:
-        complete_execution(execution_id, "timed_out", "timeout", None, "ENGINE_TIMEOUT", str(exc))
+    except (TimeoutError, ModelTimeoutError) as exc:
+        if task_type == "document.parse":
+            code, stage = "DOCUMENT_PARSE_TIMEOUT", "document_parsing"
+        elif task_type == "model.probe":
+            code, stage = "MODEL_TIMEOUT", "model_probe"
+        else:
+            code, stage = "ENGINE_TIMEOUT", "timeout"
+        complete_execution(execution_id, "timed_out", stage, None, code, str(exc))
+        _notify_application(execution_id)
+        raise
+    except DocumentParseError as exc:
+        complete_execution(execution_id, "failed", "document_parsing", None, exc.code, str(exc))
+        _notify_application(execution_id)
+        raise
+    except SentencingUnavailable as exc:
+        complete_execution(execution_id, "failed", "sentencing", None, exc.code, str(exc))
+        _notify_application(execution_id)
+        raise
+    except ModelError as exc:
+        complete_execution(execution_id, "failed", "model_probe", None, exc.code, str(exc))
         _notify_application(execution_id)
         raise
     except Exception as exc:
-        complete_execution(execution_id, "failed", "failed", None, "ENGINE_FAILED", str(exc), retryable=True)
+        if task_type == "document.parse":
+            code, stage, retryable = "DOCUMENT_PARSE_FAILED", "document_parsing", False
+        elif task_type == "model.probe":
+            code, stage, retryable = "MODEL_FAILED", "model_probe", False
+        else:
+            code, stage, retryable = "ENGINE_FAILED", "failed", True
+        complete_execution(execution_id, "failed", stage, None, code, str(exc), retryable=retryable)
         _notify_application(execution_id)
         raise
 

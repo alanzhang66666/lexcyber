@@ -1,58 +1,69 @@
 <script setup lang="ts">
-import PlaceholderBanner from '../components/PlaceholderBanner.vue'
-import { PHASE_LABEL, PLACEHOLDER_CASES, RISK_LABEL, rememberCase } from '../data/placeholder-cases'
+import { onMounted, ref } from 'vue'
+import { api } from '../api'
+import type { CaseView } from '../api-types'
+
+const loading = ref(true)
+const error = ref('')
+const cases = ref<CaseView[]>([])
+
+async function load() {
+  loading.value = true
+  error.value = ''
+  try {
+    const page = await api.listCases({ page: 0, size: 50 })
+    cases.value = page.items
+  } catch (caught) {
+    error.value = caught instanceof Error ? caught.message : '案件列表读取失败。'
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(() => void load())
 </script>
 
 <template>
   <div class="page-stack">
-    <PlaceholderBanner />
     <header class="page-heading">
       <div>
         <p class="eyebrow">案件中心</p>
         <h1>案件中心</h1>
-        <p>统一查看跨境网域犯罪案件的材料、分析和审核状态。下列案件为界面示例。</p>
+        <p>统一查看案件、材料与解析状态。列表数据来自服务端。</p>
       </div>
       <RouterLink class="button button-primary" to="/cases/new">新建案件</RouterLink>
     </header>
-    <div class="filter-bar panel">
-      <label class="wide-search">
-        <span>搜索</span>
-        <input disabled placeholder="搜索案号、案件名称或当事人（占位）" />
-      </label>
-      <span class="subtle-chip">状态 · 罪名 · 风险 筛选尚未接通</span>
+
+    <div v-if="loading" class="panel empty-state" aria-live="polite">正在读取案件列表…</div>
+
+    <div v-else-if="error" class="panel">
+      <p class="notice notice-error" role="alert">{{ error }}</p>
+      <button class="button button-quiet" type="button" @click="load">重试</button>
     </div>
-    <div class="case-card-grid">
-      <RouterLink
-        v-for="item in PLACEHOLDER_CASES"
-        :key="item.id"
-        class="matter-card"
-        :to="`/cases/${item.id}`"
-        @click="rememberCase(item.id)"
-      >
+
+    <div v-else-if="!cases.length" class="panel empty-state">
+      <span aria-hidden="true">＋</span>
+      <strong>还没有案件</strong>
+      <p>新建一个案件后，可在此上传材料并发起解析。</p>
+      <RouterLink class="button button-primary" to="/cases/new">新建案件</RouterLink>
+    </div>
+
+    <div v-else class="case-card-grid">
+      <RouterLink v-for="item in cases" :key="item.id" class="matter-card" :to="`/cases/${item.id}`">
         <div class="matter-top">
-          <span class="case-avatar">{{ item.party.slice(0, 1) }}</span>
-          <span class="risk-pill" :class="`risk-${item.risk}`">{{ RISK_LABEL[item.risk] }}</span>
+          <span class="case-avatar">{{ (item.title || '案').slice(0, 1) }}</span>
+          <span class="risk-pill">{{ item.jurisdiction || '未填法域' }}</span>
         </div>
-        <h2>{{ item.shortName }}</h2>
-        <p>{{ item.caseNumber }}</p>
-        <div class="matter-meta">
-          <span>{{ item.instance }}</span>
-          <span>{{ item.jurisdiction }}</span>
-          <span>{{ item.charge }}</span>
-        </div>
-        <div class="matter-progress">
-          <span>要素确认 {{ item.confirmedFields }} / {{ item.totalFields }}</span>
-          <i><em :style="{ width: `${Math.round((item.confirmedFields / item.totalFields) * 100)}%` }" /></i>
-        </div>
+        <h2>{{ item.title }}</h2>
+        <p>{{ item.asOfDate || '未填日期' }}</p>
         <footer>
-          <span class="stage-pill">{{ PHASE_LABEL[item.phase] }}</span>
-          <time>{{ item.updatedAt }}</time>
+          <span>{{ item.createdAt }}</span>
         </footer>
       </RouterLink>
       <RouterLink class="matter-card matter-card-new" to="/cases/new">
         <span>+</span>
         <strong>新建案件</strong>
-        <small>从卷宗导入或手动创建（占位向导）</small>
+        <small>创建案件并上传卷宗材料</small>
       </RouterLink>
     </div>
   </div>

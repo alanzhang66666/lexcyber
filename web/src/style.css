@@ -120,7 +120,7 @@ textarea { min-height: 88px; padding: 11px 12px; line-height: 1.55; resize: vert
 input:hover, textarea:hover { border-color: #aaa2b7; }
 input:focus, textarea:focus { border-color: var(--lc-brand-500); box-shadow: 0 0 0 3px rgb(117 84 246 / 12%); outline: none; }
 input:disabled, textarea:disabled { color: var(--lc-muted); background: var(--lc-surface-alt); cursor: not-allowed; }
-.check-row { grid-template-columns: auto 1fr; align-items: start; padding: 12px; background: var(--lc-surface-alt); border: 1px solid var(--lc-line); border-radius: 6px; cursor: pointer; }
+.check-row { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: start; padding: 12px; background: var(--lc-surface-alt); border: 1px solid var(--lc-line); border-radius: 6px; cursor: pointer; }
 .check-row input { width: 16px; height: 16px; margin: 2px 0 0; accent-color: var(--lc-brand-500); }
 .check-row span { display: grid; gap: 4px; }
 .check-row small { color: var(--lc-muted); font-size: 11px; font-weight: 500; line-height: 1.45; }

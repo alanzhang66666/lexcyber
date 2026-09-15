@@ -14,11 +14,16 @@ export type TaskStatus =
 export type ReviewStatus = 'pending' | 'approved' | 'rejected' | 'superseded'
 export type ReviewDecisionValue = 'approve' | 'reject' | 'retry' | 'none'
 
+export type TaskType = 'document.parse' | 'model.probe' | 'sentencing.calculate'
+
 export type TaskCreate = {
   query: string
   caseId?: string
   sessionId?: string
-  metadata?: Record<string, unknown>
+  metadata?: {
+    taskType?: TaskType
+    [key: string]: unknown
+  }
 }
 
 export type SourceRef = {
@@ -55,6 +60,7 @@ export type TaskView = {
 export type ReviewRecord = {
   id: string
   taskId?: string | null
+  caseId?: string | null
   resultVersion: number
   status: ReviewStatus
   decision: ReviewDecisionValue
@@ -66,6 +72,60 @@ export type ReviewRecord = {
 
 export type ReviewPage = {
   items: ReviewRecord[]
+  page: number
+  size: number
+  total: number
+}
+
+export type DocumentRole = 'input' | 'annotation'
+
+export type ParseStatus =
+  | 'not_started'
+  | TaskStatus
+
+export type CaseCreate = {
+  title: string
+  jurisdiction?: string | null
+  asOfDate?: string | null
+  metadata?: Record<string, unknown>
+}
+
+export type CaseView = {
+  id: string
+  title: string
+  jurisdiction?: string | null
+  asOfDate?: string | null
+  metadata?: Record<string, unknown> | null
+  createdAt: string
+  updatedAt: string
+}
+
+export type CaseEventDocumentUpdate = {
+  documentId: string
+  locator?: string
+}
+
+export type PageCase = {
+  items: CaseView[]
+  page: number
+  size: number
+  total: number
+}
+
+export type DocumentView = {
+  id: string
+  caseId: string
+  filename: string
+  contentType: string
+  size: number
+  role: DocumentRole
+  parseStatus: ParseStatus
+  parseTaskId?: string | null
+  createdAt: string
+}
+
+export type PageDocument = {
+  items: DocumentView[]
   page: number
   size: number
   total: number
@@ -100,6 +160,47 @@ export type SessionView = {
   username: string
   displayName: string
   expiresAt?: string | null
+}
+
+export type FactItem = {
+  id?: string
+  key: string
+  value: string
+  locator?: string | null
+  sourceDocumentId?: string | null
+}
+
+export type FactUpdate = {
+  items: FactItem[]
+}
+
+export type FactView = {
+  caseId: string
+  schemaVersion: 'case.facts.v1'
+  status: 'draft' | 'confirmed'
+  items: FactItem[]
+  updatedAt: string
+  confirmedAt?: string | null
+}
+
+export type SourceSearchRequest = {
+  query: string
+  jurisdiction?: string | null
+  asOfDate?: string | null
+  topK?: number
+}
+
+export type SourceSearchHit = {
+  sourceId: string
+  locator: string
+  title?: string | null
+  quote?: string | null
+  version?: string | null
+  jurisdiction?: string | null
+}
+
+export type SourceSearchResponse = {
+  items: SourceSearchHit[]
 }
 
 export type ApiErrorPayload = {

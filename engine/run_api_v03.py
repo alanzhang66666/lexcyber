@@ -1,4 +1,4 @@
-"""Isolated v0.3 entry point: broker and audit bridge are installed first."""
+"""Isolated 0.8 entry point: broker and audit bridge are installed first."""
 
 import dramatiq
 from dramatiq.brokers.redis import RedisBroker

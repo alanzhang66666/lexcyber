@@ -122,8 +122,9 @@ def build_t1_case_create(
         # T1 asOfDate is the legal-analysis date; conduct dates remain events.
         "asOfDate": str(bundle.get("analysis_as_of_date", "")),
         "metadata": {
-            "datasetCaseNo": str(bundle.get("case_code", "")),
-            "datasetCaseId": str(bundle.get("case_id", "")),
+            # PR5 froze datasetCaseId as the external A/B/C dataset key.
+            "datasetCaseId": str(bundle.get("case_code", "")),
+            "t3BundleId": str(bundle.get("case_id", "")),
             "relations": {
                 "actors": people,
                 "organizations": organizations,
@@ -209,7 +210,7 @@ def build_t1_fact_view(
 
 
 def map_sentencing_result_to_t1(
-    result: Mapping[str, Any], *, case_id: str
+    result: Mapping[str, Any], *, case_id: str, dataset_case_id: str | None = None
 ) -> dict[str, Any]:
     """Separate T1 TaskView status from T3's content-level analysis status."""
 
@@ -219,7 +220,8 @@ def map_sentencing_result_to_t1(
     task_status = "waiting_review" if human_review_required else "completed"
     content = {
         "caseId": case_id,
-        "datasetCaseId": result.get("case_id"),
+        "datasetCaseId": dataset_case_id or result.get("case_id"),
+        "t3BundleId": result.get("case_id"),
         "actorId": result.get("actor_id"),
         "analysisStatus": result.get("status"),
         "ruleVersion": result.get("rule_version"),

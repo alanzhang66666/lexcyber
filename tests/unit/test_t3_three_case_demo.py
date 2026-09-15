@@ -151,8 +151,8 @@ def test_t1_case_create_keeps_server_case_id_unassigned_and_splits_organizations
     payload = build_t1_case_create(load_case_bundle("C"))
     assert "caseId" not in payload
     assert payload["asOfDate"] == "2026-09-14"
-    assert payload["metadata"]["datasetCaseNo"] == "C"
-    assert payload["metadata"]["datasetCaseId"] == "demo-case-c-unit-crossborder"
+    assert payload["metadata"]["datasetCaseId"] == "C"
+    assert payload["metadata"]["t3BundleId"] == "demo-case-c-unit-crossborder"
     relations = payload["metadata"]["relations"]
     assert all(item["actorId"] != "actor-c-company" for item in relations["actors"])
     company = next(item for item in relations["organizations"] if item["actorId"] == "actor-c-company")
@@ -200,9 +200,10 @@ def test_t1_fact_confirmation_requires_explicit_human_confirmed_selection():
 
 def test_t1_mapping_keeps_blocked_inside_content_and_uses_waiting_review_task_status():
     result = calculate_case_sentencing(load_case_bundle("B"), "actor-b-li")
-    payload = map_sentencing_result_to_t1(result, case_id="case-server-b")
+    payload = map_sentencing_result_to_t1(result, case_id="case-server-b", dataset_case_id="B")
     assert payload["taskStatus"] == "waiting_review"
     assert payload["content"]["analysisStatus"] == "blocked"
     assert payload["content"]["caseId"] == "case-server-b"
-    assert payload["content"]["datasetCaseId"] == "demo-case-b-proceeds"
+    assert payload["content"]["datasetCaseId"] == "B"
+    assert payload["content"]["t3BundleId"] == "demo-case-b-proceeds"
     assert "status" not in payload["content"]

@@ -10,7 +10,7 @@
   </parent>
   <groupId>com.lexcyber</groupId>
   <artifactId>lexcyber-server</artifactId>
-  <version>0.3.0-SNAPSHOT</version>
+  <version>0.8.0-SNAPSHOT</version>
   <name>LexCyber Java application service</name>
   <description>Public API, business transactions and result/review ownership.</description>
   <properties>
@@ -25,7 +25,10 @@
     <dependency><groupId>org.flywaydb</groupId><artifactId>flyway-database-postgresql</artifactId><version>${flyway.version}</version></dependency>
     <dependency><groupId>org.postgresql</groupId><artifactId>postgresql</artifactId><scope>runtime</scope></dependency>
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-actuator</artifactId></dependency>
+    <dependency><groupId>io.minio</groupId><artifactId>minio</artifactId><version>8.5.12</version></dependency>
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-test</artifactId><scope>test</scope></dependency>
+    <dependency><groupId>org.testcontainers</groupId><artifactId>junit-jupiter</artifactId><scope>test</scope></dependency>
+    <dependency><groupId>org.testcontainers</groupId><artifactId>postgresql</artifactId><scope>test</scope></dependency>
   </dependencies>
   <build>
     <plugins>

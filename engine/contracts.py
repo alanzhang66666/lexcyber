@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import AliasChoices, BaseModel, Field
+from pydantic import BaseModel, Field
 
 
 def canonical_input_hash(query: str, case_id: str | None, session_id: str | None, metadata: dict[str, Any]) -> str:
@@ -31,7 +31,27 @@ class ExecutionRequest(BaseModel):
     session_id: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
     input_hash: str = Field(min_length=16, max_length=128)
-    contract_version: str = "public-api-0.3"
+    contract_version: str = "public-api-0.8"
+
+
+class SourceSearchRequest(BaseModel):
+    query: str = Field(min_length=1, max_length=4000)
+    jurisdiction: str | None = None
+    as_of_date: str | None = None
+    top_k: int = Field(default=5, ge=1, le=50)
+
+
+class SourceSearchHit(BaseModel):
+    source_id: str
+    locator: str
+    title: str | None = None
+    quote: str | None = None
+    version: str | None = None
+    jurisdiction: str | None = None
+
+
+class SourceSearchResponse(BaseModel):
+    items: list[SourceSearchHit] = Field(default_factory=list)
 
 
 class ExecutionView(BaseModel):
@@ -52,11 +72,3 @@ class ExecutionView(BaseModel):
     updated_at: datetime | None = None
     input_hash: str | None = None
     enqueued_at: datetime | None = None
-
-
-class SourceSearchRequest(BaseModel):
-    query: str = Field(min_length=1, max_length=2_000)
-    as_of_date: str | None = Field(default=None, validation_alias=AliasChoices("as_of_date", "asOfDate"))
-    source_ids: list[str] = Field(default_factory=list, validation_alias=AliasChoices("source_ids", "sourceIds"))
-    jurisdiction: str = "CN"
-    top_k: int = Field(default=5, ge=1, le=20, validation_alias=AliasChoices("top_k", "topK"))

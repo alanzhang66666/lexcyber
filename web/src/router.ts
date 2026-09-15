@@ -1,13 +1,18 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { lastCaseId } from './data/placeholder-cases'
+import { formalCasePath } from './lib/current-case'
 import { isAuthenticated } from './lib/auth'
+import AboutPage from './views/AboutPage.vue'
 import AnalysisPage from './views/AnalysisPage.vue'
 import AuditPage from './views/AuditPage.vue'
 import AuthPage from './views/AuthPage.vue'
 import CaseNewPage from './views/CaseNewPage.vue'
 import CasesPage from './views/CasesPage.vue'
 import CaseWorkspacePage from './views/CaseWorkspacePage.vue'
+import CompliancePage from './views/CompliancePage.vue'
+import ConvictionPage from './views/ConvictionPage.vue'
 import DocketPage from './views/DocketPage.vue'
+import FunctionsPage from './views/FunctionsPage.vue'
 import HomePage from './views/HomePage.vue'
 import ReviewDetailPage from './views/ReviewDetailPage.vue'
 import ReviewsPage from './views/ReviewsPage.vue'
@@ -22,13 +27,17 @@ const router = createRouter({
   routes: [
     { path: '/login', name: 'login', component: AuthPage, meta: { title: '登录', public: true } },
     { path: '/', name: 'home', component: HomePage, meta: { title: '首页', public: true } },
+    { path: '/functions', name: 'functions', component: FunctionsPage, meta: { title: '功能中心', public: true } },
+    { path: '/about', name: 'about', component: AboutPage, meta: { title: '关于我们', public: true } },
+    { path: '/compliance', name: 'compliance', component: CompliancePage, meta: { title: '合规筛查' } },
+    { path: '/conviction', name: 'conviction', component: ConvictionPage, meta: { title: '定罪研判' } },
     { path: '/cases', name: 'cases', component: CasesPage, meta: { title: '案件中心' } },
     { path: '/cases/new', name: 'case-new', component: CaseNewPage, meta: { title: '新建案件' } },
     { path: '/cases/:caseId', name: 'case-workspace', component: CaseWorkspacePage, props: true, meta: { title: '案件工作区' } },
     { path: '/cases/:caseId/docket', name: 'docket', component: DocketPage, props: true, meta: { title: '智能阅卷' } },
     { path: '/cases/:caseId/analysis', name: 'analysis', component: AnalysisPage, props: true, meta: { title: '量刑分析' } },
-    { path: '/docket', redirect: () => `/cases/${lastCaseId()}/docket` },
-    { path: '/analysis', redirect: () => `/cases/${lastCaseId()}/analysis` },
+    { path: '/docket', redirect: () => formalCasePath('docket', lastCaseId()) },
+    { path: '/analysis', redirect: () => formalCasePath('analysis', lastCaseId()) },
     { path: '/sources', name: 'sources', component: SourcesPage, meta: { title: '法源与类案' } },
     { path: '/rules', name: 'rules', component: RulesPage, meta: { title: '量刑规则' } },
     { path: '/audit', name: 'audit', component: AuditPage, meta: { title: '统计与审计' } },

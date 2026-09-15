@@ -2,11 +2,21 @@ import type {
   ApiErrorPayload,
   AuthLogin,
   AuthRegister,
+  CaseCreate,
+  CaseView,
+  DocumentRole,
+  DocumentView,
+  FactUpdate,
+  FactView,
+  PageCase,
+  PageDocument,
   ResultPayload,
   ReviewDecision,
   ReviewPage,
   ReviewRecord,
   SessionView,
+  SourceSearchRequest,
+  SourceSearchResponse,
   TaskCreate,
   TaskView,
 } from './api-types'
@@ -44,7 +54,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
       ...init,
       headers: {
         Accept: 'application/json',
-        ...(init.body ? { 'Content-Type': 'application/json' } : {}),
+        ...(init.body && !(init.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}),
         ...authHeaders(),
         ...init.headers,
       },
@@ -75,6 +85,13 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   } finally {
     window.clearTimeout(timeout)
   }
+}
+
+function newIdempotencyKey(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`
 }
 
 export const api = {
@@ -127,5 +144,65 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(input),
     })
+  },
+
+  getCaseFacts(caseId: string) {
+    return request<FactView>(`/v1/cases/${encodeURIComponent(caseId)}/facts`)
+  },
+
+  putCaseFacts(caseId: string, input: FactUpdate) {
+    return request<FactView>(`/v1/cases/${encodeURIComponent(caseId)}/facts`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    })
+  },
+
+  confirmCaseFacts(caseId: string) {
+    return request<FactView>(`/v1/cases/${encodeURIComponent(caseId)}/facts/confirm`, { method: 'POST' })
+  },
+
+  searchSources(input: SourceSearchRequest) {
+    return request<SourceSearchResponse>('/v1/sources/search', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    })
+  },
+
+  createCase(input: CaseCreate) {
+    return request<CaseView>('/v1/cases', { method: 'POST', body: JSON.stringify(input) })
+  },
+
+  listCases(options: { page?: number; size?: number } = {}) {
+    const params = new URLSearchParams()
+    params.set('page', String(options.page ?? 0))
+    params.set('size', String(options.size ?? 20))
+    return request<PageCase>(`/v1/cases?${params.toString()}`)
+  },
+
+  getCase(caseId: string) {
+    return request<CaseView>(`/v1/cases/${encodeURIComponent(caseId)}`)
+  },
+
+  uploadDocument(caseId: string, file: File, role: DocumentRole, idempotencyKey?: string) {
+    const form = new FormData()
+    form.append('file', file)
+    form.append('role', role)
+    return request<DocumentView>(`/v1/cases/${encodeURIComponent(caseId)}/documents`, {
+      method: 'POST',
+      body: form,
+      headers: { 'Idempotency-Key': idempotencyKey ?? newIdempotencyKey() },
+    })
+  },
+
+  listDocuments(caseId: string, options: { role?: DocumentRole; page?: number; size?: number } = {}) {
+    const params = new URLSearchParams()
+    if (options.role) params.set('role', options.role)
+    params.set('page', String(options.page ?? 0))
+    params.set('size', String(options.size ?? 20))
+    return request<PageDocument>(`/v1/cases/${encodeURIComponent(caseId)}/documents?${params.toString()}`)
+  },
+
+  getDocument(documentId: string) {
+    return request<DocumentView>(`/v1/documents/${encodeURIComponent(documentId)}`)
   },
 }

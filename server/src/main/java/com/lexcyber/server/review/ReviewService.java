@@ -1,9 +1,11 @@
 package com.lexcyber.server.review;
 
+import com.lexcyber.server.api.ApiException;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.List;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -14,6 +16,16 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class ReviewService {
+    private static final String OWNED_FROM = """
+            FROM app.review_records r
+            JOIN app.tasks t ON t.id = r.task_id
+            JOIN app.cases c ON c.id = t.case_id AND c.owner_account_id = ?
+            """;
+    private static final String OWNED_SELECT = """
+            SELECT r.id, r.task_id, t.case_id, r.result_version, r.status, r.decision,
+                   r.actor, r.authenticated, r.comment, r.decided_at, r.created_at
+            """ + OWNED_FROM;
+
     private final JdbcTemplate jdbc;
 
     public ReviewService(JdbcTemplate jdbc) {
@@ -21,24 +33,46 @@ public class ReviewService {
     }
 
     @Transactional(readOnly = true)
-    public Map<String, Object> list(String status, int page, int size) {
-        if (page < 0 || size < 1 || size > 100) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "invalid page");
-        String filter = status == null || status.isBlank() ? "" : " WHERE r.status = ?";
-        Object[] params = filter.isEmpty() ? new Object[] {size, page * size} : new Object[] {status, size, page * size};
-        List<Map<String, Object>> items = jdbc.query("SELECT r.id, r.task_id, r.result_version, r.status, r.decision, r.actor, r.authenticated, r.comment, r.decided_at, r.created_at FROM app.review_records r" + filter + " ORDER BY r.created_at DESC LIMIT ? OFFSET ?", this::map, params);
-        Long total = filter.isEmpty() ? jdbc.queryForObject("SELECT COUNT(*) FROM app.review_records", Long.class) : jdbc.queryForObject("SELECT COUNT(*) FROM app.review_records WHERE status = ?", Long.class, status);
+    public Map<String, Object> list(UUID ownerAccountId, String status, int page, int size) {
+        requireOwner(ownerAccountId);
+        if (page < 0 || size < 1 || size > 100) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "invalid page");
+        }
+        boolean filterStatus = status != null && !status.isBlank();
+        List<Object> params = new ArrayList<>();
+        params.add(ownerAccountId);
+        String statusClause = "";
+        if (filterStatus) {
+            statusClause = " WHERE r.status = ?";
+            params.add(status);
+        }
+        params.add(size);
+        params.add(page * size);
+        List<Map<String, Object>> items = jdbc.query(
+                OWNED_SELECT + statusClause + " ORDER BY r.created_at DESC LIMIT ? OFFSET ?",
+                this::map,
+                params.toArray());
+        List<Object> countParams = new ArrayList<>();
+        countParams.add(ownerAccountId);
+        if (filterStatus) {
+            countParams.add(status);
+        }
+        Long total = jdbc.queryForObject(
+                "SELECT COUNT(*) " + OWNED_FROM + statusClause,
+                Long.class,
+                countParams.toArray());
         return Map.of("items", items, "page", page, "size", size, "total", total == null ? 0L : total);
     }
 
     @Transactional(readOnly = true)
-    public Map<String, Object> get(UUID reviewId) {
-        List<Map<String, Object>> rows = jdbc.query("SELECT r.id, r.task_id, r.result_version, r.status, r.decision, r.actor, r.authenticated, r.comment, r.decided_at, r.created_at FROM app.review_records r WHERE r.id = ?", this::map, reviewId);
-        if (rows.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "review not found");
-        return rows.get(0);
+    public Map<String, Object> get(UUID ownerAccountId, UUID reviewId) {
+        return requireOwned(ownerAccountId, reviewId);
     }
 
     @Transactional
-    public Map<String, Object> decide(UUID reviewId, String decision, int resultVersion, String actor, String comment) {
+    public Map<String, Object> decide(UUID ownerAccountId, UUID reviewId, String decision, int resultVersion,
+                                      String actor, String comment) {
+        requireOwned(ownerAccountId, reviewId);
         String nextStatus = "approve".equals(decision) ? "approved" : "rejected";
         List<UUID> tasks = jdbc.query("""
                 UPDATE app.review_records SET status=?, decision=?, actor=?, authenticated=true, comment=?, decided_at=now()
@@ -46,8 +80,7 @@ public class ReviewService {
                 RETURNING task_id
                 """, (rs, ignored) -> rs.getObject("task_id", UUID.class), nextStatus, decision, actor, comment, reviewId, resultVersion);
         if (tasks.isEmpty()) {
-            List<String> states = jdbc.query("SELECT status FROM app.review_records WHERE id=?", (rs, ignored) -> rs.getString("status"), reviewId);
-            if (states.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "review not found");
+            requireOwned(ownerAccountId, reviewId);
             throw new ResponseStatusException(HttpStatus.CONFLICT, "review is already decided or has a different result version");
         }
         UUID taskId = tasks.get(0);
@@ -62,13 +95,30 @@ public class ReviewService {
                 VALUES (?, ?, 'review', ?, jsonb_build_object('taskId', ?::text, 'requestId', ?::text,
                                                                'executionId', ?::text, 'resultVersion', ?))
                 """, actor, decision, reviewId.toString(), taskId.toString(), requestId.toString(), executionId.toString(), resultVersion);
-        return get(reviewId);
+        return requireOwned(ownerAccountId, reviewId);
+    }
+
+    private Map<String, Object> requireOwned(UUID ownerAccountId, UUID reviewId) {
+        requireOwner(ownerAccountId);
+        List<Map<String, Object>> rows = jdbc.query(OWNED_SELECT + " WHERE r.id = ?", this::map, ownerAccountId, reviewId);
+        if (rows.isEmpty()) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "REVIEW_NOT_FOUND", "复核记录不存在或不可访问");
+        }
+        return rows.get(0);
+    }
+
+    private static void requireOwner(UUID ownerAccountId) {
+        if (ownerAccountId == null) {
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", "session required");
+        }
     }
 
     private Map<String, Object> map(ResultSet rs, int ignored) throws SQLException {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("id", rs.getObject("id", UUID.class));
         result.put("taskId", rs.getObject("task_id", UUID.class));
+        String caseId = rs.getString("case_id");
+        result.put("caseId", caseId == null || caseId.isBlank() ? null : caseId);
         result.put("resultVersion", rs.getInt("result_version"));
         result.put("status", rs.getString("status"));
         result.put("decision", rs.getString("decision"));

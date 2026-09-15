@@ -6,7 +6,16 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
+from engine.settings import settings
+
 SOURCE_PATH = Path(__file__).with_name("legal_sources.json")
+
+
+class SourceSearchUnavailable(Exception):
+    code = "SOURCE_SEARCH_UNAVAILABLE"
+
+    def __init__(self, message: str = "legal source search is not enabled before T3 legal sign-off") -> None:
+        super().__init__(message)
 
 
 def _parse_date(value: str | None) -> date | None:
@@ -50,7 +59,7 @@ def search_legal_sources(
     jurisdiction: str = "CN",
     top_k: int = 5,
 ) -> dict[str, Any]:
-    """Search a small, versioned official-source corpus for the A/B/C demo only."""
+    """Search the versioned official-source corpus limited to the A/B/C demo."""
 
     as_of = _parse_date(as_of_date) or date.today()
     normalized_query = re.sub(r"\s+", "", query).lower()
@@ -88,8 +97,7 @@ def search_legal_sources(
             item = {**source, "effective_status": _effective_status(source, as_of), "checked_as_of": as_of.isoformat(), "score": score}
             scored.append((score, item))
     scored.sort(key=lambda item: (-item[0], item[1]["id"]))
-    documents = [item for _, item in scored[: max(1, min(top_k, 20))]]
-    status = "ok" if documents else "unsupported_query"
+    documents = [item for _, item in scored[: max(1, min(top_k, 50))]]
     warnings = []
     if not documents:
         warnings.append("query is outside the curated three-case legal-source corpus")
@@ -97,10 +105,34 @@ def search_legal_sources(
         warnings.append("one or more matched sources are not effective on the requested date; legal temporal applicability requires human review")
     warnings.append("retrieval coverage is intentionally limited to the A/B/C demo and does not establish legal applicability")
     return {
-        "status": status,
+        "status": "ok" if documents else "unsupported_query",
         "query": query,
         "as_of_date": as_of.isoformat(),
         "coverage": "three_case_demo_v1",
         "documents": documents,
         "warnings": warnings,
     }
+
+
+def search(query: dict[str, Any]) -> list[dict[str, Any]]:
+    """T1 internal route adapter; disabled until T3 legal-source sign-off."""
+
+    if not settings.legal_source_search_enabled:
+        raise SourceSearchUnavailable()
+    result = search_legal_sources(
+        str(query.get("query") or ""),
+        as_of_date=query.get("as_of_date"),
+        jurisdiction=str(query.get("jurisdiction") or "CN"),
+        top_k=int(query.get("top_k") or 5),
+    )
+    return [
+        {
+            "source_id": item["id"],
+            "locator": item.get("article") or item.get("document_number") or "document",
+            "title": item.get("title"),
+            "quote": item.get("excerpt"),
+            "version": item.get("source_version"),
+            "jurisdiction": item.get("jurisdiction"),
+        }
+        for item in result["documents"]
+    ]

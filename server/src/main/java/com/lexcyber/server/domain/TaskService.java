@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.lexcyber.server.engine.ExecutionRequest;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.sql.ResultSet;
@@ -26,23 +28,32 @@ import org.springframework.web.server.ResponseStatusException;
 public class TaskService {
     private final JdbcTemplate jdbc;
     private final ObjectMapper objectMapper;
+    private final boolean sentencingEnabled;
 
     public TaskService(JdbcTemplate jdbc, ObjectMapper objectMapper) {
+        this(jdbc, objectMapper, false);
+    }
+
+    @Autowired
+    public TaskService(JdbcTemplate jdbc, ObjectMapper objectMapper,
+                       @Value("${sentencing.enabled:false}") boolean sentencingEnabled) {
         this.jdbc = jdbc;
         this.objectMapper = objectMapper;
+        this.sentencingEnabled = sentencingEnabled;
     }
 
     @Transactional
     public TaskView create(TaskCreate request) {
+        Map<String, Object> metadata = request.metadata() == null ? Map.of() : request.metadata();
+        TaskPolicies.requireSupported(metadata, sentencingEnabled);
         UUID id = UUID.randomUUID();
         UUID requestId = UUID.randomUUID();
         UUID executionId = UUID.randomUUID();
         UUID resultId = UUID.randomUUID();
-        Map<String, Object> metadata = request.metadata() == null ? Map.of() : request.metadata();
         String caseId = request.caseId() == null ? "" : request.caseId();
         String inputHash = hashInput(request.query(), caseId, request.sessionId(), metadata);
         ExecutionRequest envelope = new ExecutionRequest(id, executionId, requestId, resultId, 1, "workflow.output",
-                request.query(), caseId, request.sessionId(), metadata, inputHash, "public-api-0.3");
+                request.query(), caseId, request.sessionId(), metadata, inputHash, "public-api-0.8");
         jdbc.update("""
                 INSERT INTO app.tasks(id, request_id, execution_id, case_id, session_id, query_text, status, current_stage, metadata_json)
                 VALUES (?, ?, ?, ?, ?, ?, 'queued', 'accepted', ?::jsonb)
@@ -50,6 +61,18 @@ public class TaskService {
         jdbc.update("INSERT INTO app.task_dispatch_outbox(task_id, execution_id, event_type, payload_json) VALUES (?, ?, 'execution.requested', ?::jsonb)",
                 id, executionId, writeJson(envelope));
         return new TaskView(id, requestId, executionId, caseId, "queued", "accepted", null, null, null, OffsetDateTime.now(), OffsetDateTime.now());
+    }
+
+    @Transactional(readOnly = true)
+    public String metadataTaskType(UUID taskId) {
+        List<String> rows = jdbc.query(
+                "SELECT metadata_json::text FROM app.tasks WHERE id = ?",
+                (rs, ignored) -> rs.getString(1),
+                taskId);
+        if (rows.isEmpty() || rows.get(0) == null || rows.get(0).isBlank()) {
+            return null;
+        }
+        return TaskPolicies.taskType(parseMap(rows.get(0)));
     }
 
     @Transactional(readOnly = true)
@@ -107,18 +130,20 @@ public class TaskService {
         int resultVersion = Optional.ofNullable(jdbc.queryForObject("SELECT COALESCE(MAX(version), 0) + 1 FROM app.result_versions WHERE task_id = ?", Integer.class, taskId)).orElse(1);
         UUID resultId = UUID.randomUUID();
         Map<String, Object> metadata = parseMap(task.get("metadata_json"));
+        TaskPolicies.requireSupported(metadata, sentencingEnabled);
         String query = String.valueOf(task.get("query_text"));
         String caseId = task.get("case_id") == null ? null : String.valueOf(task.get("case_id"));
         String sessionId = task.get("session_id") == null ? null : String.valueOf(task.get("session_id"));
         UUID requestId = (UUID) task.get("request_id");
         String inputHash = hashInput(query, caseId, sessionId, metadata);
         ExecutionRequest envelope = new ExecutionRequest(taskId, executionId, requestId, resultId, resultVersion, "workflow.output",
-                query, caseId, sessionId, metadata, inputHash, "public-api-0.3");
+                query, caseId, sessionId, metadata, inputHash, "public-api-0.8");
         jdbc.update("UPDATE app.task_dispatch_outbox SET published_at=COALESCE(published_at, now()), last_error='superseded_by_retry' WHERE task_id=? AND published_at IS NULL", taskId);
         jdbc.update("UPDATE app.tasks SET execution_id = ?, status = 'queued', current_stage = 'retry_requested', error_code = NULL, error = NULL, updated_at = now() WHERE id = ?",
                 executionId, taskId);
         jdbc.update("INSERT INTO app.task_dispatch_outbox(task_id, execution_id, event_type, payload_json) VALUES (?, ?, 'execution.requested', ?::jsonb)",
                 taskId, executionId, writeJson(envelope));
+        jdbc.update("UPDATE app.documents SET parse_status = 'queued', updated_at = now() WHERE parse_task_id = ?", taskId);
         return find(taskId).orElseThrow();
     }
 

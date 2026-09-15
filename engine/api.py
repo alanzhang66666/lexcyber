@@ -6,12 +6,13 @@ from uuid import UUID
 import dramatiq
 from fastapi import Depends, FastAPI, Header, HTTPException, status
 
-from engine.adapters.sources import search_legal_sources
-from engine.contracts import ExecutionRequest, ExecutionView, SourceSearchRequest, canonical_input_hash
+from engine.adapters.sources import SourceSearchUnavailable
+from engine.adapters.sources import search as search_sources_adapter
+from engine.contracts import ExecutionRequest, ExecutionView, SourceSearchRequest, SourceSearchResponse, canonical_input_hash
 from engine.settings import settings
 from engine.store import claim_enqueue, create_execution, get_execution, mark_enqueued, release_enqueue
 
-app = FastAPI(title="LexCyber Execution Engine", version="0.3.0")
+app = FastAPI(title="LexCyber Execution Engine", version="0.8.0")
 
 
 def require_service_token(x_service_token: str = Header(default="")) -> None:
@@ -21,7 +22,7 @@ def require_service_token(x_service_token: str = Header(default="")) -> None:
 
 @app.get("/healthz")
 def healthz() -> dict[str, str]:
-    return {"status": "ok", "service": "lexcyber-engine", "version": "0.3.0"}
+    return {"status": "ok", "service": "lexcyber-engine", "version": "0.8.0"}
 
 
 @app.post("/internal/v1/executions", status_code=status.HTTP_202_ACCEPTED, dependencies=[Depends(require_service_token)])
@@ -62,14 +63,12 @@ def execution_status(execution_id: UUID) -> ExecutionView:
 
 
 @app.post("/internal/v1/sources/search", dependencies=[Depends(require_service_token)])
-def source_search(payload: SourceSearchRequest) -> dict:
-    return search_legal_sources(
-        payload.query,
-        as_of_date=payload.as_of_date,
-        source_ids=payload.source_ids,
-        jurisdiction=payload.jurisdiction,
-        top_k=payload.top_k,
-    )
+def search_sources(payload: SourceSearchRequest) -> SourceSearchResponse:
+    try:
+        items = search_sources_adapter(payload.model_dump())
+    except SourceSearchUnavailable as exc:
+        raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail=exc.code) from exc
+    return SourceSearchResponse.model_validate({"items": items})
 
 
 @dramatiq.actor(max_retries=2, time_limit=300_000)

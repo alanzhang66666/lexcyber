@@ -1,4 +1,4 @@
-# LexCyber v0.3 开发手册
+# LexCyber 0.8 开发手册
 
 ## 本地入口
 
@@ -33,7 +33,8 @@ Compose 全链路验收必须使用真实 PostgreSQL、Redis、MinIO、Java 和 
 
 ## 当前安全边界
 
-- 正式身份认证尚未纳入本次骨架；Java 审核变更接口默认 fail-closed，未配置身份提供方时返回 `501`。
+- 公开身份：`/v1/auth/register` `login` `logout` `session`。属主案件、材料、facts、复核、`document.parse`、`model.probe` 需要 Bearer。
+- 复核：`GET/POST /v1/reviews*` 只暴露当前账号属主案件上的记录，响应带 `caseId`。决定人用会话用户名；`REVIEW_AUTH_MODE=trusted-header` 不能代替登录，也不能读取他案队列。增量契约见 [`t1-api-01-increment.md`](t1-api-01-increment.md)。
 - engine 只接收内部服务令牌，不接受浏览器转发的权限列表或 `human_approved` 字段。
 - API Key 只能由服务端环境变量提供，禁止写入仓库、前端包或提交历史。
 - `engine/migrations` 由独立 Flyway 任务以 `lex_engine` 账号执行；Java 只加载 `db/migration/app`。

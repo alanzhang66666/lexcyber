@@ -3,6 +3,28 @@ from __future__ import annotations
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
+from engine.adapters.case_bundle import load_case_bundle
+from engine.adapters.t1_contract import map_sentencing_result_to_t1
+from engine.settings import settings
+
+
+class SentencingUnavailable(Exception):
+    code = "SENTENCING_UNAVAILABLE"
+
+    def __init__(self, message: str = "sentencing calculation is not enabled before T3 legal sign-off") -> None:
+        super().__init__(message)
+
+
+class SentencingInputError(ValueError):
+    def __init__(self, code: str, path: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+        self.path = path
+        self.message = message
+
+    def as_dict(self) -> dict[str, Any]:
+        return {"code": self.code, "path": self.path, "message": self.message, "retryable": False}
+
 
 def _decimal(value: Any, path: str, blockers: list[dict[str, str]]) -> Decimal | None:
     try:
@@ -37,11 +59,7 @@ def _blocked(
 
 
 def calculate_sentencing(payload: dict[str, Any]) -> dict[str, Any]:
-    """Replay a legally approved rule with confirmed inputs; otherwise fail closed.
-
-    This adapter is arithmetic infrastructure, not a sentencing model. It never
-    chooses a rule, a base sentence, an adjustment, or an applicable source.
-    """
+    """Replay a legally approved rule with confirmed inputs; otherwise fail closed."""
 
     blockers: list[dict[str, str]] = []
     rule = payload.get("rule") or {}
@@ -112,13 +130,7 @@ def calculate_sentencing(payload: dict[str, Any]) -> dict[str, Any]:
         elif operation == "percent_of_current":
             delta = current * value * direction
         else:
-            blockers.append(
-                {
-                    "code": "operation_unsupported",
-                    "path": f"rule.adjustments[{position}].operation",
-                    "message": str(operation),
-                }
-            )
+            blockers.append({"code": "operation_unsupported", "path": f"rule.adjustments[{position}].operation", "message": str(operation)})
             continue
         before = current
         current += delta
@@ -143,7 +155,6 @@ def calculate_sentencing(payload: dict[str, Any]) -> dict[str, Any]:
     if maximum is not None:
         bounded = min(maximum, bounded)
     rounded = bounded.quantize(Decimal("0.1"), rounding=ROUND_HALF_UP)
-    fine = rule.get("fine")
     return {
         "status": "calculated",
         "case_id": payload.get("case_id"),
@@ -152,7 +163,7 @@ def calculate_sentencing(payload: dict[str, Any]) -> dict[str, Any]:
         "source_ids": rule["source_ids"],
         "input_snapshot": snapshot,
         "term_months": float(rounded),
-        "fine": fine,
+        "fine": rule.get("fine"),
         "steps": steps,
         "blockers": [],
         "warnings": ["arithmetic replay only; a qualified human must review the legal inputs, rule selection, and result"],
@@ -176,11 +187,48 @@ def calculate_case_sentencing(bundle: dict[str, Any], actor_id: str) -> dict[str
         "legal_review_status": baseline.get("legal_review_status"),
         "source_ids": baseline.get("source_ids", []),
     }
-    return calculate_sentencing(
-        {
-            "case_id": bundle.get("case_id"),
-            "actor_id": actor_id,
-            "parameters": parameters,
-            "rule": rule,
-        }
-    )
+    return calculate_sentencing({"case_id": bundle.get("case_id"), "actor_id": actor_id, "parameters": parameters, "rule": rule})
+
+
+def calculate(payload: dict[str, Any]) -> dict[str, Any]:
+    """T1 task adapter; disabled until T3 legal sign-off enables it."""
+
+    if not settings.sentencing_enabled:
+        raise SentencingUnavailable()
+    server_case_id = str(payload.get("case_id") or "")
+    if not server_case_id:
+        raise SentencingInputError("CASE_ID_MISSING", "case_id", "T1 CaseView.id is required")
+    metadata = payload.get("metadata") or {}
+    sentencing = metadata.get("sentencing")
+    if not isinstance(sentencing, dict):
+        raise SentencingInputError("SENTENCING_INPUT_MISSING", "metadata.sentencing", "metadata.sentencing must be an object")
+    dataset_case_id = str(sentencing.get("datasetCaseId") or sentencing.get("dataset_case_id") or "")
+    actor_id = str(sentencing.get("actorId") or sentencing.get("actor_id") or "")
+    if not dataset_case_id:
+        raise SentencingInputError("DATASET_CASE_ID_MISSING", "metadata.sentencing.datasetCaseId", "T3 dataset case id is required")
+    if not actor_id:
+        raise SentencingInputError("ACTOR_ID_MISSING", "metadata.sentencing.actorId", "actor id is required")
+
+    if "rule" in sentencing or "parameters" in sentencing:
+        result = calculate_sentencing(
+            {
+                "case_id": str(sentencing.get("t3BundleId") or dataset_case_id),
+                "actor_id": actor_id,
+                "parameters": sentencing.get("parameters", []),
+                "rule": sentencing.get("rule", {}),
+            }
+        )
+    else:
+        try:
+            bundle = load_case_bundle(str(sentencing.get("t3BundleId") or dataset_case_id))
+        except KeyError as exc:
+            raise SentencingInputError("SENTENCING_CASE_UNSUPPORTED", "metadata.sentencing.datasetCaseId", dataset_case_id) from exc
+        result = calculate_case_sentencing(bundle, actor_id)
+
+    mapped = map_sentencing_result_to_t1(result, case_id=server_case_id, dataset_case_id=dataset_case_id)
+    return {"final_output": mapped["content"], "human_approval_required": mapped["taskStatus"] == "waiting_review"}
+
+
+class SentencingRunner:
+    def run(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return calculate(payload)

@@ -194,11 +194,18 @@ export const PLACEHOLDER_RULE_NODES = [
 
 export const LAST_CASE_KEY = 'lexcyber.last-case-id'
 
+export const PLACEHOLDER_CASE_IDS = PLACEHOLDER_CASES.map((item) => item.id)
+
+export function isPlaceholderCaseId(id: string | null | undefined): boolean {
+  return Boolean(id && PLACEHOLDER_CASE_IDS.includes(id))
+}
+
 export function findCase(id: string) {
   return PLACEHOLDER_CASES.find((item) => item.id === id) ?? PLACEHOLDER_CASES[0]
 }
 
 export function rememberCase(id: string) {
+  if (!id || isPlaceholderCaseId(id)) return
   try {
     sessionStorage.setItem(LAST_CASE_KEY, id)
   } catch {
@@ -206,11 +213,17 @@ export function rememberCase(id: string) {
   }
 }
 
-export function lastCaseId() {
+/** Last remembered T1 case id. Never falls back to placeholder ids such as lin-128. */
+export function lastCaseId(): string | null {
   try {
-    return sessionStorage.getItem(LAST_CASE_KEY) || PLACEHOLDER_CASES[0].id
+    const id = sessionStorage.getItem(LAST_CASE_KEY)
+    if (!id || isPlaceholderCaseId(id)) {
+      if (id && isPlaceholderCaseId(id)) sessionStorage.removeItem(LAST_CASE_KEY)
+      return null
+    }
+    return id
   } catch {
-    return PLACEHOLDER_CASES[0].id
+    return null
   }
 }
 
