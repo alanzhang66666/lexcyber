@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 
 
 def canonical_input_hash(query: str, case_id: str | None, session_id: str | None, metadata: dict[str, Any]) -> str:
@@ -52,3 +52,11 @@ class ExecutionView(BaseModel):
     updated_at: datetime | None = None
     input_hash: str | None = None
     enqueued_at: datetime | None = None
+
+
+class SourceSearchRequest(BaseModel):
+    query: str = Field(min_length=1, max_length=2_000)
+    as_of_date: str | None = Field(default=None, validation_alias=AliasChoices("as_of_date", "asOfDate"))
+    source_ids: list[str] = Field(default_factory=list, validation_alias=AliasChoices("source_ids", "sourceIds"))
+    jurisdiction: str = "CN"
+    top_k: int = Field(default=5, ge=1, le=20, validation_alias=AliasChoices("top_k", "topK"))

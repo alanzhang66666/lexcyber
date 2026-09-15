@@ -6,7 +6,8 @@ from uuid import UUID
 import dramatiq
 from fastapi import Depends, FastAPI, Header, HTTPException, status
 
-from engine.contracts import ExecutionRequest, ExecutionView, canonical_input_hash
+from engine.adapters.sources import search_legal_sources
+from engine.contracts import ExecutionRequest, ExecutionView, SourceSearchRequest, canonical_input_hash
 from engine.settings import settings
 from engine.store import claim_enqueue, create_execution, get_execution, mark_enqueued, release_enqueue
 
@@ -58,6 +59,17 @@ def execution_status(execution_id: UUID) -> ExecutionView:
     if not view:
         raise HTTPException(status_code=404, detail="execution not found")
     return ExecutionView.model_validate(view)
+
+
+@app.post("/internal/v1/sources/search", dependencies=[Depends(require_service_token)])
+def source_search(payload: SourceSearchRequest) -> dict:
+    return search_legal_sources(
+        payload.query,
+        as_of_date=payload.as_of_date,
+        source_ids=payload.source_ids,
+        jurisdiction=payload.jurisdiction,
+        top_k=payload.top_k,
+    )
 
 
 @dramatiq.actor(max_retries=2, time_limit=300_000)

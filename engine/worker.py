@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import os
 import socket
@@ -9,6 +10,7 @@ from uuid import UUID
 import httpx
 
 from engine.contracts import ExecutionView
+from engine.runners import RunnerInputError
 from engine.settings import settings
 from engine.store import complete_execution, get_execution, mark_running, record_callback_failure
 from engine.workflow import build_runner
@@ -22,7 +24,7 @@ def run_execution(payload: dict[str, Any]) -> dict[str, Any]:
     if not mark_running(execution_id, owner):
         return get_execution(execution_id) or {}
     try:
-        result = build_runner().run(payload)
+        result = build_runner(payload).run(payload)
         waiting = bool(result.get("human_approval_required"))
         status = "waiting_review" if waiting else "completed"
         output = result.get("final_output")
@@ -31,6 +33,19 @@ def run_execution(payload: dict[str, Any]) -> dict[str, Any]:
         complete_execution(execution_id, status, "awaiting_review" if waiting else "output", output, None, None)
         _notify_application(execution_id)
         return result
+    except RunnerInputError as exc:
+        error = exc.as_dict()
+        complete_execution(
+            execution_id,
+            "failed",
+            "invalid_input",
+            None,
+            exc.code,
+            json.dumps(error, ensure_ascii=False, sort_keys=True),
+            retryable=False,
+        )
+        _notify_application(execution_id)
+        raise
     except TimeoutError as exc:
         complete_execution(execution_id, "timed_out", "timeout", None, "ENGINE_TIMEOUT", str(exc))
         _notify_application(execution_id)

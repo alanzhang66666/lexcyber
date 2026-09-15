@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
+from engine.runners import DocumentParseRunner, SentencingRunner
 from engine.settings import settings
 
 
@@ -43,7 +44,17 @@ class LangGraphWorkflowRunner:
         return dict(build_workflow().invoke(state))
 
 
-def build_runner() -> WorkflowRunner:
+def _task_type(payload: dict[str, Any]) -> str:
+    metadata = payload.get("metadata") or {}
+    return str(metadata.get("task_type") or metadata.get("operation") or payload.get("result_type") or "")
+
+
+def build_runner(payload: dict[str, Any] | None = None) -> WorkflowRunner:
+    task_type = _task_type(payload or {})
+    if task_type in {"document.parse", "document.parse.v1"}:
+        return DocumentParseRunner()
+    if task_type == "sentencing.calculate":
+        return SentencingRunner()
     if settings.workflow_profile == "legal":
         return LangGraphWorkflowRunner()
     return StubWorkflowRunner()

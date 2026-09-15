@@ -1,0 +1,148 @@
+{
+  "schema_version": "lexcyber.case-bundle.v1",
+  "case_id": "demo-case-c-unit-crossborder",
+  "case_code": "C",
+  "title": "跨境营销企业负责人决定继续引流案",
+  "case_question": "单位归责、合规执行、诈骗共犯与帮信界分及涉外连接点",
+  "jurisdiction": "CN",
+  "conduct_period": {"start": "2023-04-01", "end": "2023-05-31", "precision": "month"},
+  "analysis_as_of_date": "2026-09-14",
+  "source_case_numbers": ["（2023）陕0114刑初265号", "（2024）陕01刑终326号"],
+  "provenance": {
+    "source_archive": "合成案例40个(1).zip",
+    "collection_method": "user-provided synthetic-case archive",
+    "transformation": "selected case 004 and manually mapped its paragraphs to stable ids; no factual supplementation",
+    "license_or_authorization": "pending owner confirmation",
+    "substantive_adaptation": "synthetic teaching case; relationship to cited judgments requires legal-owner confirmation",
+    "deidentification": "source already uses role labels and pseudonyms"
+  },
+  "documents": [
+    {
+      "id": "doc-c-input",
+      "role": "case_material",
+      "title": "合成案例004-输入材料.docx",
+      "archive_entry": "合成案例40个/合成案例004/合成案例004-输入材料.docx",
+      "sha256": "19af840b2bd191e524574ddcacdbe789697e9289fd93c4f59ed87ccd6ae1d6cc",
+      "source_version": "sha256:19af840b2bd191e5"
+    },
+    {
+      "id": "doc-c-benchmark",
+      "role": "benchmark_annotation",
+      "title": "合成案例004-法学标注.docx",
+      "archive_entry": "合成案例40个/合成案例004/合成案例004-法学标注.docx",
+      "sha256": "f2d39ca74a403102c88aafa29c6dec5823f2094a29a16b42822bdc105bf65573",
+      "source_version": "sha256:f2d39ca74a403102"
+    }
+  ],
+  "actors": [
+    {"id": "actor-c-company", "type": "organization", "name": "甲科技有限公司", "role": "cross_border_marketing_service_provider"},
+    {"id": "actor-c-wu", "type": "person", "name": "戊", "role": "company_principal_and_decision_maker"},
+    {"id": "actor-c-ding", "type": "person", "name": "丁", "role": "project_lead"},
+    {"id": "actor-c-bing", "type": "person", "name": "丙", "role": "project_employee"},
+    {"id": "actor-c-client", "type": "organization", "name": "乙公司", "role": "foreign_client"},
+    {"id": "actor-c-upstream", "type": "person", "name": "上线", "role": "suspected_upstream_fraud_actor"}
+  ],
+  "relationships": [
+    {"from_id": "actor-c-wu", "to_id": "actor-c-company", "type": "control_and_business_decision"},
+    {"from_id": "actor-c-ding", "to_id": "actor-c-wu", "type": "risk_escalation"},
+    {"from_id": "actor-c-bing", "to_id": "actor-c-ding", "type": "risk_reporting"},
+    {"from_id": "actor-c-company", "to_id": "actor-c-client", "type": "cross_border_service_contract"},
+    {"from_id": "actor-c-bing", "to_id": "actor-c-upstream", "type": "lead_generation_help"}
+  ],
+  "jurisdiction_connections": [
+    {"id": "jur-c-company", "type": "organization_and_business_location", "value": "甲公司在陕西省西安市设立并经营", "verification_status": "baseline_asserted", "evidence_ids": ["ev-c-01"]},
+    {"id": "jur-c-conduct", "type": "conduct_location", "value": "负责人决定及员工主要引流操作在中国境内", "verification_status": "candidate", "evidence_ids": ["ev-c-05", "ev-c-06"]},
+    {"id": "jur-c-foreign", "type": "foreign_connection", "value": "客户及后续联系人员位于境外的具体地点待核", "verification_status": "candidate", "evidence_ids": ["ev-c-02"]}
+  ],
+  "evidence": [
+    {"id": "ev-c-01", "type": "corporate_narrative", "label": "公司设立、业务及制度", "document_id": "doc-c-input", "locator": {"paragraph": 4}},
+    {"id": "ev-c-02", "type": "project_record", "label": "境外客户项目和上线引流模式", "document_id": "doc-c-input", "locator": {"paragraph": 5}},
+    {"id": "ev-c-03", "type": "risk_report", "label": "丙向丁、丁向戊逐级报告风险", "document_id": "doc-c-input", "locator": {"paragraph": 5}},
+    {"id": "ev-c-04", "type": "management_review", "label": "戊调取并审阅客户与项目异常资料", "document_id": "doc-c-input", "locator": {"paragraph": 6}},
+    {"id": "ev-c-05", "type": "management_instruction", "label": "戊认为很可能涉诈但要求继续并避免留痕", "document_id": "doc-c-input", "locator": {"paragraph": 7}},
+    {"id": "ev-c-06", "type": "call_and_system_record", "label": "公司设备实施1439条引流并进入业务系统", "document_id": "doc-c-input", "locator": {"paragraph": 8}},
+    {"id": "ev-c-07", "type": "negative_fact", "label": "未参与对象选择、话术设计和资金转移", "document_id": "doc-c-input", "locator": {"paragraph": 8}},
+    {"id": "ev-c-08", "type": "profit_record", "label": "公司收入22万元、丙获利11082元", "document_id": "doc-c-input", "locator": {"paragraph": 8}},
+    {"id": "ev-c-09", "type": "post_conduct", "label": "公安调查后停止项目并重建审核制度", "document_id": "doc-c-input", "locator": {"paragraph": 9}}
+  ],
+  "facts": [
+    {"id": "fact-c-risk-escalated", "type": "risk_escalation", "actor_id": "actor-c-ding", "value": "丙向丁、丁向戊逐级报告明显诈骗风险", "stage": "before_continued_help", "verification_status": "baseline_asserted", "evidence_ids": ["ev-c-03"]},
+    {"id": "fact-c-wu-knowledge", "type": "subjective_knowledge", "actor_id": "actor-c-wu", "value": "戊审阅项目资料后认为项目很可能与网络诈骗有关", "stage": "before_continued_help", "verification_status": "baseline_asserted", "evidence_ids": ["ev-c-04", "ev-c-05"]},
+    {"id": "fact-c-company-decision", "type": "organizational_decision", "actor_id": "actor-c-company", "value": "有业务决策权限的负责人为项目收益决定继续服务", "stage": "business_decision", "verification_status": "baseline_asserted", "evidence_ids": ["ev-c-05", "ev-c-08"]},
+    {"id": "fact-c-help", "type": "conduct", "actor_id": "actor-c-bing", "value": "通过公司设备和系统实施1439条电话引流", "stage": "upstream_offence_execution", "verification_status": "baseline_asserted", "evidence_ids": ["ev-c-06"]},
+    {"id": "fact-c-participation-limit", "type": "participation_scope", "actor_id": "actor-c-company", "value": "未参与诈骗对象选择、话术设计、资金转移或按诈骗所得分成", "stage": "whole_chain", "verification_status": "baseline_asserted", "evidence_ids": ["ev-c-07"]},
+    {"id": "fact-c-controls-overridden", "type": "compliance_execution", "actor_id": "actor-c-wu", "value": "负责人在收到风险报告后主动突破既有审核制度", "stage": "before_continued_help", "verification_status": "baseline_asserted", "evidence_ids": ["ev-c-01", "ev-c-03", "ev-c-05"]}
+  ],
+  "events": [
+    {"id": "event-c-01", "date": "2023-03", "stage": "pre_conduct", "description": "公司建立客户准入和异常监测制度", "actor_id": "actor-c-company", "fact_ids": []},
+    {"id": "event-c-02", "date": "2023-04", "stage": "risk_discovered", "description": "丙和丁发现风险并逐级报告", "actor_id": "actor-c-ding", "fact_ids": ["fact-c-risk-escalated"]},
+    {"id": "event-c-03", "date": "2023-04", "stage": "business_decision", "description": "戊审阅资料后决定继续服务", "actor_id": "actor-c-wu", "fact_ids": ["fact-c-wu-knowledge", "fact-c-company-decision", "fact-c-controls-overridden"]},
+    {"id": "event-c-04", "date": "2023-04/2023-05", "stage": "continued_help", "description": "丙通过公司设备继续引流", "actor_id": "actor-c-bing", "fact_ids": ["fact-c-help", "fact-c-participation-limit"]},
+    {"id": "event-c-05", "date": "2023-05", "stage": "post_investigation", "description": "公安调查后公司停止项目并整改", "actor_id": "actor-c-company", "fact_ids": []}
+  ],
+  "amounts": [
+    {"id": "amount-c-upstream-loss", "kind": "crime_amount", "label": "上游诈骗金额", "value": 615109, "currency": "CNY", "verification_status": "baseline_asserted", "evidence_ids": ["ev-c-06"]},
+    {"id": "amount-c-company-income", "kind": "crime_proceeds", "label": "公司项目服务收入", "value": 220000, "currency": "CNY", "verification_status": "baseline_asserted", "evidence_ids": ["ev-c-08"]},
+    {"id": "amount-c-personal-profit", "kind": "personal_profit", "label": "丙个人获利", "value": 11082, "currency": "CNY", "verification_status": "baseline_asserted", "evidence_ids": ["ev-c-08"]},
+    {"id": "amount-c-payment-rate", "kind": "remuneration_rate", "label": "约定小时报酬", "value": 180, "currency": "CNY", "verification_status": "baseline_asserted", "evidence_ids": ["ev-c-02"]}
+  ],
+  "legal_source_ids": [
+    "cn-criminal-law-287-2-current",
+    "cn-criminal-law-266-current",
+    "cn-criminal-law-6-7-current",
+    "cn-cybercrime-interpretation-2019-11-12",
+    "cn-telefraud-opinion-2016-common-crime",
+    "cn-helping-opinion-2025-4-9"
+  ],
+  "source_version_binding": {
+    "conduct_time_sources": ["cn-criminal-law-287-2-current", "cn-criminal-law-266-current", "cn-criminal-law-6-7-current", "cn-cybercrime-interpretation-2019-11-12", "cn-telefraud-opinion-2016-common-crime"],
+    "current_review_sources": ["cn-helping-opinion-2025-4-9"],
+    "temporal_review_status": "pending",
+    "note": "2025 opinion post-dates the conduct and cited judgments. Exact foreign conduct/result locations also remain unconfirmed."
+  },
+  "analyses": {
+    "compliance": {
+      "applicability": "applicable",
+      "result_status": "baseline_asserted",
+      "legal_review_status": "pending",
+      "checklist": [
+        {"category": "制度与岗位", "status": "present", "evidence_ids": ["ev-c-01"]},
+        {"category": "实际执行与审批", "status": "overridden", "evidence_ids": ["ev-c-03", "ev-c-05"]},
+        {"category": "预警与处置", "status": "warning_ignored_then_post_investigation_stop", "evidence_ids": ["ev-c-03", "ev-c-05", "ev-c-09"]},
+        {"category": "境外关联", "status": "partially_confirmed", "evidence_ids": ["ev-c-02"]},
+        {"category": "重大反向线索", "status": "present", "evidence_ids": ["ev-c-05"]},
+        {"category": "正常业务解释", "status": "claimed_but_conflicted", "evidence_ids": ["ev-c-01", "ev-c-04", "ev-c-05"]}
+      ],
+      "note": "Checklist is factual; it does not map a compliance grade to criminal liability."
+    },
+    "conviction": {
+      "legal_review_status": "pending",
+      "candidate_paths": [
+        {"id": "path-c-company-helping", "actor_id": "actor-c-company", "label": "单位帮助信息网络犯罪活动罪", "baseline_position": "selected", "supporting_evidence_ids": ["ev-c-03", "ev-c-04", "ev-c-05", "ev-c-06", "ev-c-08"], "contrary_evidence_ids": ["ev-c-01", "ev-c-07", "ev-c-09"], "legal_source_ids": ["cn-criminal-law-287-2-current", "cn-cybercrime-interpretation-2019-11-12"]},
+        {"id": "path-c-wu-helping", "actor_id": "actor-c-wu", "label": "帮助信息网络犯罪活动罪（直接负责主管人员）", "baseline_position": "selected", "supporting_evidence_ids": ["ev-c-03", "ev-c-04", "ev-c-05"], "contrary_evidence_ids": ["ev-c-07"], "legal_source_ids": ["cn-criminal-law-287-2-current", "cn-cybercrime-interpretation-2019-11-12"]},
+        {"id": "path-c-bing-helping", "actor_id": "actor-c-bing", "label": "帮助信息网络犯罪活动罪", "baseline_position": "selected", "supporting_evidence_ids": ["ev-c-02", "ev-c-06", "ev-c-08"], "contrary_evidence_ids": ["ev-c-07"], "legal_source_ids": ["cn-criminal-law-287-2-current", "cn-cybercrime-interpretation-2019-11-12"]},
+        {"id": "path-c-company-fraud-accomplice", "actor_id": "actor-c-company", "label": "诈骗罪共同犯罪", "baseline_position": "excluded", "supporting_evidence_ids": ["ev-c-03", "ev-c-05", "ev-c-06"], "contrary_evidence_ids": ["ev-c-07"], "legal_source_ids": ["cn-criminal-law-266-current", "cn-telefraud-opinion-2016-common-crime"]}
+      ],
+      "jurisdiction_status": "pending_confirmation",
+      "jurisdiction_source_ids": ["cn-criminal-law-6-7-current"]
+    }
+  },
+  "sentencing": {
+    "calculation_status": "blocked_pending_legal_review",
+    "actor_baselines": [
+      {"actor_id": "actor-c-company", "amount_ids": ["amount-c-upstream-loss", "amount-c-company-income"], "source_ids": ["cn-criminal-law-287-2-current", "cn-cybercrime-interpretation-2019-11-12"], "rule_version": null, "legal_review_status": "pending", "benchmark_disposition": {"fine_range_cny": [200000, 400000], "nature": "annotation_only_not_calculated"}},
+      {"actor_id": "actor-c-wu", "amount_ids": ["amount-c-upstream-loss", "amount-c-company-income"], "source_ids": ["cn-criminal-law-287-2-current", "cn-cybercrime-interpretation-2019-11-12"], "rule_version": null, "legal_review_status": "pending", "benchmark_disposition": {"term_range_months": [18, 30], "fine_range_cny": [15000, 30000], "nature": "annotation_only_not_calculated"}},
+      {"actor_id": "actor-c-bing", "amount_ids": ["amount-c-upstream-loss", "amount-c-personal-profit"], "source_ids": ["cn-criminal-law-287-2-current", "cn-cybercrime-interpretation-2019-11-12"], "rule_version": null, "legal_review_status": "pending", "benchmark_disposition": {"term_range_months": [8, 15], "fine_range_cny": [8000, 15000], "nature": "annotation_only_not_calculated"}}
+    ]
+  },
+  "document_fields": {
+    "required": ["case_name", "organization", "actor_name", "confirmed_facts", "compliance_checklist", "jurisdiction_connections", "evidence_citations", "candidate_path", "legal_source_versions", "sentencing_review_status"],
+    "template_legal_review_status": "pending"
+  },
+  "missing_items": [
+    {"id": "missing-c-01", "severity": "blocking", "description": "A second evidentiary case material is absent; the benchmark annotation is not evidence."},
+    {"id": "missing-c-02", "severity": "blocking", "description": "Foreign client location, upstream location, result location and cross-border fund nodes are not established by the current narrative."},
+    {"id": "missing-c-03", "severity": "blocking", "description": "Qualified legal reviewer approval for unit attribution, candidate paths, source timing, sentencing rule and document wording."},
+    {"id": "missing-c-04", "severity": "warning", "description": "Confirm provenance/license and the relationship between the synthetic narrative and cited judgments."}
+  ]
+}
