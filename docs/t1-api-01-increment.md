@@ -21,12 +21,12 @@
 | `locator` | **现有复用** | `FactItem.locator`；`document.parse.v1` 的 `paragraphs[].locator` / `tables[].locator` |
 | `parseTaskId` | **现有复用** | `DocumentView.parseTaskId`；只轮询，不重建 |
 | `factId` | **现有复用** | `FactItem.id`；`PUT` 省略时服务端发 UUID |
-| `verificationStatus` | **尚未落地**（条级） | 条级待核枚举本轮不入库。案件级复用 `FactView.status`：`draft` / `confirmed` |
+| `verificationStatus` | **本轮新增（条级）** | `FactItem.verificationStatus`：`candidate` / `baseline_asserted` / `confirmed` / `rejected` / `conflicted`。案件级仍只看 `FactView.status`；条级 `confirmed` 不自动整包确认 |
 | `actorId` | **本轮新增（约定）** | 写入 `CaseView.metadata.relations.actors[]`，无新列 |
 | `organizationId` | **本轮新增（约定）** | `metadata.relations.organizations[]` |
 | `accountId` | **本轮新增（约定）** | `metadata.relations.accounts[]` |
 | `eventId` / `stage` | **本轮新增（约定）** | `metadata.relations.events[]` |
-| `sourceVersion` | **尚未落地** | 分析/法源绑定版本等 T3 结果 JSON；不要当公开列。`SourceRef.version` 仍是检索占位 |
+| `sourceVersion` | **本轮新增（约定）** | `FactItem.sourceVersion`、模块空壳 `sourceVersion`、`metadata.sourceVersionBinding` 均为可选载荷。不要当公开列。`SourceRef.version` 仍是检索占位 |
 | `resultVersion` | **现有复用** | `ResultRef.version`、`ReviewRecord.resultVersion`；批准/退回必须带当前版本 |
 | `reviewStatus` | **现有复用** | `ReviewRecord.status`：`pending` / `approved` / `rejected` / `superseded` |
 | `ReviewRecord.caseId` | **本轮新增** | 列表/详情/决定响应都带；来自 `tasks.case_id` JOIN，不新增 `review_records.case_id` |
@@ -112,7 +112,7 @@ Content-Type: application/json
 }
 ```
 
-`items[].id` 即 `factId`。`status=confirmed` 后 `PUT` 仍是 `409 FACTS_CONFIRMED`。条级 `verificationStatus`、模块结果 `sourceVersion` 本轮不要写进 `FactItem`——Jackson 会丢掉未知字段。
+`items[].id` 即 `factId`。`status=confirmed` 后 `PUT` 仍是 `409 FACTS_CONFIRMED`。条级 `verificationStatus` / `sourceVersion` 现可读写；未知枚举 `400`。案件级 `confirm` 不改写条级状态。
 
 ## 样例 3：复核列表项（现有 `ReviewRecord` + `caseId`）
 
@@ -147,6 +147,30 @@ Authorization: Bearer <token>
 
 ## 本轮不做（留给 T3 / L2 / L3）
 
-- 接通 `/v1/sources/search` 与 `sentencing.calculate`（保持 501）。
-- 合规 / 定罪 / 量刑 / 文书草稿的正式结果 schema、`draftId`、模块级 `reviewStatus` 绑定。
-- 条级 `verificationStatus`、一等公民 `sourceVersion`、复核表 `case_id` 列、图谱表。
+- 接通 `/v1/sources/search` 与 `sentencing.calculate`（公开口保持 501；不要改 Compose 默认开关）。
+- 合规 / 定罪分析任务与正式结果 schema；公开创建 `compliance.analyze` / `conviction.analyze` 仍 501。
+- 图谱表、Word/PDF、双人会签 / 超时升级 / 正式对外归档。
+
+## 2026-09-15 增量（会签前，不重开 501）
+
+在 API-01 之上的 T1 独立增量。浏览器仍只打 Java `/v1`。新表只走 Flyway `V8__case_drafts.sql`。
+
+| 项 | 约定 |
+| --- | --- |
+| 三案导入 | [`scripts/import_three_case_demo.py`](../scripts/import_three_case_demo.py)（可选 [`scripts/import-three-case-demo.ps1`](../scripts/import-three-case-demo.ps1)）。`POST /v1/cases` 用 `build_t1_case_create`；只上传 `role=input` 的 `case_material`；**只轮询 `parseTaskId`**；`PATCH` 回填事件 `DocumentView.id`；可选 `PUT` facts 为 `draft`，不自动 `confirm`。账号来自 `LEXCYBER_USERNAME` / `LEXCYBER_PASSWORD`，未设则注册一次性账号。`--docs-dir` 按 `archive_entry` 文件名匹配；找不到时上传 gitignored `.t1-smoke-input.docx` 并标 `placeholderUpload=true`。报告写 `.t1-three-case-import.md`。 |
+| 文书草稿 | `POST/GET /v1/cases/{caseId}/drafts`、`GET/PUT .../drafts/{draftId}`。`body` 是不透明字符串。`PUT` 必须带当前 `version`，成功后 `version+1`；冲突 `409 DRAFT_VERSION_CONFLICT`。他案/他主 `404`。旧版本上的批准不自动落到新版本。 |
+| 量刑 facts 门闩 | `taskType=sentencing.calculate` 且带 `caseId` 时，facts 不是 `confirmed`（含无行）→ `409 FACTS_NOT_CONFIRMED`。公开创建在开关关闭时仍先 `501`。Java 与 Engine 必须同时开；只开 Java 会建成任务再 `failed`。 |
+| `ReviewRecord.module` | 不改 `review_records`。从 `tasks.metadata_json.module` 读取，没有则按 `taskType`：`document.parse`→`parse`，`sentencing.calculate`→`sentencing`，其余→`task`。`GET /v1/reviews?module=` 可选过滤。 |
+
+## 2026-09-15 会签前独立增量（V9）
+
+不打开 `SENTENCING_ENABLED` / `LEGAL_SOURCE_SEARCH_ENABLED`。新表/新列只走 `V9__module_states_reviews.sql`。合规/定罪 `content` 与草稿 `body` 仍是不透明载荷。
+
+| 项 | 约定 |
+| --- | --- |
+| 合规 / 定罪空壳 | `GET/PUT /v1/cases/{id}/compliance` 与 `/conviction`，`POST .../confirm`。无行返回 `version=0`、`content={}`、`applicability=unknown`。`PUT` 必须带当前 `version`，成功 `version+1` 且回到 `draft`；已确认再 PUT → `409 MODULE_CONFIRMED`。`factsStale` 比较模块快照与 `case_facts.updated_at`；无事实行则 stale=false。他案/他主 `404 CASE_NOT_FOUND`。 |
+| 预留任务 501 | `compliance.analyze` → `501 COMPLIANCE_UNAVAILABLE`；`conviction.analyze` → `501 CONVICTION_UNAVAILABLE`。加入 `TaskType` 与 `requiresAuth`。不接 Engine、不建任务。 |
+| 条级事实状态 | `FactItem.verificationStatus` / `sourceVersion`。案件级 `POST .../facts/confirm` 行为不变。 |
+| 草稿版本 | `templateVersion` / `sourceVersion`。`PUT` 升版本后，将该草稿旧 `draft_version` 上 `pending`/`approved` 复核标 `superseded`。 |
+| 复核开单 / 归档 | `POST /v1/cases/{id}/reviews` 可绑草稿或模块空壳，无 `taskId` 时不写 outbox。`POST /v1/reviews/{id}/archive`。`GET /v1/reviews?archiveStatus=`。无 `task_id` 的决定只改 `review_records`。属主 JOIN `tasks.case_id` / `drafts.case_id` / `review_records.case_id`。 |
+| metadata 投影 | `relations.accounts[]`、`relations.jurisdictionConnections[]`、`metadata.sourceVersionBinding`；`procedureStage` 仅当 bundle 已有才写。导入脚本 `PUT` 模块空壳，可选开一条 conviction 复核，不自动 confirm。 |

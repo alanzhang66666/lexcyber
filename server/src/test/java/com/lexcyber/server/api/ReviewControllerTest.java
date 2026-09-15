@@ -66,13 +66,13 @@ class ReviewControllerTest {
         mvc.perform(get("/v1/reviews?status=pending"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
-        verify(reviews, never()).list(any(), any(), any(Integer.class), any(Integer.class));
+        verify(reviews, never()).list(any(), any(), any(), any(), any(Integer.class), any(Integer.class));
     }
 
     @Test
     void ownedListIncludesCaseId() throws Exception {
         when(auth.require(any())).thenReturn(owner);
-        when(reviews.list(eq(owner.id()), eq("pending"), eq(0), eq(20))).thenReturn(Map.of(
+        when(reviews.list(eq(owner.id()), eq("pending"), isNull(), isNull(), eq(0), eq(20))).thenReturn(Map.of(
                 "items", List.of(reviewPayload()),
                 "page", 0,
                 "size", 20,
@@ -128,6 +128,21 @@ class ReviewControllerTest {
                         .header("Authorization", "Bearer token")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"resultVersion\":1,\"comment\":\"ok\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.caseId").value("case-demo-001"));
+    }
+
+    @Test
+    void archiveRequiresBearerAndKeepsOwnerScope() throws Exception {
+        when(auth.require(isNull())).thenThrow(new ResponseStatusException(HttpStatus.UNAUTHORIZED, "session required"));
+        mvc.perform(post("/v1/reviews/" + reviewId + "/archive"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+        verify(reviews, never()).archive(any(), any());
+
+        doReturn(owner).when(auth).require(any());
+        when(reviews.archive(owner.id(), reviewId)).thenReturn(reviewPayload());
+        mvc.perform(post("/v1/reviews/" + reviewId + "/archive").header("Authorization", "Bearer token"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.caseId").value("case-demo-001"));
     }

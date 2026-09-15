@@ -4,7 +4,13 @@ from engine.adapters.case_bundle import load_case_bundle, validate_case_bundle, 
 from engine.adapters.consistency import validate_result_consistency
 from engine.adapters.sentencing import calculate_case_sentencing, calculate_sentencing
 from engine.adapters.sources import search_legal_sources
-from engine.adapters.t1_contract import T1ContractError, build_t1_case_create, build_t1_fact_view, map_sentencing_result_to_t1
+from engine.adapters.t1_contract import (
+    T1ContractError,
+    build_t1_case_create,
+    build_t1_fact_view,
+    build_t1_module_state,
+    map_sentencing_result_to_t1,
+)
 from skills.legal.case.fact_extract import execute as extract_facts
 
 
@@ -158,8 +164,21 @@ def test_t1_case_create_keeps_server_case_id_unassigned_and_splits_organizations
     company = next(item for item in relations["organizations"] if item["actorId"] == "actor-c-company")
     assert company["organizationId"] == "org-c-company"
     assert relations["accounts"] == []
+    assert relations["jurisdictionConnections"]
+    assert payload["metadata"]["sourceVersionBinding"]["temporal_review_status"] == "pending"
+    assert "procedureStage" not in payload["metadata"]
     assert any(item.get("documentId") == "doc-pending-upload" for item in relations["events"])
     assert relations["links"]
+
+
+def test_t1_case_create_projects_accounts_from_bundle_b():
+    payload = build_t1_case_create(load_case_bundle("B"))
+    accounts = payload["metadata"]["relations"]["accounts"]
+    assert accounts
+    company = next(item for item in accounts if item["accountId"] == "account-b-company-bank")
+    assert company["organizationId"] == "org-b-company"
+    assert "actor-b-company" in company["actorIds"]
+    assert company["type"] == "company_bank_account"
 
 
 def test_t1_case_create_uses_uploaded_document_ids_and_string_locators():
@@ -170,7 +189,7 @@ def test_t1_case_create_uses_uploaded_document_ids_and_string_locators():
     assert all(isinstance(item["locator"], str) for item in traced_events)
 
 
-def test_t1_fact_view_uses_server_ids_and_drops_item_verification_status():
+def test_t1_fact_view_uses_server_ids_and_projects_item_verification_status():
     payload = build_t1_fact_view(
         load_case_bundle("B"),
         case_id="case-server-b",
@@ -181,7 +200,19 @@ def test_t1_fact_view_uses_server_ids_and_drops_item_verification_status():
     assert payload["status"] == "draft"
     assert {item["id"] for item in payload["items"]} == {"fact-b-proceeds-formed", "amount-b-fraud-inflow"}
     assert all(item["sourceDocumentId"] == "doc-server-b" for item in payload["items"])
-    assert all("verificationStatus" not in item for item in payload["items"])
+    assert all(item["verificationStatus"] == "baseline_asserted" for item in payload["items"])
+    assert payload["status"] != "confirmed"
+
+
+def test_t1_module_state_puts_analysis_block_in_opaque_content():
+    payload = build_t1_module_state(load_case_bundle("C"), "compliance", "case-server-c")
+    assert payload["caseId"] == "case-server-c"
+    assert payload["version"] == 0
+    assert payload["applicability"] == "applicable"
+    assert payload["content"]["applicability"] == "applicable"
+    assert payload["sourceVersion"]
+    with pytest.raises(T1ContractError, match="server CaseView.id"):
+        build_t1_module_state(load_case_bundle("C"), "conviction", "demo-case-c-unit-crossborder")
 
 
 def test_t1_fact_confirmation_requires_explicit_human_confirmed_selection():

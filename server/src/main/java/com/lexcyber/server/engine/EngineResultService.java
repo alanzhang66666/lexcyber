@@ -77,7 +77,7 @@ public class EngineResultService {
                 jdbc.update("""
                         INSERT INTO app.review_records(id, task_id, result_version, status, decision)
                         VALUES (?, ?, ?, 'pending', 'none')
-                        ON CONFLICT (task_id, result_version) DO NOTHING
+                        ON CONFLICT (task_id, result_version) WHERE task_id IS NOT NULL DO NOTHING
                         """, UUID.randomUUID(), taskId, payload.resultVersion());
             }
         }

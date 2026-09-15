@@ -26,14 +26,14 @@ docker compose --env-file .env.v03 up --build
 - **不是公开 API**：`apps/` 是 0.2 Python 面。浏览器只打 Java `/v1`，不直连 Engine / MinIO
 - 上传后只轮询 `parseTaskId`，正文只读 `GET /v1/tasks/{id}/result`。不要再创建解析任务，不要传 `storageKey`
 - `document.parse` / `model.probe` 必须 Bearer。caseless stub 任务可无会话
-- 检索 / 量刑保持 501，直到 T3 会签。不要改 adapter 假装已接通
+- 检索 / 量刑公开口保持 501，直到 T3 会签。`compliance.analyze` / `conviction.analyze` 也保持 501。T3 适配器已在 Engine，Compose 默认开关关闭；只开 Java `SENTENCING_ENABLED` 会建成任务再被 Engine 标 `failed`。不要改公开口或默认开关假装已接通
 - DB 只走 Flyway，禁止改已发布迁移。密钥只进 `.env.v03`，禁止提交
 
-## 当前状态（2026-09-14）
+## 当前状态（2026-09-15）
 
-- **T1**：案件 / 材料 / 自动解析 / facts / 鉴权 / `model.probe` 已在 `main`
+- **T1**：案件 / 材料 / 自动解析 / facts / 鉴权 / `model.probe` / 文书草稿空壳 / sentencing facts 门闩 / `ReviewRecord.module` / 合规定罪案件级空壳 / 条级 `verificationStatus` / 草稿改稿 supersede / 无任务开单复核 已在工作区；公开检索 / 量刑 / 分析任务默认仍 501
 - **T2**：列表 / 新建 / 工作区 / 上传 / facts 已接通。阅卷 / 量刑 / 合规 / 定罪正式页未接通
-- **T3**：未做。无 `datasets/`
+- **T3**：适配器与 `demo_cases/three_case_demo` 已在 Engine；公开检索 / 量刑默认仍 501
 - 权威现状：`README.md` 与 `docs/lexcyber-0.8.*.md`。过期时以代码与契约为准
 
 下一步：T3 检索会签，或接通正式阅卷 / 量刑页。产品图与边界见那两份 0.8 文档。

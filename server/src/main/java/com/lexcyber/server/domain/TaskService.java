@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import com.lexcyber.server.api.ApiException;
 import com.lexcyber.server.engine.ExecutionRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -51,6 +52,7 @@ public class TaskService {
         UUID executionId = UUID.randomUUID();
         UUID resultId = UUID.randomUUID();
         String caseId = request.caseId() == null ? "" : request.caseId();
+        requireConfirmedFactsForSentencing(TaskPolicies.taskType(metadata), caseId);
         String inputHash = hashInput(request.query(), caseId, request.sessionId(), metadata);
         ExecutionRequest envelope = new ExecutionRequest(id, executionId, requestId, resultId, 1, "workflow.output",
                 request.query(), caseId, request.sessionId(), metadata, inputHash, "public-api-0.8");
@@ -145,6 +147,19 @@ public class TaskService {
                 taskId, executionId, writeJson(envelope));
         jdbc.update("UPDATE app.documents SET parse_status = 'queued', updated_at = now() WHERE parse_task_id = ?", taskId);
         return find(taskId).orElseThrow();
+    }
+
+    private void requireConfirmedFactsForSentencing(String taskType, String caseId) {
+        if (!TaskPolicies.SENTENCING_CALCULATE.equals(taskType) || caseId == null || caseId.isBlank()) {
+            return;
+        }
+        List<String> rows = jdbc.query(
+                "SELECT status FROM app.case_facts WHERE case_id = ?",
+                (rs, ignored) -> rs.getString(1),
+                caseId);
+        if (rows.isEmpty() || !"confirmed".equals(rows.get(0))) {
+            throw new ApiException(HttpStatus.CONFLICT, "FACTS_NOT_CONFIRMED", "量刑前须先确认案件事实");
+        }
     }
 
     private TaskView map(ResultSet rs, int ignored) throws SQLException {

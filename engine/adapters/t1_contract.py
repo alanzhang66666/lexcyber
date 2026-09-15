@@ -116,24 +116,66 @@ def build_t1_case_create(
         }
         for item in bundle.get("relationships", [])
     ]
+    organization_ids = {str(actor["id"]) for actor in bundle.get("actors", []) if actor.get("type") == "organization"}
+    accounts: list[dict[str, Any]] = []
+    for account in bundle.get("accounts", []):
+        actor_ids = [str(item) for item in account.get("controller_ids") or account.get("actor_ids") or []]
+        projected_account: dict[str, Any] = {"accountId": str(account["id"])}
+        organization_id = next(
+            (_organization_id(actor_id) for actor_id in actor_ids if actor_id in organization_ids),
+            None,
+        )
+        if organization_id:
+            projected_account["organizationId"] = organization_id
+        if actor_ids:
+            projected_account["actorIds"] = actor_ids
+        if account.get("type"):
+            projected_account["type"] = str(account["type"])
+        if account.get("jurisdiction"):
+            projected_account["jurisdiction"] = str(account["jurisdiction"])
+        accounts.append(projected_account)
+
+    connections: list[dict[str, Any]] = []
+    for item in bundle.get("jurisdiction_connections", []):
+        projected_connection: dict[str, Any] = {
+            "connectionId": str(item["id"]),
+            "type": str(item.get("type", "")),
+            "value": str(item.get("value", "")),
+        }
+        if item.get("verification_status"):
+            projected_connection["verificationStatus"] = str(item["verification_status"])
+        if item.get("evidence_ids"):
+            projected_connection["evidenceIds"] = [str(value) for value in item["evidence_ids"]]
+        connections.append(projected_connection)
+
+    metadata: dict[str, Any] = {
+        # PR5 froze datasetCaseId as the external A/B/C dataset key.
+        "datasetCaseId": str(bundle.get("case_code", "")),
+        "t3BundleId": str(bundle.get("case_id", "")),
+        "relations": {
+            "actors": people,
+            "organizations": organizations,
+            "accounts": accounts,
+            "events": events,
+            # metadata is intentionally extensible; keep objective T3 links.
+            "links": links,
+            "jurisdictionConnections": connections,
+        },
+    }
+    if bundle.get("source_version_binding") is not None:
+        metadata["sourceVersionBinding"] = bundle.get("source_version_binding")
+    procedure_stage = bundle.get("procedure_stage")
+    if procedure_stage is None:
+        procedure_stage = bundle.get("procedureStage")
+    if procedure_stage is not None and str(procedure_stage).strip():
+        metadata["procedureStage"] = procedure_stage
+
     return {
         "title": str(bundle.get("title", "")),
         "jurisdiction": str(bundle.get("jurisdiction", "CN")),
         # T1 asOfDate is the legal-analysis date; conduct dates remain events.
         "asOfDate": str(bundle.get("analysis_as_of_date", "")),
-        "metadata": {
-            # PR5 froze datasetCaseId as the external A/B/C dataset key.
-            "datasetCaseId": str(bundle.get("case_code", "")),
-            "t3BundleId": str(bundle.get("case_id", "")),
-            "relations": {
-                "actors": people,
-                "organizations": organizations,
-                "accounts": [],
-                "events": events,
-                # metadata is intentionally extensible; keep objective T3 links.
-                "links": links,
-            },
-        },
+        "metadata": metadata,
     }
 
 
@@ -188,15 +230,18 @@ def build_t1_fact_view(
         locator = _locator_text(evidence.get("locator"))
         if not locator:
             raise T1ContractError(f"T1 fact requires a string locator: {item_id}")
-        projected_items.append(
-            {
-                "id": item_id,
-                "key": str(item.get("type") or item.get("kind") or "unclassified"),
-                "value": _fact_value(item.get("value")),
-                "locator": locator,
-                "sourceDocumentId": document_id_map[dataset_document_id],
-            }
-        )
+        projected_item: dict[str, str] = {
+            "id": item_id,
+            "key": str(item.get("type") or item.get("kind") or "unclassified"),
+            "value": _fact_value(item.get("value")),
+            "locator": locator,
+            "sourceDocumentId": document_id_map[dataset_document_id],
+        }
+        if item.get("verification_status"):
+            projected_item["verificationStatus"] = str(item["verification_status"])
+        if item.get("source_version"):
+            projected_item["sourceVersion"] = str(item["source_version"])
+        projected_items.append(projected_item)
     if selected_ids is not None and found_ids != selected_ids:
         missing = ", ".join(sorted(selected_ids - found_ids))
         raise T1ContractError(f"unknown T3 fact item ids: {missing}")
@@ -206,6 +251,32 @@ def build_t1_fact_view(
         "schemaVersion": "case.facts.v1",
         "status": status,
         "items": projected_items,
+    }
+
+
+def build_t1_module_state(bundle: Mapping[str, Any], module: str, case_id: str) -> dict[str, Any]:
+    """Project one T3 analysis block into an opaque T1 module shell."""
+
+    if module not in {"compliance", "conviction"}:
+        raise T1ContractError(f"unsupported T1 module: {module}")
+    if not case_id or case_id == bundle.get("case_id"):
+        raise T1ContractError("case_id must be the server CaseView.id, not the T3 dataset case id")
+    analysis = (bundle.get("analyses") or {}).get(module)
+    content = dict(analysis) if isinstance(analysis, Mapping) else {}
+    applicability = content.get("applicability") or "unknown"
+    binding = bundle.get("source_version_binding")
+    source_version = None
+    if isinstance(binding, str) and binding.strip():
+        source_version = binding
+    elif binding is not None:
+        source_version = json.dumps(binding, ensure_ascii=False, sort_keys=True)
+    return {
+        "caseId": case_id,
+        "module": module,
+        "applicability": str(applicability),
+        "content": content,
+        "sourceVersion": source_version,
+        "version": 0,
     }
 
 

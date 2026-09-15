@@ -37,11 +37,13 @@ public class ReviewController {
 
     @GetMapping
     public Map<String, Object> list(@RequestParam(required = false) String status,
+                                    @RequestParam(required = false) String module,
+                                    @RequestParam(required = false) String archiveStatus,
                                     @RequestParam(defaultValue = "0") int page,
                                     @RequestParam(defaultValue = "20") int size,
                                     @RequestHeader(value = "Authorization", required = false) String authorization) {
         AuthAccount account = auth.require(authorization);
-        return reviews.list(account.id(), status, page, size);
+        return reviews.list(account.id(), status, module, archiveStatus, page, size);
     }
 
     @GetMapping("/{reviewId}")
@@ -67,5 +69,12 @@ public class ReviewController {
         AuthAccount account = auth.require(authorization);
         return reviews.decide(account.id(), reviewId, "reject", decision.resultVersion(),
                 identity.require(authorization, reviewer), decision.comment());
+    }
+
+    @PostMapping("/{reviewId}/archive")
+    public Map<String, Object> archive(@PathVariable UUID reviewId,
+                                       @RequestHeader(value = "Authorization", required = false) String authorization) {
+        AuthAccount account = auth.require(authorization);
+        return reviews.archive(account.id(), reviewId);
     }
 }

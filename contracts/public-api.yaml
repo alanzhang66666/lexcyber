@@ -211,6 +211,227 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+  /cases/{caseId}/compliance:
+    get:
+      tags: [cases]
+      summary: Read the opaque compliance shell
+      operationId: getCaseCompliance
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CaseId'
+      responses:
+        '200':
+          description: Compliance envelope. Missing rows return an empty draft with version 0.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ModuleStateView' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [cases]
+      summary: Replace the opaque compliance shell when the version matches
+      operationId: putCaseCompliance
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CaseId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ModuleStateUpdate' }
+      responses:
+        '200':
+          description: Draft shell replaced. Content is stored as an opaque object.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ModuleStateView' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /cases/{caseId}/compliance/confirm:
+    post:
+      tags: [cases]
+      summary: Lock the current compliance shell
+      operationId: confirmCaseCompliance
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CaseId'
+      responses:
+        '200':
+          description: Compliance shell confirmed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ModuleStateView' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /cases/{caseId}/conviction:
+    get:
+      tags: [cases]
+      summary: Read the opaque conviction shell
+      operationId: getCaseConviction
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CaseId'
+      responses:
+        '200':
+          description: Conviction envelope. Missing rows return an empty draft with version 0.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ModuleStateView' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [cases]
+      summary: Replace the opaque conviction shell when the version matches
+      operationId: putCaseConviction
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CaseId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ModuleStateUpdate' }
+      responses:
+        '200':
+          description: Draft shell replaced. Content is stored as an opaque object.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ModuleStateView' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /cases/{caseId}/conviction/confirm:
+    post:
+      tags: [cases]
+      summary: Lock the current conviction shell
+      operationId: confirmCaseConviction
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CaseId'
+      responses:
+        '200':
+          description: Conviction shell confirmed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ModuleStateView' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /cases/{caseId}/reviews:
+    post:
+      tags: [reviews]
+      summary: Open a human review on a draft, module shell, or existing task
+      operationId: openCaseReview
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CaseId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReviewOpen' }
+      responses:
+        '201':
+          description: Review opened. No engine dispatch when taskId is omitted.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReviewRecord' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /cases/{caseId}/drafts:
+    post:
+      tags: [cases]
+      summary: Create an opaque case draft
+      operationId: createCaseDraft
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CaseId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DraftCreate' }
+      responses:
+        '201':
+          description: Draft created. Body is stored as an opaque string.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DraftView' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    get:
+      tags: [cases]
+      summary: List opaque drafts for an owned case
+      operationId: listCaseDrafts
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CaseId'
+      responses:
+        '200':
+          description: Drafts for the owned case.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DraftList' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /cases/{caseId}/drafts/{draftId}:
+    get:
+      tags: [cases]
+      summary: Read one owned-case draft
+      operationId: getCaseDraft
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CaseId'
+        - $ref: '#/components/parameters/DraftId'
+      responses:
+        '200':
+          description: Draft record.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DraftView' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [cases]
+      summary: Replace draft body when the version matches
+      operationId: putCaseDraft
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CaseId'
+        - $ref: '#/components/parameters/DraftId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DraftUpdate' }
+      responses:
+        '200':
+          description: Draft replaced; version is incremented. Prior review of the old version does not move.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DraftView' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /cases/{caseId}/documents:
     post:
       tags: [cases]
@@ -365,6 +586,8 @@ paths:
         - bearerAuth: []
       parameters:
         - { name: status, in: query, schema: { type: string } }
+        - { name: module, in: query, schema: { type: string }, description: Filter by derived review module (parse, sentencing, compliance, conviction, draft, task, or an explicit metadata.module). }
+        - { name: archiveStatus, in: query, schema: { type: string, enum: [open, archived] } }
         - { name: page, in: query, schema: { type: integer, minimum: 0, default: 0 } }
         - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
       responses:
@@ -433,6 +656,23 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+  /reviews/{reviewId}/archive:
+    post:
+      tags: [reviews]
+      summary: Archive a review without changing its decision
+      operationId: archiveReview
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: reviewId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Review archived.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReviewRecord' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /sources/search:
     post:
       tags: [sources]
@@ -472,6 +712,11 @@ components:
       in: path
       required: true
       schema: { type: string }
+    DraftId:
+      name: draftId
+      in: path
+      required: true
+      schema: { type: string }
     Page:
       name: page
       in: query
@@ -505,7 +750,7 @@ components:
       description: Object storage or a dependent service is unavailable.
       content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } }
     NotImplemented:
-      description: The capability is reserved but not wired yet. Codes include SOURCE_SEARCH_UNAVAILABLE and SENTENCING_UNAVAILABLE.
+      description: The capability is reserved but not wired yet. Codes include SOURCE_SEARCH_UNAVAILABLE, SENTENCING_UNAVAILABLE, COMPLIANCE_UNAVAILABLE, and CONVICTION_UNAVAILABLE.
       content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } }
   securitySchemes:
     bearerAuth:
@@ -606,7 +851,11 @@ components:
         total: { type: integer, format: int64 }
     TaskType:
       type: string
-      enum: [document.parse, model.probe, sentencing.calculate]
+      enum: [document.parse, model.probe, sentencing.calculate, compliance.analyze, conviction.analyze]
+      description: >
+        compliance.analyze and conviction.analyze stay 501 COMPLIANCE_UNAVAILABLE /
+        CONVICTION_UNAVAILABLE. sentencing.calculate stays 501 SENTENCING_UNAVAILABLE
+        while SENTENCING_ENABLED is false.
     TaskCreate:
       type: object
       required: [query]
@@ -628,6 +877,10 @@ components:
         value: { type: string }
         locator: { type: string }
         sourceDocumentId: { type: string }
+        verificationStatus:
+          type: string
+          enum: [candidate, baseline_asserted, confirmed, rejected, conflicted]
+        sourceVersion: { type: string }
     FactUpdate:
       type: object
       required: [items]
@@ -641,6 +894,70 @@ components:
         schemaVersion: { type: string, enum: [case.facts.v1] }
         status: { type: string, enum: [draft, confirmed] }
         items: { type: array, items: { $ref: '#/components/schemas/FactItem' } }
+        updatedAt: { type: string, format: date-time }
+        confirmedAt: { type: string, format: date-time }
+    DraftCreate:
+      type: object
+      required: [draftType]
+      properties:
+        draftType: { type: string, minLength: 1, maxLength: 64 }
+        body: { type: string, description: Opaque draft text. Not validated as law or rendered as Word/PDF. }
+        templateVersion: { type: string }
+        sourceVersion: { type: string }
+    DraftUpdate:
+      type: object
+      required: [body, version]
+      properties:
+        body: { type: string, description: Opaque draft text. }
+        version: { type: integer, minimum: 1, description: Must match the current DraftView.version. }
+        templateVersion: { type: string }
+        sourceVersion: { type: string }
+    DraftView:
+      type: object
+      required: [id, caseId, draftType, body, version, updatedAt]
+      properties:
+        id: { type: string }
+        caseId: { type: string }
+        draftType: { type: string }
+        body: { type: string }
+        version: { type: integer, minimum: 1 }
+        updatedBy: { type: string, format: uuid }
+        updatedAt: { type: string, format: date-time }
+        templateVersion: { type: string }
+        sourceVersion: { type: string }
+    DraftList:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/DraftView' } }
+    ModuleStateUpdate:
+      type: object
+      required: [content, version]
+      properties:
+        applicability: { type: string, enum: [unknown, not_applicable, limited_context, applicable] }
+        content:
+          type: object
+          additionalProperties: true
+          description: Opaque object. Not validated as law.
+        sourceVersion: { type: string }
+        version: { type: integer, minimum: 0, description: Must match the current ModuleStateView.version. Empty shells are 0. }
+    ModuleStateView:
+      type: object
+      required: [caseId, module, schemaVersion, applicability, status, version, content, factsStale, updatedAt]
+      properties:
+        caseId: { type: string }
+        module: { type: string, enum: [compliance, conviction] }
+        schemaVersion: { type: string, enum: [case.module.v1] }
+        applicability: { type: string, enum: [unknown, not_applicable, limited_context, applicable] }
+        status: { type: string, enum: [draft, confirmed] }
+        version: { type: integer, minimum: 0 }
+        content:
+          type: object
+          additionalProperties: true
+        sourceVersion: { type: string }
+        factsUpdatedAt: { type: string, format: date-time }
+        factsStale: { type: boolean }
+        updatedBy: { type: string, format: uuid }
         updatedAt: { type: string, format: date-time }
         confirmedAt: { type: string, format: date-time }
     SourceSearchRequest:
@@ -719,7 +1036,13 @@ components:
         taskId: { type: string, format: uuid }
         caseId:
           type: string
-          description: Owner case of the related task (from tasks.case_id). Omitted from lists when the task has no case.
+          description: Owner case from the task, draft, or stored case_id on a module/draft review.
+        module:
+          type: string
+          description: >
+            Derived from tasks.metadata_json.module, module_state, a bound draft,
+            or taskType (document.parse→parse, sentencing.calculate→sentencing,
+            compliance.analyze→compliance, conviction.analyze→conviction, else task).
         resultVersion: { type: integer, minimum: 1 }
         status: { type: string, enum: [pending, approved, rejected, superseded] }
         decision: { type: string, enum: [approve, reject, retry, none] }
@@ -727,6 +1050,24 @@ components:
         comment: { type: string }
         authenticated: { type: boolean }
         decidedAt: { type: string, format: date-time }
+        draftId: { type: string }
+        draftVersion: { type: integer }
+        moduleState: { type: string, enum: [compliance, conviction] }
+        moduleVersion: { type: integer }
+        archiveStatus: { type: string, enum: [open, archived] }
+        returnTarget: { type: string }
+    ReviewOpen:
+      type: object
+      required: [module]
+      properties:
+        module: { type: string }
+        draftId: { type: string }
+        draftVersion: { type: integer }
+        moduleState: { type: string, enum: [compliance, conviction] }
+        moduleVersion: { type: integer }
+        resultVersion: { type: integer, minimum: 1 }
+        taskId: { type: string, format: uuid }
+        returnTarget: { type: string }
     PageReview:
       type: object
       required: [items, page, size, total]

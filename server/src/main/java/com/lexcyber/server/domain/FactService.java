@@ -104,7 +104,14 @@ public class FactService {
                 throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", "each fact item needs key and value");
             }
             String id = item.id() == null || item.id().isBlank() ? UUID.randomUUID().toString() : item.id().trim();
-            normalized.add(new FactItem(id, item.key().trim(), item.value(), item.locator(), item.sourceDocumentId()));
+            normalized.add(new FactItem(
+                    id,
+                    item.key().trim(),
+                    item.value(),
+                    item.locator(),
+                    item.sourceDocumentId(),
+                    requireVerification(item.verificationStatus()),
+                    blankToNull(item.sourceVersion())));
         }
         return List.copyOf(normalized);
     }
@@ -134,7 +141,9 @@ public class FactService {
                         stringValue(row.get("key")),
                         stringValue(row.get("value")),
                         stringValue(row.get("locator")),
-                        stringValue(row.get("sourceDocumentId"))));
+                        stringValue(row.get("sourceDocumentId")),
+                        stringValue(row.get("verificationStatus")),
+                        stringValue(row.get("sourceVersion"))));
             }
             return List.copyOf(items);
         } catch (JsonProcessingException ex) {
@@ -148,6 +157,21 @@ public class FactService {
         } catch (JsonProcessingException ex) {
             throw new IllegalStateException("unable to serialize facts", ex);
         }
+    }
+
+    private static String requireVerification(String status) {
+        if (status == null || status.isBlank()) {
+            return null;
+        }
+        String value = status.trim();
+        if (!ModulePolicies.VERIFICATION.contains(value)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", "unsupported verificationStatus");
+        }
+        return value;
+    }
+
+    private static String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 
     private static String stringValue(Object value) {

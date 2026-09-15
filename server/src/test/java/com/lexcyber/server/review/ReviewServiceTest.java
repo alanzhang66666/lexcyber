@@ -8,6 +8,8 @@ import com.lexcyber.server.api.ApiException;
 import com.lexcyber.server.domain.CaseCreate;
 import com.lexcyber.server.domain.CaseService;
 import com.lexcyber.server.domain.CaseView;
+import com.lexcyber.server.domain.ModuleStateService;
+import com.lexcyber.server.domain.ModuleStateUpdate;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -64,8 +66,8 @@ class ReviewServiceTest {
                 .load()
                 .migrate();
         jdbc = new JdbcTemplate(dataSource);
-        reviews = new ReviewService(jdbc);
         CaseService cases = new CaseService(jdbc, new ObjectMapper().findAndRegisterModules());
+        reviews = new ReviewService(jdbc, cases);
         alice = insertAccount("alice_" + UUID.randomUUID().toString().replace("-", "").substring(0, 8));
         bob = insertAccount("bob_" + UUID.randomUUID().toString().replace("-", "").substring(0, 8));
         aliceCase = cases.create(alice, new CaseCreate("alice-case", "CN", null, Map.of()));
@@ -85,10 +87,12 @@ class ReviewServiceTest {
         assertEquals(1, items.size());
         assertEquals(aliceReview, items.get(0).get("id"));
         assertEquals(aliceCase.id(), items.get(0).get("caseId"));
+        assertEquals("task", items.get(0).get("module"));
 
         Map<String, Object> owned = reviews.get(alice, aliceReview);
         assertEquals(aliceCase.id(), owned.get("caseId"));
         assertEquals(1, owned.get("resultVersion"));
+        assertEquals("task", owned.get("module"));
 
         ApiException hidden = assertThrows(ApiException.class, () -> reviews.get(alice, bobReview));
         assertEquals(HttpStatus.NOT_FOUND, hidden.status());
@@ -127,12 +131,84 @@ class ReviewServiceTest {
         assertEquals(HttpStatus.CONFLICT, again.getStatusCode());
     }
 
+    @Test
+    void moduleIsMappedFromMetadataAndCanFilter() {
+        UUID parseReview = insertReview(aliceCase.id(), "waiting_review", "pending",
+                "{\"taskType\":\"document.parse\"}");
+        UUID sentencingReview = insertReview(aliceCase.id(), "waiting_review", "pending",
+                "{\"taskType\":\"sentencing.calculate\"}");
+        UUID explicit = insertReview(aliceCase.id(), "waiting_review", "pending",
+                "{\"module\":\"compliance\",\"taskType\":\"document.parse\"}");
+
+        assertEquals("parse", reviews.get(alice, parseReview).get("module"));
+        assertEquals("sentencing", reviews.get(alice, sentencingReview).get("module"));
+        assertEquals("compliance", reviews.get(alice, explicit).get("module"));
+
+        Map<String, Object> parsePage = reviews.list(alice, null, "parse", 0, 20);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> parseItems = (List<Map<String, Object>>) parsePage.get("items");
+        assertEquals(1L, parsePage.get("total"));
+        assertEquals(parseReview, parseItems.get(0).get("id"));
+
+        Map<String, Object> compliancePage = reviews.list(alice, null, "compliance", 0, 20);
+        assertEquals(1L, compliancePage.get("total"));
+
+        UUID analyze = insertReview(aliceCase.id(), "waiting_review", "pending",
+                "{\"taskType\":\"compliance.analyze\"}");
+        UUID convictionAnalyze = insertReview(aliceCase.id(), "waiting_review", "pending",
+                "{\"taskType\":\"conviction.analyze\"}");
+        assertEquals("compliance", reviews.get(alice, analyze).get("module"));
+        assertEquals("conviction", reviews.get(alice, convictionAnalyze).get("module"));
+    }
+
+    @Test
+    void openWithoutTaskThenArchiveStaysOwnerScoped() {
+        ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
+        CaseService cases = new CaseService(jdbc, mapper);
+        ModuleStateService modules = new ModuleStateService(jdbc, mapper, cases);
+        modules.replace(alice, aliceCase.id(), "conviction",
+                new ModuleStateUpdate("unknown", Map.of("note", "shell"), null, 0));
+
+        Map<String, Object> opened = reviews.open(alice, aliceCase.id(),
+                new ReviewOpen("conviction", null, null, "conviction", 1, null, null, null));
+        assertEquals(aliceCase.id(), opened.get("caseId"));
+        assertEquals("pending", opened.get("status"));
+        assertEquals("conviction", opened.get("module"));
+        assertEquals("conviction", opened.get("moduleState"));
+        assertEquals(1, opened.get("moduleVersion"));
+        assertEquals("open", opened.get("archiveStatus"));
+        assertEquals(null, opened.get("taskId"));
+
+        UUID reviewId = (UUID) opened.get("id");
+        ApiException hidden = assertThrows(ApiException.class, () -> reviews.get(bob, reviewId));
+        assertEquals("REVIEW_NOT_FOUND", hidden.code());
+        ApiException hiddenArchive = assertThrows(ApiException.class, () -> reviews.archive(bob, reviewId));
+        assertEquals("REVIEW_NOT_FOUND", hiddenArchive.code());
+
+        Map<String, Object> archived = reviews.archive(alice, reviewId);
+        assertEquals("archived", archived.get("archiveStatus"));
+        assertEquals("pending", archived.get("status"));
+
+        Map<String, Object> openPage = reviews.list(alice, null, null, "open", 0, 20);
+        assertEquals(0L, openPage.get("total"));
+        Map<String, Object> archivedPage = reviews.list(alice, null, null, "archived", 0, 20);
+        assertEquals(1L, archivedPage.get("total"));
+
+        Map<String, Object> decided = reviews.decide(alice, reviewId, "approve", 1, "alice", "ok");
+        assertEquals("approved", decided.get("status"));
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM app.tasks WHERE case_id=?", Integer.class, aliceCase.id()));
+    }
+
     private UUID insertReview(String caseId, String taskStatus, String reviewStatus) {
+        return insertReview(caseId, taskStatus, reviewStatus, "{}");
+    }
+
+    private UUID insertReview(String caseId, String taskStatus, String reviewStatus, String metadataJson) {
         UUID taskId = UUID.randomUUID();
         jdbc.update("""
                 INSERT INTO app.tasks(id, request_id, execution_id, case_id, query_text, status, current_stage, metadata_json)
-                VALUES (?, ?, ?, ?, 'review-fixture', ?, 'human_review', '{}'::jsonb)
-                """, taskId, UUID.randomUUID(), UUID.randomUUID(), caseId, taskStatus);
+                VALUES (?, ?, ?, ?, 'review-fixture', ?, 'human_review', ?::jsonb)
+                """, taskId, UUID.randomUUID(), UUID.randomUUID(), caseId, taskStatus, metadataJson);
         UUID reviewId = UUID.randomUUID();
         jdbc.update("""
                 INSERT INTO app.review_records(id, task_id, result_version, status, decision)

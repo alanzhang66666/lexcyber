@@ -12,10 +12,13 @@ crime, or other legal conclusions.
 `docker-compose.yml` (project name remains `lexcyber-v03`; env file is still
 `.env.v03`). **T1 backend contracts are on `main`**: owner-scoped cases and
 documents with upload-time auto-parse, facts, reserved-task auth, owned
-`storageKey` bind, and `model.probe`. Source search and sentencing stay gated
-at `501`. T2 frontend case-center (list/create/workspace/facts) is on `main`;
-formal docket/analysis pages stay empty until those APIs exist. T3 retrieval
-is **not** done.
+`storageKey` bind, `model.probe`, opaque drafts, and case-level compliance /
+conviction shells. T3 Engine adapters for search and sentencing are on `main`
+but Compose flags stay off, so those public APIs still return `501`.
+`compliance.analyze` / `conviction.analyze` stay `501` as well. Opening only
+the Java sentencing flag creates a task that then `failed` on the Engine side.
+T2 frontend case-center (list/create/workspace/facts) is on `main`; formal
+docket/analysis pages stay empty until those APIs exist.
 
 ## Start the complete local demo
 
@@ -53,10 +56,13 @@ Three-case field increment and owner-scoped reviews: [`docs/t1-api-01-increment.
 | --- | --- |
 | Cases / documents | Bearer + owner scope. Upload stores bytes in MinIO, then creates a `document.parse` task (`parseTaskId`). PDF/DOCX only. |
 | Auto-parse | Engine re-reads stored bytes and returns `workflow.output` with `content.schemaVersion=document.parse.v1` (locators). Fatal/timeout map to `DOCUMENT_PARSE_FAILED` / `DOCUMENT_PARSE_TIMEOUT`. |
-| Facts | `GET`/`PUT /v1/cases/{id}/facts` and `POST .../facts/confirm`. Confirm locks further `PUT` (`409`). |
-| Reviews | Bearer + owner case via `tasks.case_id`. Payload includes `caseId`. Other-case / missing → `404`; unauthenticated list is `401`, not the global queue. |
-| Source search | `POST /v1/sources/search` returns `501 SOURCE_SEARCH_UNAVAILABLE`. Adapter is not wired; T3 retrieval is not done. |
-| Sentencing | `metadata.taskType=sentencing.calculate` returns `501 SENTENCING_UNAVAILABLE` while `SENTENCING_ENABLED=false`. |
+| Facts | `GET`/`PUT /v1/cases/{id}/facts` and `POST .../facts/confirm`. Confirm locks further `PUT` (`409`). Optional item `verificationStatus` / `sourceVersion`; case-level confirm does not rewrite item status. |
+| Reviews | Bearer + owner case via task / draft / stored `case_id`. Payload includes `caseId` and derived `module`. Optional `?module=` / `?archiveStatus=`. `POST /v1/cases/{id}/reviews` can open a review without a task. `POST /v1/reviews/{id}/archive`. Other-case / missing → `404`; unauthenticated list is `401`, not the global queue. |
+| Drafts | Opaque `GET`/`POST`/`PUT /v1/cases/{id}/drafts`. Body is a string; version mismatch is `409`. Optional `templateVersion` / `sourceVersion`. A successful `PUT` supersedes pending/approved reviews on the old draft version. No Word/PDF and no legal checks. |
+| Compliance / conviction shells | Opaque `GET`/`PUT`/`confirm` on `/v1/cases/{id}/compliance` and `/conviction`. Empty GET is `version=0`. Confirmed shells reject further `PUT` (`409 MODULE_CONFIRMED`). `factsStale` is computed; content is not legally validated. |
+| Source search | Public `POST /v1/sources/search` stays `501 SOURCE_SEARCH_UNAVAILABLE` while `LEGAL_SOURCE_SEARCH_ENABLED=false`. The T3 adapter is in Engine; the default Compose flag is off. |
+| Sentencing | Public create stays `501 SENTENCING_UNAVAILABLE` while Java `SENTENCING_ENABLED=false`. When enabled, unconfirmed facts return `409 FACTS_NOT_CONFIRMED`. Java and Engine flags must both be on; Java-only create becomes a `failed` task. |
+| Analyze task types | `compliance.analyze` / `conviction.analyze` stay `501 COMPLIANCE_UNAVAILABLE` / `CONVICTION_UNAVAILABLE`. No Engine dispatch. |
 | Reserved-task auth | `document.parse` and `model.probe` require `Authorization: Bearer`. Unauthenticated create is `401`. |
 | Owned `storageKey` | Clients must not send object keys. The server overwrites `storageKey` / `caseId` from the owned document; a forged key is ignored. |
 | `model.probe` | Authenticated task; Engine calls ModelGateway. A real provider + key in Compose `.env.v03` is required for a non-stub result. |

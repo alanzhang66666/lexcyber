@@ -39,10 +39,24 @@ class TaskPoliciesTest {
     }
 
     @Test
+    void analyzeTaskTypesAreAlways501() {
+        ApiException compliance = assertThrows(ApiException.class,
+                () -> TaskPolicies.requireSupported(Map.of("taskType", "compliance.analyze"), true));
+        assertEquals(HttpStatus.NOT_IMPLEMENTED, compliance.status());
+        assertEquals("COMPLIANCE_UNAVAILABLE", compliance.code());
+        ApiException conviction = assertThrows(ApiException.class,
+                () -> TaskPolicies.requireSupported(Map.of("taskType", "conviction.analyze"), true));
+        assertEquals(HttpStatus.NOT_IMPLEMENTED, conviction.status());
+        assertEquals("CONVICTION_UNAVAILABLE", conviction.code());
+    }
+
+    @Test
     void reservedTaskTypesRequireAuth() {
         assertEquals(true, TaskPolicies.requiresAuth("document.parse"));
         assertEquals(true, TaskPolicies.requiresAuth("model.probe"));
         assertEquals(true, TaskPolicies.requiresAuth("sentencing.calculate"));
+        assertEquals(true, TaskPolicies.requiresAuth("compliance.analyze"));
+        assertEquals(true, TaskPolicies.requiresAuth("conviction.analyze"));
         assertEquals(false, TaskPolicies.requiresAuth(null));
         assertEquals(false, TaskPolicies.requiresAuth(""));
     }

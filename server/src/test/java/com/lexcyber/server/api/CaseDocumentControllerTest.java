@@ -22,9 +22,17 @@ import com.lexcyber.server.domain.CaseEventDocumentUpdate;
 import com.lexcyber.server.domain.CaseView;
 import com.lexcyber.server.domain.DocumentService;
 import com.lexcyber.server.domain.DocumentView;
+import com.lexcyber.server.domain.DraftCreate;
+import com.lexcyber.server.domain.DraftList;
+import com.lexcyber.server.domain.DraftService;
+import com.lexcyber.server.domain.DraftUpdate;
+import com.lexcyber.server.domain.DraftView;
 import com.lexcyber.server.domain.FactItem;
 import com.lexcyber.server.domain.FactService;
 import com.lexcyber.server.domain.FactView;
+import com.lexcyber.server.domain.ModuleStateService;
+import com.lexcyber.server.domain.ModuleStateUpdate;
+import com.lexcyber.server.domain.ModuleStateView;
 import com.lexcyber.server.domain.PageResponse;
 import com.lexcyber.server.domain.SourceSearchRequest;
 import com.lexcyber.server.domain.TaskCreate;
@@ -64,6 +72,10 @@ class CaseDocumentControllerTest {
     @Mock
     FactService facts;
     @Mock
+    DraftService drafts;
+    @Mock
+    ModuleStateService modules;
+    @Mock
     EngineSourceClient sources;
     MockMvc mvc;
 
@@ -80,6 +92,8 @@ class CaseDocumentControllerTest {
                         new DocumentController(auth, documents),
                         new TaskController(tasks, auth, cases, documents, false),
                         new FactController(auth, facts),
+                        new DraftController(auth, drafts),
+                        new ModuleStateController(auth, modules),
                         new SourceSearchController(auth, sources))
                 .setControllerAdvice(new ApiExceptionHandler())
                 .setValidator(validator)
@@ -139,7 +153,7 @@ class CaseDocumentControllerTest {
         mvc.perform(patch(path).contentType(MediaType.APPLICATION_JSON).content("{\"documentId\":\"doc-demo-001\"}"))
                 .andExpect(status().isUnauthorized());
 
-        when(auth.require(any())).thenReturn(owner);
+        doReturn(owner).when(auth).require(any());
         mvc.perform(patch(path).header("Authorization", "Bearer token")
                         .contentType(MediaType.APPLICATION_JSON).content("{\"documentId\":\"\"}"))
                 .andExpect(status().isBadRequest())
@@ -273,6 +287,60 @@ class CaseDocumentControllerTest {
                         .content("{\"query\":\"q\",\"metadata\":{\"taskType\":\"nope\"}}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("INVALID_TASK_TYPE"));
+        mvc.perform(post("/v1/tasks").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"query\":\"q\",\"metadata\":{\"taskType\":\"compliance.analyze\"}}"))
+                .andExpect(status().isNotImplemented())
+                .andExpect(jsonPath("$.code").value("COMPLIANCE_UNAVAILABLE"));
+        mvc.perform(post("/v1/tasks").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"query\":\"q\",\"metadata\":{\"taskType\":\"conviction.analyze\"}}"))
+                .andExpect(status().isNotImplemented())
+                .andExpect(jsonPath("$.code").value("CONVICTION_UNAVAILABLE"));
+    }
+
+    @Test
+    void draftsRequireOwnerAndRejectStaleVersion() throws Exception {
+        when(auth.require(isNull())).thenThrow(new ResponseStatusException(HttpStatus.UNAUTHORIZED, "session required"));
+        mvc.perform(post("/v1/cases/case-demo-001/drafts")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"draftType\":\"opinion\"}"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+
+        doReturn(owner).when(auth).require(any());
+        DraftView created = new DraftView("draft-demo-001", "case-demo-001", "opinion", "", 1,
+                owner.id(), OffsetDateTime.parse("2026-09-15T10:00:00Z"));
+        when(drafts.create(eq(owner.id()), eq("case-demo-001"), any(DraftCreate.class))).thenReturn(created);
+        when(drafts.list(owner.id(), "case-demo-001")).thenReturn(new DraftList(List.of(created)));
+        when(drafts.get(owner.id(), "case-demo-001", "draft-demo-001")).thenReturn(created);
+        when(drafts.replace(eq(owner.id()), eq("case-demo-001"), eq("draft-demo-001"), any(DraftUpdate.class)))
+                .thenThrow(new ApiException(HttpStatus.CONFLICT, "DRAFT_VERSION_CONFLICT", "草稿版本已变更"));
+        when(drafts.get(owner.id(), "hidden", "draft-demo-001"))
+                .thenThrow(new ApiException(HttpStatus.NOT_FOUND, "CASE_NOT_FOUND", "案件不存在或不可访问"));
+
+        mvc.perform(post("/v1/cases/case-demo-001/drafts").header("Authorization", "Bearer token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"draftType\":\"opinion\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").value("draft-demo-001"))
+                .andExpect(jsonPath("$.version").value(1));
+
+        mvc.perform(get("/v1/cases/case-demo-001/drafts").header("Authorization", "Bearer token"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].draftType").value("opinion"));
+
+        mvc.perform(get("/v1/cases/case-demo-001/drafts/draft-demo-001").header("Authorization", "Bearer token"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value("draft-demo-001"));
+
+        mvc.perform(put("/v1/cases/case-demo-001/drafts/draft-demo-001").header("Authorization", "Bearer token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"body\":\"改稿\",\"version\":9}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("DRAFT_VERSION_CONFLICT"));
+
+        mvc.perform(get("/v1/cases/hidden/drafts/draft-demo-001").header("Authorization", "Bearer token"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("CASE_NOT_FOUND"));
     }
 
     @Test
@@ -295,6 +363,37 @@ class CaseDocumentControllerTest {
         when(facts.get(owner.id(), "hidden")).thenThrow(new ApiException(HttpStatus.NOT_FOUND, "CASE_NOT_FOUND", "案件不存在或不可访问"));
         mvc.perform(get("/v1/cases/hidden/facts").header("Authorization", "Bearer token"))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void moduleShellsRequireOwnerAndSurfaceVersionConflicts() throws Exception {
+        when(auth.require(isNull())).thenThrow(new ResponseStatusException(HttpStatus.UNAUTHORIZED, "session required"));
+        mvc.perform(get("/v1/cases/case-demo-001/compliance"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+
+        doReturn(owner).when(auth).require(any());
+        ModuleStateView empty = new ModuleStateView(
+                "case-demo-001", "compliance", "case.module.v1", "unknown", "draft", 0, Map.of(),
+                null, null, false, null, OffsetDateTime.parse("2026-09-15T10:00:00Z"), null);
+        when(modules.get(owner.id(), "case-demo-001", "compliance")).thenReturn(empty);
+        when(modules.replace(eq(owner.id()), eq("case-demo-001"), eq("compliance"), any(ModuleStateUpdate.class)))
+                .thenThrow(new ApiException(HttpStatus.CONFLICT, "MODULE_VERSION_CONFLICT", "模块版本已变更"));
+        when(modules.get(owner.id(), "hidden", "conviction"))
+                .thenThrow(new ApiException(HttpStatus.NOT_FOUND, "CASE_NOT_FOUND", "案件不存在或不可访问"));
+
+        mvc.perform(get("/v1/cases/case-demo-001/compliance").header("Authorization", "Bearer token"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.version").value(0))
+                .andExpect(jsonPath("$.factsStale").value(false));
+        mvc.perform(put("/v1/cases/case-demo-001/compliance").header("Authorization", "Bearer token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"content\":{},\"version\":9}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("MODULE_VERSION_CONFLICT"));
+        mvc.perform(get("/v1/cases/hidden/conviction").header("Authorization", "Bearer token"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("CASE_NOT_FOUND"));
     }
 
     @Test

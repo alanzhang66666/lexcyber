@@ -6,12 +6,19 @@ import type {
   CaseView,
   DocumentRole,
   DocumentView,
+  DraftCreate,
+  DraftList,
+  DraftUpdate,
+  DraftView,
   FactUpdate,
   FactView,
+  ModuleStateUpdate,
+  ModuleStateView,
   PageCase,
   PageDocument,
   ResultPayload,
   ReviewDecision,
+  ReviewOpen,
   ReviewPage,
   ReviewRecord,
   SessionView,
@@ -127,9 +134,11 @@ export const api = {
     return request<ResultPayload>(`/v1/tasks/${encodeURIComponent(taskId)}/result`)
   },
 
-  listReviews(options: { status?: string; page?: number; size?: number } = {}) {
+  listReviews(options: { status?: string; module?: string; archiveStatus?: string; page?: number; size?: number } = {}) {
     const params = new URLSearchParams()
     if (options.status) params.set('status', options.status)
+    if (options.module) params.set('module', options.module)
+    if (options.archiveStatus) params.set('archiveStatus', options.archiveStatus)
     params.set('page', String(options.page ?? 0))
     params.set('size', String(options.size ?? 20))
     return request<ReviewPage>(`/v1/reviews?${params.toString()}`)
@@ -146,6 +155,35 @@ export const api = {
     })
   },
 
+  archiveReview(reviewId: string) {
+    return request<ReviewRecord>(`/v1/reviews/${encodeURIComponent(reviewId)}/archive`, { method: 'POST' })
+  },
+
+  openCaseReview(caseId: string, input: ReviewOpen) {
+    return request<ReviewRecord>(`/v1/cases/${encodeURIComponent(caseId)}/reviews`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    })
+  },
+
+  getCaseModule(caseId: string, module: 'compliance' | 'conviction') {
+    return request<ModuleStateView>(`/v1/cases/${encodeURIComponent(caseId)}/${module}`)
+  },
+
+  putCaseModule(caseId: string, module: 'compliance' | 'conviction', input: ModuleStateUpdate) {
+    return request<ModuleStateView>(`/v1/cases/${encodeURIComponent(caseId)}/${module}`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    })
+  },
+
+  confirmCaseModule(caseId: string, module: 'compliance' | 'conviction') {
+    return request<ModuleStateView>(
+      `/v1/cases/${encodeURIComponent(caseId)}/${module}/confirm`,
+      { method: 'POST' },
+    )
+  },
+
   getCaseFacts(caseId: string) {
     return request<FactView>(`/v1/cases/${encodeURIComponent(caseId)}/facts`)
   },
@@ -159,6 +197,30 @@ export const api = {
 
   confirmCaseFacts(caseId: string) {
     return request<FactView>(`/v1/cases/${encodeURIComponent(caseId)}/facts/confirm`, { method: 'POST' })
+  },
+
+  createCaseDraft(caseId: string, input: DraftCreate) {
+    return request<DraftView>(`/v1/cases/${encodeURIComponent(caseId)}/drafts`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    })
+  },
+
+  listCaseDrafts(caseId: string) {
+    return request<DraftList>(`/v1/cases/${encodeURIComponent(caseId)}/drafts`)
+  },
+
+  getCaseDraft(caseId: string, draftId: string) {
+    return request<DraftView>(
+      `/v1/cases/${encodeURIComponent(caseId)}/drafts/${encodeURIComponent(draftId)}`,
+    )
+  },
+
+  putCaseDraft(caseId: string, draftId: string, input: DraftUpdate) {
+    return request<DraftView>(
+      `/v1/cases/${encodeURIComponent(caseId)}/drafts/${encodeURIComponent(draftId)}`,
+      { method: 'PUT', body: JSON.stringify(input) },
+    )
   },
 
   searchSources(input: SourceSearchRequest) {

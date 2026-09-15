@@ -12,6 +12,8 @@ required_contract_markers = (
     "/cases:",
     "/documents/{documentId}:",
     "/cases/{caseId}/facts:",
+    "/cases/{caseId}/drafts:",
+    "DraftView:",
     "/sources/search:",
     "model.probe",
     "sentencing.calculate",
@@ -23,6 +25,12 @@ required_contract_markers = (
     "asOfDate:",
     "parseTaskId:",
     "Idempotency-Key",
+    "/compliance:",
+    "/conviction:",
+    "verificationStatus",
+    "COMPLIANCE_UNAVAILABLE",
+    "draftVersion",
+    "archiveStatus",
 )
 required_snapshot_markers = (
     "export type TaskStatus",
@@ -34,11 +42,16 @@ required_snapshot_markers = (
     "export type CaseView",
     "export type DocumentView",
     "export type FactView",
+    "export type DraftView",
+    "export type ModuleStateView",
     "export type SourceSearchRequest",
     "waiting_review",
     "asOfDate",
     "parseTaskId",
     "model.probe",
+    "verificationStatus",
+    "compliance.analyze",
+    "archiveStatus",
 )
 
 missing = [marker for marker in required_contract_markers if marker not in contract]

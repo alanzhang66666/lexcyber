@@ -14,7 +14,23 @@ export type TaskStatus =
 export type ReviewStatus = 'pending' | 'approved' | 'rejected' | 'superseded'
 export type ReviewDecisionValue = 'approve' | 'reject' | 'retry' | 'none'
 
-export type TaskType = 'document.parse' | 'model.probe' | 'sentencing.calculate'
+export type TaskType =
+  | 'document.parse'
+  | 'model.probe'
+  | 'sentencing.calculate'
+  | 'compliance.analyze'
+  | 'conviction.analyze'
+
+export type VerificationStatus =
+  | 'candidate'
+  | 'baseline_asserted'
+  | 'confirmed'
+  | 'rejected'
+  | 'conflicted'
+
+export type ModuleApplicability = 'unknown' | 'not_applicable' | 'limited_context' | 'applicable'
+export type ModuleName = 'compliance' | 'conviction'
+export type ArchiveStatus = 'open' | 'archived'
 
 export type TaskCreate = {
   query: string
@@ -61,6 +77,7 @@ export type ReviewRecord = {
   id: string
   taskId?: string | null
   caseId?: string | null
+  module?: string | null
   resultVersion: number
   status: ReviewStatus
   decision: ReviewDecisionValue
@@ -68,6 +85,23 @@ export type ReviewRecord = {
   comment?: string | null
   authenticated?: boolean | null
   decidedAt?: string | null
+  draftId?: string | null
+  draftVersion?: number | null
+  moduleState?: ModuleName | null
+  moduleVersion?: number | null
+  archiveStatus?: ArchiveStatus | null
+  returnTarget?: string | null
+}
+
+export type ReviewOpen = {
+  module: string
+  draftId?: string | null
+  draftVersion?: number | null
+  moduleState?: ModuleName | null
+  moduleVersion?: number | null
+  resultVersion?: number | null
+  taskId?: string | null
+  returnTarget?: string | null
 }
 
 export type ReviewPage = {
@@ -168,6 +202,8 @@ export type FactItem = {
   value: string
   locator?: string | null
   sourceDocumentId?: string | null
+  verificationStatus?: VerificationStatus | null
+  sourceVersion?: string | null
 }
 
 export type FactUpdate = {
@@ -181,6 +217,59 @@ export type FactView = {
   items: FactItem[]
   updatedAt: string
   confirmedAt?: string | null
+}
+
+export type DraftCreate = {
+  draftType: string
+  body?: string | null
+  templateVersion?: string | null
+  sourceVersion?: string | null
+}
+
+export type DraftUpdate = {
+  body: string
+  version: number
+  templateVersion?: string | null
+  sourceVersion?: string | null
+}
+
+export type DraftView = {
+  id: string
+  caseId: string
+  draftType: string
+  body: string
+  version: number
+  updatedBy?: string | null
+  updatedAt: string
+  templateVersion?: string | null
+  sourceVersion?: string | null
+}
+
+export type ModuleStateUpdate = {
+  applicability?: ModuleApplicability | null
+  content: Record<string, unknown>
+  sourceVersion?: string | null
+  version: number
+}
+
+export type ModuleStateView = {
+  caseId: string
+  module: ModuleName
+  schemaVersion: 'case.module.v1'
+  applicability: ModuleApplicability
+  status: 'draft' | 'confirmed'
+  version: number
+  content: Record<string, unknown>
+  sourceVersion?: string | null
+  factsUpdatedAt?: string | null
+  factsStale: boolean
+  updatedBy?: string | null
+  updatedAt: string
+  confirmedAt?: string | null
+}
+
+export type DraftList = {
+  items: DraftView[]
 }
 
 export type SourceSearchRequest = {

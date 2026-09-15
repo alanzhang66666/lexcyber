@@ -64,6 +64,10 @@ public final class DocumentPolicies {
         return "doc-" + shortId();
     }
 
+    public static String newDraftId() {
+        return "draft-" + shortId();
+    }
+
     public static String normalizeFilename(String filename) {
         if (filename == null || filename.isBlank()) return "document";
         String value = filename.replace('\\', '/');

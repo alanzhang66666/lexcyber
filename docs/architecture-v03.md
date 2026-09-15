@@ -27,7 +27,7 @@ This is not a stub-only cut. **T1 public APIs are on `main`**, measured against 
 
 Caseless stub tasks stay public so the developer console can still submit a generic workflow without a session. That path does not replace the T1 case/document APIs.
 
-**Still `501` (T3 not wired):** `POST /v1/sources/search` returns `SOURCE_SEARCH_UNAVAILABLE`. `metadata.taskType=sentencing.calculate` returns `SENTENCING_UNAVAILABLE` while `SENTENCING_ENABLED=false`. Retrieval signoff remains pending in [`t1-retrieval-boundary.md`](t1-retrieval-boundary.md). T2 case-center list/create/workspace/facts are on `main`. Formal docket/analysis stay disconnected. T3 datasets/rules/index are **not** done.
+**Still `501` by default (T3 adapters present, flags off):** Engine has search and sentencing adapters plus `demo_cases/three_case_demo`. Public `POST /v1/sources/search` returns `SOURCE_SEARCH_UNAVAILABLE` while `LEGAL_SOURCE_SEARCH_ENABLED=false`. `metadata.taskType=sentencing.calculate` returns `SENTENCING_UNAVAILABLE` while Java `SENTENCING_ENABLED=false`. `compliance.analyze` / `conviction.analyze` stay `501`; case-level compliance/conviction shells are persisted on Java `/v1` without creating Engine analysis tasks. Both Java and Engine sentencing flags must be on; Java-only enablement creates a task that Engine then marks `failed`. Retrieval signoff remains pending in [`t1-retrieval-boundary.md`](t1-retrieval-boundary.md). T2 case-center list/create/workspace/facts are on `main`. Formal docket/analysis stay disconnected.
 
 ## Ownership
 
