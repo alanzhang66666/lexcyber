@@ -2,7 +2,7 @@
 
 [中文](lexcyber-0.8.zh-CN.md) · [README](../README.md)
 
-**Version:** 0.8  
+**Version:** 0.8
 **Role:** An auditable task-execution and case-document workbench. It assists review. It does not replace judicial discretion and does not issue sentencing, liability, or crime conclusions.
 
 Open `http://127.0.0.1:18080`. Health check: `GET /healthz` should report `version: 0.8.0` after Java / Engine images are rebuilt.
@@ -276,9 +276,9 @@ Samples: [`LexCyber_T1接口交接样例.md`](../LexCyber_T1接口交接样例.m
 
 ## 5. Do not
 
-1. Call Engine, MinIO, or a vector store from the browser  
-2. Serve `retrieval/corpus.py` sample articles as public search hits  
-3. Treat unconfirmed sentencing ratios as production rules  
-4. Show placeholder “Lin” excerpts as real parse or sentence output  
+1. Call Engine, MinIO, or a vector store from the browser
+2. Serve `retrieval/corpus.py` sample articles as public search hits
+3. Treat unconfirmed sentencing ratios as production rules
+4. Show placeholder “Lin” excerpts as real parse or sentence output
 
 Retrieval signoff is still pending: [`t1-retrieval-boundary.md`](t1-retrieval-boundary.md).

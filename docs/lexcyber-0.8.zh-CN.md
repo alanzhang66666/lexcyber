@@ -2,7 +2,7 @@
 
 [English](lexcyber-0.8.en.md) · [README](../README.md)
 
-**版本：** 0.8  
+**版本：** 0.8
 **定位：** 可审计的任务执行与案件材料工作台。辅助研判，不替代司法裁量；不作出量刑、责任或犯罪结论。
 
 打开 `http://127.0.0.1:18080`。健康检查：`GET /healthz` 应为 `version: 0.8.0`（需重建 Java / Engine 镜像）。
@@ -276,9 +276,9 @@ python scripts/t1_local_closeout.py
 
 ## 5. 明确不做
 
-1. 浏览器直连 Engine / MinIO / 向量库  
-2. 把 `retrieval/corpus.py` 样例条文当公开检索结果  
-3. 未经法学确认的量刑比例当正式规则  
-4. 正式页用占位「林某」冒充真实解析或刑期  
+1. 浏览器直连 Engine / MinIO / 向量库
+2. 把 `retrieval/corpus.py` 样例条文当公开检索结果
+3. 未经法学确认的量刑比例当正式规则
+4. 正式页用占位「林某」冒充真实解析或刑期
 
 检索边界仍待 T3 会签：[`t1-retrieval-boundary.md`](t1-retrieval-boundary.md)。

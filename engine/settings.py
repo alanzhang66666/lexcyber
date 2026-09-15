@@ -22,6 +22,7 @@ class EngineSettings(BaseSettings):
     minio_bucket: str = "lexcyber"
     document_parse_timeout_seconds: int = 60
     knowledge_base_url: str = ""
+    legal_source_search_enabled: bool = False
     sentencing_enabled: bool = False
     embedding_provider: str = ""
     embedding_model: str = ""

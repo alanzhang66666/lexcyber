@@ -1,0 +1,126 @@
+{
+  "schema_version": "lexcyber.case-bundle.v1",
+  "case_id": "demo-case-a-helping",
+  "case_code": "A",
+  "title": "跨境营销员工引流帮助行为案",
+  "case_question": "帮助发生阶段、主观认识及帮信与诈骗共犯界分",
+  "jurisdiction": "CN",
+  "conduct_period": {"start": "2023-04-01", "end": "2023-05-31", "precision": "month"},
+  "analysis_as_of_date": "2026-09-14",
+  "source_case_numbers": ["（2023）陕0114刑初265号", "（2024）陕01刑终326号"],
+  "provenance": {
+    "source_archive": "合成案例40个(1).zip",
+    "collection_method": "user-provided synthetic-case archive",
+    "transformation": "selected case 003 and manually mapped its paragraphs to stable ids; no factual supplementation",
+    "license_or_authorization": "pending owner confirmation",
+    "substantive_adaptation": "synthetic teaching case; relationship to cited judgments requires legal-owner confirmation",
+    "deidentification": "source already uses role labels and pseudonyms"
+  },
+  "documents": [
+    {
+      "id": "doc-a-input",
+      "role": "case_material",
+      "title": "合成案例003-输入材料.docx",
+      "archive_entry": "合成案例40个/合成案例003/合成案例003-输入材料.docx",
+      "sha256": "39f13c580feea795254cd304e1e83e2cab869909056b0692776fb0636dfb55b3",
+      "source_version": "sha256:39f13c580feea795"
+    },
+    {
+      "id": "doc-a-benchmark",
+      "role": "benchmark_annotation",
+      "title": "合成案例003-法学标注.docx",
+      "archive_entry": "合成案例40个/合成案例003/合成案例003-法学标注.docx",
+      "sha256": "b7b623ff2c6569e70ea8354ee5ecc544f2f38e521497ed953d6a817a102be7ac",
+      "source_version": "sha256:b7b623ff2c6569e7"
+    }
+  ],
+  "actors": [
+    {"id": "actor-a-company", "type": "organization", "name": "甲科技有限公司", "role": "service_provider"},
+    {"id": "actor-a-bing", "type": "person", "name": "丙", "role": "employee"},
+    {"id": "actor-a-wu", "type": "person", "name": "戊", "role": "company_principal"},
+    {"id": "actor-a-ding", "type": "person", "name": "丁", "role": "project_lead"},
+    {"id": "actor-a-upstream", "type": "person", "name": "上线", "role": "suspected_upstream_actor"}
+  ],
+  "relationships": [
+    {"from_id": "actor-a-bing", "to_id": "actor-a-company", "type": "employment"},
+    {"from_id": "actor-a-bing", "to_id": "actor-a-upstream", "type": "communication_and_lead_generation"}
+  ],
+  "evidence": [
+    {"id": "ev-a-01", "type": "narrative", "label": "公司制度与禁用个人设备规定", "document_id": "doc-a-input", "locator": {"paragraph": 5}},
+    {"id": "ev-a-02", "type": "communication", "label": "丙与上线的联系、报酬约定和风险认识", "document_id": "doc-a-input", "locator": {"paragraph": 8}},
+    {"id": "ev-a-03", "type": "call_record", "label": "1439条引流电话及被害金额", "document_id": "doc-a-input", "locator": {"paragraph": 8}},
+    {"id": "ev-a-04", "type": "payment_record", "label": "丙获利11082元", "document_id": "doc-a-input", "locator": {"paragraph": 8}},
+    {"id": "ev-a-05", "type": "negative_fact", "label": "丙未参与话术、对象选择及资金转移", "document_id": "doc-a-input", "locator": {"paragraph": 8}},
+    {"id": "ev-a-06", "type": "monitoring_record", "label": "公司发现异常并调查", "document_id": "doc-a-input", "locator": {"paragraph": 9}},
+    {"id": "ev-a-07", "type": "negative_fact", "label": "负责人未收风险报告且此前不知情", "document_id": "doc-a-input", "locator": {"paragraph": 10}},
+    {"id": "ev-a-08", "type": "remediation_record", "label": "公司暂停业务、保全材料并整改", "document_id": "doc-a-input", "locator": {"paragraph": 11}}
+  ],
+  "facts": [
+    {"id": "fact-a-help", "type": "conduct", "actor_id": "actor-a-bing", "value": "使用个人电话卡为上线拨打引流电话", "stage": "upstream_offence_execution", "verification_status": "baseline_asserted", "evidence_ids": ["ev-a-02", "ev-a-03"]},
+    {"id": "fact-a-knowledge", "type": "subjective_knowledge", "actor_id": "actor-a-bing", "value": "逐渐认识到上线可能实施电信网络诈骗后仍继续", "stage": "before_continued_help", "verification_status": "baseline_asserted", "evidence_ids": ["ev-a-02"]},
+    {"id": "fact-a-scope", "type": "participation_scope", "actor_id": "actor-a-bing", "value": "未参与诈骗话术、对象选择、后续诈骗和资金转移", "stage": "whole_chain", "verification_status": "baseline_asserted", "evidence_ids": ["ev-a-05"]},
+    {"id": "fact-a-company-knowledge", "type": "organizational_knowledge", "actor_id": "actor-a-company", "value": "现有材料未显示负责人在行为期间知情或批准", "stage": "before_detection", "verification_status": "baseline_asserted", "evidence_ids": ["ev-a-07"]},
+    {"id": "fact-a-control-bypass", "type": "compliance_execution", "actor_id": "actor-a-bing", "value": "使用个人电话卡和聊天软件绕过监测", "stage": "upstream_offence_execution", "verification_status": "baseline_asserted", "evidence_ids": ["ev-a-01", "ev-a-06"]}
+  ],
+  "events": [
+    {"id": "event-a-01", "date": "2023-03", "stage": "pre_conduct", "description": "公司建立准入、监测和信息安全制度", "actor_id": "actor-a-company", "fact_ids": []},
+    {"id": "event-a-02", "date": "2023-04/2023-05", "stage": "upstream_offence_execution", "description": "丙拨打引流电话并逐渐形成风险认识", "actor_id": "actor-a-bing", "fact_ids": ["fact-a-help", "fact-a-knowledge"]},
+    {"id": "event-a-03", "date": "2023-05", "stage": "post_conduct_detection", "description": "合规部门发现异常，随后暂停业务并保全材料", "actor_id": "actor-a-company", "fact_ids": ["fact-a-company-knowledge", "fact-a-control-bypass"]}
+  ],
+  "amounts": [
+    {"id": "amount-a-upstream-loss", "kind": "crime_amount", "label": "上游诈骗金额", "value": 615109, "currency": "CNY", "verification_status": "baseline_asserted", "evidence_ids": ["ev-a-03"]},
+    {"id": "amount-a-personal-profit", "kind": "personal_profit", "label": "丙个人获利", "value": 11082, "currency": "CNY", "verification_status": "baseline_asserted", "evidence_ids": ["ev-a-04"]},
+    {"id": "amount-a-payment-rate", "kind": "remuneration_rate", "label": "约定小时报酬", "value": 180, "currency": "CNY", "verification_status": "baseline_asserted", "evidence_ids": ["ev-a-02"]}
+  ],
+  "legal_source_ids": [
+    "cn-criminal-law-287-2-current",
+    "cn-criminal-law-266-current",
+    "cn-cybercrime-interpretation-2019-11-12",
+    "cn-telefraud-opinion-2016-common-crime",
+    "cn-helping-opinion-2025-4-9"
+  ],
+  "source_version_binding": {
+    "conduct_time_sources": ["cn-criminal-law-287-2-current", "cn-criminal-law-266-current", "cn-cybercrime-interpretation-2019-11-12", "cn-telefraud-opinion-2016-common-crime"],
+    "current_review_sources": ["cn-helping-opinion-2025-4-9"],
+    "temporal_review_status": "pending",
+    "note": "2025 opinion post-dates the conduct and cited judgments; a legal reviewer must decide how it may be used in a current demonstration."
+  },
+  "analyses": {
+    "compliance": {
+      "applicability": "limited_context",
+      "result_status": "baseline_asserted",
+      "facts": ["fact-a-company-knowledge", "fact-a-control-bypass"],
+      "note": "Used only to assess knowledge attribution and controls; no compliance score is produced."
+    },
+    "conviction": {
+      "legal_review_status": "pending",
+      "candidate_paths": [
+        {"id": "path-a-bing-helping", "actor_id": "actor-a-bing", "label": "帮助信息网络犯罪活动罪", "baseline_position": "selected", "supporting_evidence_ids": ["ev-a-02", "ev-a-03", "ev-a-04"], "contrary_evidence_ids": ["ev-a-05"], "legal_source_ids": ["cn-criminal-law-287-2-current", "cn-cybercrime-interpretation-2019-11-12"]},
+        {"id": "path-a-bing-fraud-accomplice", "actor_id": "actor-a-bing", "label": "诈骗罪共同犯罪", "baseline_position": "excluded", "supporting_evidence_ids": ["ev-a-02", "ev-a-03"], "contrary_evidence_ids": ["ev-a-05"], "legal_source_ids": ["cn-criminal-law-266-current", "cn-telefraud-opinion-2016-common-crime"]},
+        {"id": "path-a-company-unit-helping", "actor_id": "actor-a-company", "label": "单位帮助信息网络犯罪活动罪", "baseline_position": "excluded", "supporting_evidence_ids": [], "contrary_evidence_ids": ["ev-a-01", "ev-a-07", "ev-a-08"], "legal_source_ids": ["cn-criminal-law-287-2-current"]}
+      ]
+    }
+  },
+  "sentencing": {
+    "calculation_status": "blocked_pending_legal_review",
+    "actor_baselines": [
+      {
+        "actor_id": "actor-a-bing",
+        "amount_ids": ["amount-a-upstream-loss", "amount-a-personal-profit"],
+        "source_ids": ["cn-criminal-law-287-2-current", "cn-cybercrime-interpretation-2019-11-12"],
+        "rule_version": null,
+        "legal_review_status": "pending",
+        "benchmark_disposition": {"term_months": 12, "fine_cny": 10000, "nature": "annotation_only_not_calculated"}
+      }
+    ]
+  },
+  "document_fields": {
+    "required": ["case_name", "actor_name", "confirmed_facts", "evidence_citations", "candidate_path", "legal_source_versions", "sentencing_review_status"],
+    "template_legal_review_status": "pending"
+  },
+  "missing_items": [
+    {"id": "missing-a-01", "severity": "blocking", "description": "A second evidentiary case material is absent; the benchmark annotation is not evidence."},
+    {"id": "missing-a-02", "severity": "blocking", "description": "Qualified legal reviewer approval for candidate paths, temporal source use, sentencing rule and document wording."},
+    {"id": "missing-a-03", "severity": "warning", "description": "Confirm provenance/license and the relationship between the synthetic narrative and cited judgments."}
+  ]
+}

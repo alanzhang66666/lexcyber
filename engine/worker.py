@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import os
 import socket
@@ -8,7 +9,7 @@ from uuid import UUID
 
 import httpx
 
-from engine.adapters.sentencing import SentencingUnavailable
+from engine.adapters.sentencing import SentencingInputError, SentencingUnavailable
 from engine.contracts import ExecutionView
 from engine.document_parse import DocumentParseError
 from engine.settings import settings
@@ -52,6 +53,19 @@ def run_execution(payload: dict[str, Any]) -> dict[str, Any]:
         complete_execution(execution_id, status, "awaiting_review" if waiting else "output", output, None, None)
         _notify_application(execution_id)
         return result
+    except SentencingInputError as exc:
+        error = exc.as_dict()
+        complete_execution(
+            execution_id,
+            "failed",
+            "sentencing",
+            None,
+            exc.code,
+            json.dumps(error, ensure_ascii=False, sort_keys=True),
+            retryable=False,
+        )
+        _notify_application(execution_id)
+        raise
     except (TimeoutError, ModelTimeoutError) as exc:
         if task_type == "document.parse":
             code, stage = "DOCUMENT_PARSE_TIMEOUT", "document_parsing"
