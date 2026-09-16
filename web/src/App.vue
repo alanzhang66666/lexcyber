@@ -26,11 +26,9 @@ const signedIn = computed(() => Boolean(session.value))
 const homeActive = computed(() => route.path === '/')
 const functionsActive = computed(() => {
   const path = route.path
-  return path === '/compliance'
-    || path === '/conviction'
-    || path === '/reviews'
+  return path === '/reviews'
     || path.startsWith('/reviews/')
-    || /\/cases\/[^/]+\/analysis$/.test(path)
+    || /\/cases\/[^/]+\/(compliance|conviction|analysis)$/.test(path)
 })
 const aboutActive = computed(() => route.path === '/about')
 const authActive = computed(() => route.name === 'login')
@@ -66,6 +64,7 @@ const casesActive = computed(() => (
   || route.path === '/cases/new'
   || /^\/cases\/[^/]+$/.test(route.path)
   || /^\/cases\/[^/]+\/docket$/.test(route.path)
+  || /^\/cases\/[^/]+\/documents$/.test(route.path)
 ))
 
 onMounted(() => {

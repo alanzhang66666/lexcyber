@@ -139,6 +139,44 @@ export type CaseEventDocumentUpdate = {
   locator?: string
 }
 
+/** 案件 metadata.relations 里的客观关系结构（T1 API-01 约定，不含法律定性） */
+export type RelationActor = {
+  actorId: string
+  label?: string
+  roleHint?: string
+}
+
+export type RelationOrganization = {
+  organizationId: string
+  label?: string
+  actorId?: string
+}
+
+export type RelationAccount = {
+  accountId: string
+  organizationId?: string
+  actorId?: string
+  mask?: string
+}
+
+export type RelationEvent = {
+  eventId: string
+  stage?: string
+  actorId?: string
+  accountId?: string
+  documentId?: string
+  locator?: string
+  occurredOn?: string
+}
+
+export type CaseRelations = {
+  actors?: RelationActor[]
+  organizations?: RelationOrganization[]
+  accounts?: RelationAccount[]
+  events?: RelationEvent[]
+  links?: unknown[]
+}
+
 export type PageCase = {
   items: CaseView[]
   page: number
@@ -298,4 +336,90 @@ export type ApiErrorPayload = {
   detail?: string
   traceId?: string
   retryable?: boolean
+}
+
+/* ── T3 分析结果展示类型（T2 内部契约；字段语义见 docx / t3-three-case-handoff）── */
+
+/** 金额口径（八类 + 未分类）。页面必须区分标签，禁止把账户总流水冒充犯罪所得。 */
+export type AmountKind =
+  | 'account_total_flow'
+  | 'fraud_related_inflow'
+  | 'payment_settlement'
+  | 'crime_amount'
+  | 'crime_proceeds'
+  | 'personal_participation'
+  | 'personal_profit'
+  | 'restitution'
+  | 'unclassified_amount'
+
+export type EvidenceRef = {
+  id?: string | null
+  quote?: string | null
+  locator?: string | null
+  documentId?: string | null
+}
+
+/** T3 事实卡条目：行为阶段 + 事实内容 + 待核状态 + 原文定位。 */
+export type AnalysisFact = {
+  id?: string | null
+  /** 行为阶段（犯罪链中的时间/阶段） */
+  stage?: string | null
+  statement: string
+  locator?: string | null
+  sourceDocumentId?: string | null
+  status?: VerificationStatus | null
+}
+
+export type CandidatePathKind = 'candidate' | 'alternative' | 'excluded'
+
+/** 候选路径：支持证据与相反证据必须并列展示，不得只显示支持一方。 */
+export type CandidatePath = {
+  id?: string | null
+  title: string
+  kind?: CandidatePathKind | null
+  summary?: string | null
+  supporting?: EvidenceRef[]
+  contrary?: EvidenceRef[]
+  status?: VerificationStatus | null
+}
+
+/** 单条金额口径：标签 + 数值 + 币种 + 证据定位 + 确认状态。 */
+export type AmountEntry = {
+  kind: AmountKind
+  label?: string | null
+  value?: number | null
+  currency?: string | null
+  locator?: string | null
+  evidenceIds?: string[]
+  status?: VerificationStatus | null
+}
+
+/** 量刑 blocked 时的阻断项，展示待确认，不展示空结果。 */
+export type Blocker = {
+  code?: string | null
+  path?: string | null
+  message?: string | null
+}
+
+/* ── 量刑结果（T2 内部契约；blocked 时只展示阻断项，不展示刑期）── */
+
+export type SentencingParameter = {
+  name?: string | null
+  value?: string | null
+}
+
+export type SentencingStep = {
+  label?: string | null
+  detail?: string | null
+  value?: string | null
+}
+
+export type SentencingResult = {
+  ruleVersion?: string | null
+  parameters?: SentencingParameter[]
+  steps?: SentencingStep[]
+  interval?: string | null
+  missing?: string[]
+  amounts?: AmountEntry[]
+  blockers?: Blocker[]
 }

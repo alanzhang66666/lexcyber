@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import { api } from '../api'
 import type { CaseView, DocumentRole, DocumentView, ParseStatus, ResultPayload, TaskStatus } from '../api-types'
 import CaseFactsPanel from '../components/CaseFactsPanel.vue'
+import CaseRelationsPanel from '../components/CaseRelationsPanel.vue'
 import DocumentParseResult from '../components/DocumentParseResult.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { rememberT1Case } from '../lib/current-case'
@@ -30,6 +31,8 @@ const resultLoading = ref(false)
 const resultError = ref('')
 const result = ref<ResultPayload | null>(null)
 const failure = ref<{ errorCode?: string | null; error?: string | null } | null>(null)
+const targetLocator = ref<string | null>(null)
+const locateNotice = ref('')
 
 const TERMINAL: TaskStatus[] = ['completed', 'waiting_review', 'failed', 'timed_out', 'rejected']
 let pollTimer: number | undefined
@@ -145,6 +148,33 @@ async function openDoc(doc: DocumentView) {
   }
 }
 
+/** 从材料列表点「查看正文/错误」，不携带定位目标。 */
+function openDocFromList(doc: DocumentView) {
+  targetLocator.value = null
+  locateNotice.value = ''
+  void openDoc(doc)
+}
+
+/** 点击事实/关系里的原文定位：打开对应材料并滚动到该段落。 */
+function handleLocate(documentId: string | undefined, locator: string) {
+  targetLocator.value = locator
+  locateNotice.value = ''
+  const doc = documentId ? documents.value.find((d) => d.id === documentId) : undefined
+  if (doc && doc.parseTaskId) {
+    void openDoc(doc)
+    return
+  }
+  locateNotice.value = documentId
+    ? '该定位对应的材料尚未上传或解析完成，无法回跳原文。'
+    : '该条目未关联材料，无法回跳原文。'
+}
+
+function closeResult() {
+  selectedDocId.value = null
+  targetLocator.value = null
+  locateNotice.value = ''
+}
+
 onMounted(() => {
   void loadCase()
   void loadDocuments()
@@ -162,11 +192,10 @@ onUnmounted(stopPolling)
         <h1>{{ caseItem?.title || '案件' }}</h1>
         <p v-if="caseItem">{{ caseItem.jurisdiction || '未填法域' }}{{ caseItem.asOfDate ? ' · ' + caseItem.asOfDate : '' }}</p>
       </div>
-      <RouterLink
-        v-if="caseItem"
-        class="button button-quiet"
-        :to="`/cases/${caseItem.id}/docket`"
-      >打开阅卷</RouterLink>
+      <div v-if="caseItem" class="heading-actions">
+        <RouterLink class="button button-quiet" :to="`/cases/${caseItem.id}/docket`">打开阅卷</RouterLink>
+        <RouterLink class="button button-quiet" :to="`/cases/${caseItem.id}/documents`">文书辅助</RouterLink>
+      </div>
     </header>
 
     <div v-if="loading" class="panel empty-state" aria-live="polite">正在读取案件…</div>
@@ -225,7 +254,7 @@ onUnmounted(stopPolling)
                     v-if="doc.parseTaskId && (doc.parseStatus === 'completed' || doc.parseStatus === 'failed' || doc.parseStatus === 'timed_out')"
                     class="button button-quiet"
                     type="button"
-                    @click="openDoc(doc)"
+                    @click="openDocFromList(doc)"
                   >
                     {{ doc.parseStatus === 'completed' ? '查看正文' : '查看错误' }}
                   </button>
@@ -236,7 +265,9 @@ onUnmounted(stopPolling)
         </article>
       </section>
 
-      <CaseFactsPanel :case-id="caseId" />
+      <CaseRelationsPanel :case="caseItem" @locate="handleLocate" />
+
+      <CaseFactsPanel :case-id="caseId" @locate="handleLocate" />
 
       <section v-if="selectedDocId" class="panel result-panel">
         <div class="panel-heading">
@@ -244,9 +275,10 @@ onUnmounted(stopPolling)
             <p class="section-index">04</p>
             <h2>解析详情</h2>
           </div>
-          <button class="button button-quiet" type="button" @click="selectedDocId = null">关闭</button>
+          <button class="button button-quiet" type="button" @click="closeResult">关闭</button>
         </div>
         <p class="panel-note">{{ selectedDocument()?.filename || '' }}</p>
+        <p v-if="locateNotice" class="notice notice-warning" role="status">{{ locateNotice }}</p>
         <div v-if="resultLoading" class="empty-state" aria-live="polite">正在读取解析详情…</div>
         <p v-else-if="resultError" class="notice notice-error" role="alert">{{ resultError }}</p>
         <div v-else-if="failure" class="notice notice-error" role="alert">
@@ -254,7 +286,7 @@ onUnmounted(stopPolling)
           <span>{{ failure.error || '解析未返回更多错误信息。' }}</span>
         </div>
         <div v-else-if="result" class="result-block">
-          <DocumentParseResult :content="result.content" />
+          <DocumentParseResult :content="result.content" :target-locator="targetLocator" />
         </div>
         <div v-else class="empty-state">该材料尚未产生可显示的解析结果。</div>
       </section>

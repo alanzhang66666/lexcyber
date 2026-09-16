@@ -4,6 +4,7 @@ import { ApiError, api } from '../api'
 import type { ResultPayload, ReviewRecord, TaskView } from '../api-types'
 import ResultContent from '../components/ResultContent.vue'
 import StatusBadge from '../components/StatusBadge.vue'
+import { moduleTitle } from '../data/modules'
 import { toastPlaceholder } from '../lib/toast'
 
 const props = defineProps<{ reviewId: string }>()
@@ -84,9 +85,14 @@ onMounted(() => void load())
       <article class="panel evidence-panel">
         <div class="panel-heading">
           <div><p class="section-index">01</p><h2>待核验结果</h2></div>
-          <span class="subtle-chip mono">v{{ review.resultVersion }}</span>
+          <div class="heading-marks">
+            <span v-if="review.archiveStatus === 'archived'" class="subtle-chip">已归档</span>
+            <span class="subtle-chip mono">v{{ review.resultVersion }}</span>
+          </div>
         </div>
         <dl class="data-list inline-data">
+          <div><dt>来源模块</dt><dd>{{ moduleTitle(review.module) }}</dd></div>
+          <div><dt>案件</dt><dd><RouterLink v-if="review.caseId" class="mono" :to="`/cases/${review.caseId}`">{{ review.caseId }}</RouterLink><span v-else>未关联</span></dd></div>
           <div><dt>任务</dt><dd><RouterLink v-if="review.taskId" class="mono" :to="{ name: 'task-detail', params: { taskId: review.taskId } }">{{ review.taskId }}</RouterLink><span v-else>未关联</span></dd></div>
           <div><dt>执行状态</dt><dd>{{ task?.status || '未知' }}</dd></div>
           <div><dt>结果类型</dt><dd class="mono">{{ result?.type || '—' }}</dd></div>
@@ -134,3 +140,11 @@ onMounted(() => void load())
     </section>
   </div>
 </template>
+
+<style scoped>
+.heading-marks {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+</style>
