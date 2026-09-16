@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
-import { currentCaseId, formalCasePath, resolveT1CaseId, syncCurrentCaseFromStorage } from './lib/current-case'
+import { CORE_MODULES, modulePath } from './data/modules'
+import { currentCaseId, resolveT1CaseId, syncCurrentCaseFromStorage } from './lib/current-case'
 import { logout, refreshSession, session } from './lib/auth'
 import { onToast, toastPlaceholder } from './lib/toast'
 import { applySettings, loadSettings } from './lib/ui-settings'
@@ -9,38 +10,63 @@ import { applySettings, loadSettings } from './lib/ui-settings'
 const route = useRoute()
 const router = useRouter()
 const profileOpen = ref(false)
+const functionsOpen = ref(false)
+const functionsTrigger = ref<HTMLButtonElement | null>(null)
+const functionsMenuStyle = ref<Record<string, string>>({})
 const toastMessage = ref('')
-const layout = ref(loadSettings().layout)
 let stopToast: (() => void) | undefined
 let timer: number | undefined
 
-const docketTo = computed(() => formalCasePath('docket', currentCaseId.value))
-const analysisTo = computed(() => formalCasePath('analysis', currentCaseId.value))
-const showDock = computed(() => (
-  layout.value === 'side'
-  && route.name !== 'home'
-  && route.name !== 'settings'
-  && route.name !== 'login'
-))
+const functionEntries = computed(() => CORE_MODULES.map((module) => ({
+  ...module,
+  to: modulePath(module, currentCaseId.value),
+})))
 
 const signedIn = computed(() => Boolean(session.value))
 const homeActive = computed(() => route.path === '/')
-const functionsActive = computed(() => route.path === '/functions')
+const functionsActive = computed(() => {
+  const path = route.path
+  return path === '/compliance'
+    || path === '/conviction'
+    || path === '/reviews'
+    || path.startsWith('/reviews/')
+    || /\/cases\/[^/]+\/analysis$/.test(path)
+})
 const aboutActive = computed(() => route.path === '/about')
 const authActive = computed(() => route.name === 'login')
 const displayName = computed(() => session.value?.displayName || '未登录')
 const avatarText = computed(() => displayName.value.slice(0, 1))
 
+async function toggleFunctions() {
+  functionsOpen.value = !functionsOpen.value
+  profileOpen.value = false
+  if (!functionsOpen.value) return
+  await nextTick()
+  const box = functionsTrigger.value?.getBoundingClientRect()
+  if (!box) return
+  functionsMenuStyle.value = {
+    top: `${Math.round(box.bottom + 8)}px`,
+    left: `${Math.round(box.left)}px`,
+  }
+}
+
+function toggleProfile() {
+  profileOpen.value = !profileOpen.value
+  functionsOpen.value = false
+}
+
 async function signOut() {
   profileOpen.value = false
+  functionsOpen.value = false
   await logout()
   void router.push({ name: 'home' })
 }
-const casesActive = computed(() => route.path === '/cases' || route.path === '/cases/new' || /^\/cases\/[^/]+$/.test(route.path))
-
-function refreshLayout() {
-  layout.value = loadSettings().layout
-}
+const casesActive = computed(() => (
+  route.path === '/cases'
+  || route.path === '/cases/new'
+  || /^\/cases\/[^/]+$/.test(route.path)
+  || /^\/cases\/[^/]+\/docket$/.test(route.path)
+))
 
 onMounted(() => {
   applySettings(loadSettings())
@@ -51,24 +77,23 @@ onMounted(() => {
     window.clearTimeout(timer)
     timer = window.setTimeout(() => { toastMessage.value = '' }, 2800)
   })
-  window.addEventListener('lexcyber-settings', refreshLayout)
 })
 
 onUnmounted(() => {
   stopToast?.()
   window.clearTimeout(timer)
-  window.removeEventListener('lexcyber-settings', refreshLayout)
 })
 
 watch(() => route.path, () => {
   profileOpen.value = false
+  functionsOpen.value = false
   syncCurrentCaseFromStorage()
 })
 </script>
 
 <template>
   <!-- 所有非登录页统一使用浅色顶栏（与首页一致）；登录页仍走 is-auth -->
-  <div class="app-shell" :class="{ 'has-dock': showDock, 'is-home': !authActive, 'is-auth': authActive }">
+  <div class="app-shell" :class="{ 'is-home': !authActive, 'is-auth': authActive }">
     <a class="skip-link" href="#main-content">跳到主要内容</a>
     <header class="topbar">
       <RouterLink class="brand" to="/" aria-label="LexCyber 网域衡鉴首页">
@@ -79,7 +104,33 @@ watch(() => route.path, () => {
       </RouterLink>
       <nav v-if="!authActive" class="primary-nav" aria-label="主要导航">
         <RouterLink to="/" active-class="" exact-active-class="" :class="{ 'router-link-active': homeActive }">首页</RouterLink>
-        <RouterLink to="/functions" active-class="" exact-active-class="" :class="{ 'router-link-active': functionsActive }">功能中心</RouterLink>
+        <div class="more-nav">
+          <button
+            ref="functionsTrigger"
+            type="button"
+            aria-haspopup="menu"
+            aria-controls="functions-menu"
+            :aria-expanded="functionsOpen"
+            :class="{ 'router-link-active': functionsActive }"
+            @click="toggleFunctions"
+          >功能中心</button>
+          <Teleport to="body">
+            <div
+              v-if="functionsOpen"
+              id="functions-menu"
+              class="more-menu functions-flyout"
+              role="menu"
+              :style="functionsMenuStyle"
+            >
+              <RouterLink
+                v-for="item in functionEntries"
+                :key="item.key"
+                role="menuitem"
+                :to="item.to"
+              >{{ item.title }}</RouterLink>
+            </div>
+          </Teleport>
+        </div>
         <RouterLink to="/cases" active-class="" exact-active-class="" :class="{ 'router-link-active': casesActive }">案件中心</RouterLink>
         <RouterLink to="/about" active-class="" exact-active-class="" :class="{ 'router-link-active': aboutActive }">关于我们</RouterLink>
       </nav>
@@ -96,7 +147,7 @@ watch(() => route.path, () => {
           <button class="icon-action work-search" type="button" @click="toastPlaceholder">搜索</button>
           <button class="icon-action work-notice" type="button" @click="toastPlaceholder">通知</button>
           <div class="profile-menu">
-            <button class="profile-link" type="button" @click="profileOpen = !profileOpen">
+            <button class="profile-link" type="button" @click="toggleProfile">
               <span>{{ avatarText }}</span>
               <div><small>当前用户</small><strong>{{ displayName }}</strong></div>
             </button>
@@ -113,12 +164,6 @@ watch(() => route.path, () => {
         <RouterLink v-else class="home-btn home-btn-primary" to="/login">登录</RouterLink>
       </div>
     </header>
-    <aside v-if="showDock" class="workspace-dock" aria-label="工作区侧栏">
-      <RouterLink to="/cases">案件列表</RouterLink>
-      <RouterLink :to="docketTo">卷宗阅览</RouterLink>
-      <RouterLink :to="analysisTo">量刑分析</RouterLink>
-      <RouterLink to="/reviews">人工复核</RouterLink>
-    </aside>
     <main id="main-content" class="main-content" tabindex="-1">
       <RouterView />
     </main>

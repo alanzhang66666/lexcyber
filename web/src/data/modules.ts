@@ -9,7 +9,7 @@ export type CoreModule = {
   /** 目标路径，可用 ':caseId' 占位，由 modulePath 解析 */
   to: string
   icon: CoreIcon
-  /** 功能中心用的单字图标 */
+  /** 首页功能卡用的单字图标 */
   glyph: string
   /** 为 true 表示尚未接通后端数据，标记「开发中」 */
   dev?: boolean

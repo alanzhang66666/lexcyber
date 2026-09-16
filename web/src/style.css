@@ -66,22 +66,17 @@ a { color: inherit; }
 }
 .profile-link small { display: block; color: #a99fb8; font-size: 10px; }
 .profile-link strong { font-size: 12px; }
-.more-nav { position: relative; }
+.more-nav { position: relative; z-index: 20; }
 .more-menu {
-  position: absolute; top: calc(100% + 8px); left: 0; min-width: 180px; display: grid;
+  position: absolute; top: calc(100% + 8px); left: 0; min-width: 180px; display: grid; z-index: 30;
   padding: 8px; background: white; border: 1px solid var(--lc-line); border-radius: 8px;
   box-shadow: 0 12px 32px rgb(40 27 67 / 16%);
 }
+.functions-flyout { position: fixed; z-index: 50; }
 .more-menu a, .more-menu button { color: var(--lc-ink); border: 0; padding: 10px 12px; border-radius: 6px; font-size: 13px; background: none; text-align: left; cursor: pointer; font: inherit; width: 100%; text-decoration: none; }
 .more-menu a:hover, .more-menu button:hover { background: var(--lc-surface-alt); color: var(--lc-brand-900); }
+.more-menu a.router-link-active { color: var(--lc-brand-900); background: var(--lc-surface-alt); font-weight: 750; }
 .profile-menu { position: relative; }
-.workspace-dock {
-  position: sticky; top: 80px; display: none; grid-auto-flow: column; gap: 8px;
-  padding: 10px clamp(16px, 3vw, 48px); background: #20162f; border-bottom: 1px solid #493568;
-}
-.has-dock .workspace-dock { display: grid; }
-.workspace-dock a { color: #c7c0d1; text-decoration: none; font-size: 13px; font-weight: 650; padding: 8px 10px; border-radius: 6px; }
-.workspace-dock a.router-link-active, .workspace-dock a:hover { color: white; background: rgb(117 84 246 / 18%); }
 .environment > span { width: 8px; height: 8px; background: #3ad7c7; border-radius: 50%; box-shadow: 0 0 0 4px rgb(32 191 174 / 14%); }
 .environment div { display: grid; }
 .environment small { color: #a99fb8; font-size: 10px; }
@@ -499,7 +494,7 @@ input:disabled, textarea:disabled { color: var(--lc-muted); background: var(--lc
 
 @media (max-width: 1023px) {
   .topbar { grid-template-columns: 1fr auto; gap: 12px; min-height: auto; }
-  .primary-nav { grid-column: 1 / -1; order: 3; min-height: 44px; overflow-x: auto; border-top: 1px solid #493568; justify-content: flex-start; }
+  .primary-nav { grid-column: 1 / -1; order: 3; min-height: 44px; overflow: visible; border-top: 1px solid #493568; justify-content: flex-start; }
   .is-home .primary-nav, .is-auth .primary-nav { border-top-color: var(--lc-line); }
   .primary-nav a, .more-nav > button { flex: 0 0 auto; justify-content: center; padding: 12px 10px; }
   .top-actions { grid-column: 2; grid-row: 1; }

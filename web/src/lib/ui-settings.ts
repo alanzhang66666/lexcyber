@@ -1,6 +1,5 @@
 export type UiSettings = {
   theme: 'aurora' | 'ember' | 'tide'
-  layout: 'top' | 'side'
   density: 'compact' | 'comfortable' | 'spacious'
 }
 
@@ -8,14 +7,16 @@ const KEY = 'lexcyber.ui-settings'
 
 export const DEFAULT_SETTINGS: UiSettings = {
   theme: 'aurora',
-  layout: 'top',
   density: 'comfortable',
 }
 
 export function loadSettings(): UiSettings {
   try {
     const raw = JSON.parse(localStorage.getItem(KEY) || '{}') as Partial<UiSettings>
-    return { ...DEFAULT_SETTINGS, ...raw }
+    return {
+      theme: raw.theme ?? DEFAULT_SETTINGS.theme,
+      density: raw.density ?? DEFAULT_SETTINGS.density,
+    }
   } catch {
     return { ...DEFAULT_SETTINGS }
   }
@@ -31,5 +32,5 @@ export function applySettings(settings: UiSettings) {
   const root = document.documentElement
   root.dataset.theme = settings.theme
   root.dataset.density = settings.density
-  root.dataset.layout = settings.layout
+  delete root.dataset.layout
 }

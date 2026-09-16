@@ -162,6 +162,11 @@ onUnmounted(stopPolling)
         <h1>{{ caseItem?.title || '案件' }}</h1>
         <p v-if="caseItem">{{ caseItem.jurisdiction || '未填法域' }}{{ caseItem.asOfDate ? ' · ' + caseItem.asOfDate : '' }}</p>
       </div>
+      <RouterLink
+        v-if="caseItem"
+        class="button button-quiet"
+        :to="`/cases/${caseItem.id}/docket`"
+      >打开阅卷</RouterLink>
     </header>
 
     <div v-if="loading" class="panel empty-state" aria-live="polite">正在读取案件…</div>
