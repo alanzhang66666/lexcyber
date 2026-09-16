@@ -2,8 +2,10 @@
 import { onMounted, ref } from 'vue'
 import { api } from '../api'
 import type { FactItem, FactView } from '../api-types'
+import LocatorChip from './LocatorChip.vue'
 
 const props = defineProps<{ caseId: string }>()
+const emit = defineEmits<{ locate: [documentId: string | undefined, locator: string] }>()
 
 const loading = ref(true)
 const error = ref('')
@@ -110,7 +112,7 @@ onMounted(() => void load())
           <dt>{{ item.key }}</dt>
           <dd>
             {{ item.value }}
-            <small v-if="item.locator" class="fact-locator mono">{{ item.locator }}</small>
+            <LocatorChip v-if="item.locator" :locator="item.locator" @locate="(l) => emit('locate', item.sourceDocumentId ?? undefined, l)" />
           </dd>
         </div>
         <div v-if="!facts.items.length" class="empty-state">
@@ -156,14 +158,6 @@ onMounted(() => void load())
 </template>
 
 <style scoped>
-.fact-locator {
-  margin-left: 8px;
-  padding: 1px 8px;
-  color: var(--lc-brand-800);
-  background: var(--lc-brand-100);
-  border-radius: 999px;
-  font-size: 11px;
-}
 .chip-confirmed {
   color: #086b62;
   background: var(--lc-evidence-soft);

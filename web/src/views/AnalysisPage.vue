@@ -1,18 +1,22 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api'
-import type { CaseView } from '../api-types'
+import type { CaseView, SentencingResult } from '../api-types'
 import CasePhaseBar from '../components/CasePhaseBar.vue'
 import PlaceholderBanner from '../components/PlaceholderBanner.vue'
+import SentencingResultPanel from '../components/SentencingResultPanel.vue'
 import { isPlaceholderCaseId } from '../data/placeholder-cases'
 import { rememberT1Case } from '../lib/current-case'
 
 const route = useRoute()
+const router = useRouter()
 const caseId = computed(() => String(route.params.caseId || ''))
 const loading = ref(true)
 const error = ref('')
 const caseItem = ref<CaseView | null>(null)
+// 等 T1 打开 sentencing.calculate 公开口（501）后，从任务结果归一化填充，本页即渲染真实版式。
+const sentencingResult = ref<SentencingResult | null>(null)
 
 const workspaceTo = computed(() => (caseItem.value ? `/cases/${caseItem.value.id}` : '/cases'))
 
@@ -32,6 +36,10 @@ async function load() {
   } finally {
     loading.value = false
   }
+}
+
+function handleLocate() {
+  if (caseItem.value) void router.push(`/cases/${caseItem.value.id}`)
 }
 
 onMounted(() => {
@@ -67,6 +75,10 @@ watch(caseId, () => {
       <p class="notice notice-error" role="alert">{{ error }}</p>
       <button class="button button-quiet" type="button" @click="load">重试</button>
     </div>
+    <section v-else-if="sentencingResult" class="panel">
+      <div class="panel-heading"><div><p class="section-index">02</p><h2>量刑计算明细</h2></div></div>
+      <SentencingResultPanel :result="sentencingResult" @locate="handleLocate" />
+    </section>
     <section v-else class="panel empty-state">
       <strong>量刑结果未接通</strong>
       <p>T2 正式页不再渲染占位案件。量刑计算仍由服务端 501 门控，请到案件工作区处理材料与事实。</p>

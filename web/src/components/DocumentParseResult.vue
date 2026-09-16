@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 
 type Paragraph = { paragraph?: number; text?: string; style?: string; locator?: string }
 type Table = { table?: number; rows?: string[][]; locator?: string }
@@ -16,7 +16,30 @@ type ParseContent = {
   errors?: unknown[]
 }
 
-const props = defineProps<{ content: unknown }>()
+const props = defineProps<{ content: unknown; targetLocator?: string | null }>()
+
+const activeLocator = ref('')
+
+function paraLocator(p: Paragraph, i: number) {
+  return p.locator || `paragraph:${p.paragraph ?? i + 1}`
+}
+
+function tableLocator(t: Table, i: number) {
+  return t.locator || `table:${t.table ?? i + 1}`
+}
+
+watch(
+  () => props.targetLocator,
+  (v) => {
+    activeLocator.value = v ?? ''
+    if (!v) return
+    nextTick(() => {
+      const el = document.querySelector(`[data-locator="${v}"]`) as HTMLElement | null
+      if (el && typeof el.scrollIntoView === 'function') el.scrollIntoView({ block: 'center' })
+    })
+  },
+  { immediate: true },
+)
 
 const parsed = computed<ParseContent | null>(() => {
   const c = props.content
@@ -53,8 +76,13 @@ function stringify(value: unknown) {
     <section v-if="parsed.paragraphs?.length" class="parse-section">
       <h3>段落定位</h3>
       <ul class="parse-list">
-        <li v-for="(p, i) in parsed.paragraphs" :key="i">
-          <span class="locator-chip mono">{{ p.locator || `paragraph:${p.paragraph ?? i + 1}` }}</span>
+        <li
+          v-for="(p, i) in parsed.paragraphs"
+          :key="i"
+          :data-locator="paraLocator(p, i)"
+          :class="{ 'locate-target': paraLocator(p, i) === activeLocator }"
+        >
+          <span class="locator-chip mono">{{ paraLocator(p, i) }}</span>
           <div class="parse-item">
             <span class="parse-item-text">{{ p.text || '—' }}</span>
             <small v-if="p.style" class="parse-item-style">{{ p.style }}</small>
@@ -65,8 +93,14 @@ function stringify(value: unknown) {
 
     <section v-if="parsed.tables?.length" class="parse-section">
       <h3>表格定位</h3>
-      <div v-for="(t, i) in parsed.tables" :key="i" class="parse-table">
-        <span class="locator-chip mono">{{ t.locator || `table:${t.table ?? i + 1}` }}</span>
+      <div
+        v-for="(t, i) in parsed.tables"
+        :key="i"
+        class="parse-table"
+        :data-locator="tableLocator(t, i)"
+        :class="{ 'locate-target': tableLocator(t, i) === activeLocator }"
+      >
+        <span class="locator-chip mono">{{ tableLocator(t, i) }}</span>
         <table v-if="t.rows?.length" class="raw-table">
           <tbody>
             <tr v-for="(row, ri) in t.rows" :key="ri">
@@ -122,6 +156,11 @@ function stringify(value: unknown) {
   gap: 12px;
   padding: 12px 8px;
   border-bottom: 1px solid var(--lc-line);
+}
+.locate-target {
+  background: var(--lc-review-soft);
+  outline: 2px solid var(--lc-review);
+  outline-offset: -2px;
 }
 .locator-chip {
   flex: 0 0 auto;

@@ -12,6 +12,7 @@ import CaseWorkspacePage from './views/CaseWorkspacePage.vue'
 import CompliancePage from './views/CompliancePage.vue'
 import ConvictionPage from './views/ConvictionPage.vue'
 import DocketPage from './views/DocketPage.vue'
+import DocumentsPage from './views/DocumentsPage.vue'
 import HomePage from './views/HomePage.vue'
 import ReviewDetailPage from './views/ReviewDetailPage.vue'
 import ReviewsPage from './views/ReviewsPage.vue'
@@ -28,13 +29,16 @@ const router = createRouter({
     { path: '/', name: 'home', component: HomePage, meta: { title: '首页', public: true } },
     { path: '/functions', redirect: '/' },
     { path: '/about', name: 'about', component: AboutPage, meta: { title: '关于我们', public: true } },
-    { path: '/compliance', name: 'compliance', component: CompliancePage, meta: { title: '合规筛查' } },
-    { path: '/conviction', name: 'conviction', component: ConvictionPage, meta: { title: '定罪研判' } },
+    { path: '/cases/:caseId/compliance', name: 'compliance', component: CompliancePage, props: true, meta: { title: '合规筛查' } },
+    { path: '/cases/:caseId/conviction', name: 'conviction', component: ConvictionPage, props: true, meta: { title: '定罪研判' } },
+    { path: '/compliance', redirect: () => formalCasePath('compliance', lastCaseId()) },
+    { path: '/conviction', redirect: () => formalCasePath('conviction', lastCaseId()) },
     { path: '/cases', name: 'cases', component: CasesPage, meta: { title: '案件中心' } },
     { path: '/cases/new', name: 'case-new', component: CaseNewPage, meta: { title: '新建案件' } },
     { path: '/cases/:caseId', name: 'case-workspace', component: CaseWorkspacePage, props: true, meta: { title: '案件工作区' } },
     { path: '/cases/:caseId/docket', name: 'docket', component: DocketPage, props: true, meta: { title: '智能阅卷' } },
     { path: '/cases/:caseId/analysis', name: 'analysis', component: AnalysisPage, props: true, meta: { title: '量刑分析' } },
+    { path: '/cases/:caseId/documents', name: 'documents', component: DocumentsPage, props: true, meta: { title: '文书辅助' } },
     { path: '/docket', redirect: () => formalCasePath('docket', lastCaseId()) },
     { path: '/analysis', redirect: () => formalCasePath('analysis', lastCaseId()) },
     { path: '/sources', name: 'sources', component: SourcesPage, meta: { title: '法源与类案' } },

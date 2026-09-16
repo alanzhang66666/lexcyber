@@ -15,7 +15,7 @@ export function rememberT1Case(id: string) {
   return syncCurrentCaseFromStorage()
 }
 
-export function formalCasePath(kind: 'docket' | 'analysis', caseId: string | null | undefined): string {
+export function formalCasePath(kind: 'docket' | 'analysis' | 'compliance' | 'conviction', caseId: string | null | undefined): string {
   if (!caseId || isPlaceholderCaseId(caseId)) return '/cases'
   return `/cases/${caseId}/${kind}`
 }

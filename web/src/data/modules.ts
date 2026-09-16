@@ -19,8 +19,8 @@ export const CORE_MODULES: CoreModule[] = [
   {
     key: 'compliance',
     title: '合规筛查',
-    desc: '上传跨境业务与企业合规材料，自动体检风险并生成整改建议清单。',
-    to: '/compliance',
+    desc: '上传材料并解析要素，输出合规事实梳理与风险时间线。',
+    to: '/cases/:caseId/compliance',
     icon: 'compliance',
     glyph: '筛',
     dev: true,
@@ -28,8 +28,8 @@ export const CORE_MODULES: CoreModule[] = [
   {
     key: 'conviction',
     title: '定罪研判',
-    desc: '解析行为要素，输出主观罪过四层识别、法域冲突研判与定罪结论。',
-    to: '/conviction',
+    desc: '事实结构化整理、主观认识分析、罪名界分与法域冲突研判、定罪结论。',
+    to: '/cases/:caseId/conviction',
     icon: 'conviction',
     glyph: '判',
     dev: true,
@@ -37,7 +37,7 @@ export const CORE_MODULES: CoreModule[] = [
   {
     key: 'sentencing',
     title: '量刑分析',
-    desc: '配置三维量刑参数，输出合规情节评估、刑期区间与文书模板。',
+    desc: '量刑情节识别、金额口径、参数配置、刑期区间与文书生成。',
     to: '/cases/:caseId/analysis',
     icon: 'sentencing',
     glyph: '析',
@@ -58,4 +58,10 @@ export function modulePath(module: CoreModule, caseId: string | null | undefined
   if (!module.to.includes(':caseId')) return module.to
   if (!caseId || isPlaceholderCaseId(caseId)) return '/cases'
   return module.to.replace(':caseId', caseId)
+}
+
+/** 模块 key → 中文名（如 compliance→合规筛查）；未知 key 原样返回。 */
+export function moduleTitle(key: string | null | undefined): string {
+  if (!key) return '未关联模块'
+  return CORE_MODULES.find((m) => m.key === key)?.title || key
 }
