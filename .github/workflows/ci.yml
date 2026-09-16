@@ -18,6 +18,12 @@ jobs:
         run: pip install -e ".[dev]"
       - name: Lint
         run: ruff check .
+      - name: Boundary guard
+        run: |
+          if grep -rEn '^\s*(from|import)\s+(apps|domain)\b' engine models graph skill_runtime skills retrieval; then
+            echo "::error::engine-side packages must not import the removed 0.2 apps/domain packages"
+            exit 1
+          fi
       - name: Test
         run: pytest -q -m "not integration"
       - name: Compose config

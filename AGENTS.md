@@ -22,8 +22,8 @@ docker compose --env-file .env.v03 up --build
 ## 目录与约定
 
 - **现役**：`web/`、`server/`、`engine/`、`contracts/`、`nginx/nginx.v03.conf`
-- **Engine 仍依赖**：`models/`、`graph/`、`skill_runtime/`、`skills/`、`retrieval/`
-- **不是公开 API**：`apps/` 是 0.2 Python 面。浏览器只打 Java `/v1`，不直连 Engine / MinIO
+- **Engine 仍依赖**：`models/`、`graph/`、`skill_runtime/`、`skills/`、`retrieval/`；legal profile 链 `agents/`、`audit/`、`config/`、`prompts/`、`storage/`、`tools/`；Compose 挂载 `infra/`
+- **边界**：浏览器只打 Java `/v1`，不直连 Engine / MinIO。0.2 遗留树（`apps/`、`domain/`、`migrations/`、`legacy/`、根 `Dockerfile`）已删，engine 侧禁止再 import
 - 上传后只轮询 `parseTaskId`，正文只读 `GET /v1/tasks/{id}/result`。不要再创建解析任务，不要传 `storageKey`
 - `document.parse` / `model.probe` 必须 Bearer。caseless stub 任务可无会话
 - 检索 / 量刑公开口保持 501，直到 T3 会签。`compliance.analyze` / `conviction.analyze` 也保持 501。T3 适配器已在 Engine，Compose 默认开关关闭；只开 Java `SENTENCING_ENABLED` 会建成任务再被 Engine 标 `failed`。不要改公开口或默认开关假装已接通

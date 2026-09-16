@@ -11,4 +11,4 @@ WORKFLOW_PROFILE=stub dramatiq engine.run_api_v03 --processes 1 --threads 4
 
 Every internal request requires `X-Service-Token`. Persistence failures return an explicit `503`; the engine does not fabricate a successful result or an in-memory review id.
 
-When `metadata.taskType` is `document.parse`, the worker loads stored file bytes from MinIO and runs the PDF/DOCX parse skills. `model.probe` calls ModelGateway. `sentencing.calculate` is reserved and fails with `SENTENCING_UNAVAILABLE` until T3 is wired. Other tasks still use `WORKFLOW_PROFILE` (`stub` by default).
+When `metadata.taskType` is `document.parse`, the worker loads stored file bytes from MinIO and runs the PDF/DOCX parse skills. `model.probe` calls ModelGateway. `sentencing.calculate` routes to the T3 `SentencingRunner` but stays gated: while `SENTENCING_ENABLED=false` it fails with `SENTENCING_UNAVAILABLE`, and unapproved rules return a `blocked` result that parks the task in `waiting_review`. Other tasks still use `WORKFLOW_PROFILE` (`stub` by default).

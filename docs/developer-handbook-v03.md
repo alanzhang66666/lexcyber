@@ -2,11 +2,11 @@
 
 ## 本地入口
 
-需要 Docker、JDK 21、Maven 3.9+、Node 22 和 Python 3.12。推荐使用隔离账号版本：
+需要 Docker、JDK 21、Maven 3.9+、Node 22 和 Python 3.12。默认 `docker-compose.yml` 已是分库账号拓扑；如需显式固定 engine 进程命令，叠加 secure override：
 
 ```bash
-docker compose -f docker-compose.v03-isolated.yml -f docker-compose.v03-secure.override.yml \
-  --project-name lexcyber-v03 up --build
+docker compose -f docker-compose.yml -f docker-compose.v03-secure.override.yml \
+  --env-file .env.v03 --project-name lexcyber-v03 up --build
 ```
 
 浏览器入口固定为 `http://127.0.0.1:18080`。Nginx 只公开静态页面、`/v1/*` 和 `/healthz`；engine、Redis、PostgreSQL、MinIO 不映射宿主机端口。

@@ -56,5 +56,4 @@ def test_claim_evidence_mapping_workflow():
 def test_high_risk_task_enters_human_review():
     result = build_workflow().invoke({"user_query": "请直接给出罪名和责任认定并提交法院", "request_id": "e2e-high", "metadata": {"text": "请给出罪名", "jurisdiction": "CN"}})
     assert result["review_status"] == "NEED_HUMAN"
-    assert result.get("human_review_id")
     assert result.get("human_approval_required") or result["review_status"] == "NEED_HUMAN"

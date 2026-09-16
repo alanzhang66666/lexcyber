@@ -10,7 +10,6 @@ COPY engine engine
 COPY agents agents
 COPY audit audit
 COPY config config
-COPY domain domain
 COPY graph graph
 COPY models models
 COPY prompts prompts

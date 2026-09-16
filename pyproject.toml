@@ -39,16 +39,18 @@ line-length = 140
 target-version = "py311"
 
 [tool.ruff.lint]
-select = ["E", "F", "I"]
+select = ["E", "F", "I", "TID251"]
 ignore = ["E501"]
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"apps".msg = "the 0.2 apps surface was removed; do not import it"
+"domain".msg = "the 0.2 domain layer was removed; use engine adapters instead"
 
 [tool.setuptools.packages.find]
 include = [
-  "apps*",
   "agents*",
   "audit*",
   "config*",
-  "domain*",
   "engine*",
   "graph*",
   "models*",

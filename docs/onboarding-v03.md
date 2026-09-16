@@ -26,7 +26,7 @@ T1 范围与状态表见 [README 的 T1 on main](../README.md#t1-on-main)。请�
 - 属主 `storageKey`：客户端不要自己传对象键。服务端从属主材料覆盖 `storageKey` / `caseId`。
 - `model.probe`：已鉴权任务；Engine 走 ModelGateway。非 stub 结果需要 Compose `.env.v03` 里的真实 provider 与 key。
 
-仍为 `501`（T3 未接线）：`POST /v1/sources/search` → `SOURCE_SEARCH_UNAVAILABLE`；`metadata.taskType=sentencing.calculate` → `SENTENCING_UNAVAILABLE`。检索会签仍见 [`t1-retrieval-boundary.md`](t1-retrieval-boundary.md)（pending）。T2 案件中心主路径（列表 / 新建 / 工作区 / 上传 / facts）**已在 `main`**；正式阅卷 / 量刑页显示「未接通」。T3 数据集 / 规则 / 索引 **未做**。
+仍为 `501`（T3 未接线）：`POST /v1/sources/search` → `SOURCE_SEARCH_UNAVAILABLE`；`metadata.taskType=sentencing.calculate` → `SENTENCING_UNAVAILABLE`。检索会签仍见 [`t1-retrieval-boundary.md`](t1-retrieval-boundary.md)（pending）。T2 案件中心主路径（列表 / 新建 / 工作区 / 上传 / facts）**已在 `main`**；正式阅卷 / 量刑页显示「未接通」。T3 三案数据包与检索 / 量刑适配器已在 `main`（`demo_cases/three_case_demo`、`engine/adapters/`），但规则待法学负责人会签、检索索引未建，公开口仍 `501`。
 
 上传成功后只轮询 `parseTaskId`，正文只从 `GET /v1/tasks/{id}/result` 读。不要再 `POST /v1/tasks` 建解析任务，也不要从浏览器打 Engine 或 MinIO。
 

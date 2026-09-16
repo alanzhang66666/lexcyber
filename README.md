@@ -117,13 +117,13 @@ leases, checkpoints, Skill execution records, and Engine audit. Internal
 requests are defined in `contracts/internal-engine-api.yaml`; public requests
 are defined in `contracts/public-api.yaml`.
 
-The previous v0.2 Compose stack is archived at `legacy/docker-compose.v02.yml`
-and is not part of the supported runtime. Do not treat `apps/` as the public
-API: that is the pre-0.8 Python surface. Compose does not run it. The live tree
-is `web/`, `server/`, `engine/`, `contracts/`, and `nginx/nginx.v03.conf`.
-Engine still imports `models/`, `graph/`, `skill_runtime/`, `skills/`, and
-`retrieval/` — do not delete those to “clean up.” Use `.env.v03.example`, not
-the leftover `.env.example`.
+The v0.2 Python surface was removed (`apps/`, `domain/`, `migrations/`,
+`legacy/`, the root `Dockerfile`). The live tree is `web/`, `server/`,
+`engine/`, `contracts/`, and `nginx/nginx.v03.conf`. Engine still imports
+`models/`, `graph/`, `skill_runtime/`, `skills/`, `retrieval/`, plus the
+LangGraph support chain `agents/`, `audit/`, `config/`, `prompts/`,
+`storage/`, `tools/` — do not delete those to “clean up.” Use
+`.env.v03.example` as the env template.
 
 The console types in `web/src/api-types.ts` are the checked-in snapshot of the
 public contract. Update that snapshot in the same change as an OpenAPI edit.

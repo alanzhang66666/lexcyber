@@ -134,16 +134,6 @@ def case_context_load(state: AgentState) -> AgentState:
     state.setdefault("document_ids", metadata.get("document_ids") or [])
     state["source_text"] = metadata.get("text") or state.get("source_text") or state.get("user_query", "")
     state["available_skills"] = skill_executor_runtime.list_skills()
-    if state.get("case_id") and not state.get("engine_mode"):
-        try:
-            from domain.cases.repository import load_matter
-
-            matter = load_matter(str(state["case_id"]))
-            if matter:
-                state["jurisdiction"] = state.get("jurisdiction") or matter.get("jurisdiction")
-                state.setdefault("parties", matter.get("parties") or [])
-        except Exception:
-            pass
     _checkpoint(state, "case_context_load")
     return state
 
@@ -291,25 +281,9 @@ def reviewer(state: AgentState) -> AgentState:
 
 
 def human_review(state: AgentState) -> AgentState:
-    payload = {"skill_results": state.get("skill_results", []), "query": state.get("user_query"), "review_result": state.get("review_result")}
-    if state.get("engine_mode"):
-        state["review_status"] = "NEED_HUMAN"
-        state["human_approval_required"] = True
-        state["final_output"] = {"status": "NEED_HUMAN", "skill_results": state.get("skill_results", [])}
-        _checkpoint(state, "human_review")
-        return state
-    try:
-        from domain.reviews.repository import enqueue_review
-
-        review = enqueue_review(state.get("case_id"), state.get("task_id"), state.get("risk_level"), "workflow requested human review", payload)
-        state["human_review_id"] = review["id"]
-    except Exception:
-        from uuid import uuid4
-
-        state["human_review_id"] = str(uuid4())
     state["review_status"] = "NEED_HUMAN"
     state["human_approval_required"] = True
-    state["final_output"] = {"status": "NEED_HUMAN", "review_id": state["human_review_id"], "skill_results": state.get("skill_results", [])}
+    state["final_output"] = {"status": "NEED_HUMAN", "skill_results": state.get("skill_results", [])}
     _checkpoint(state, "human_review")
     return state
 

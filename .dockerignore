@@ -2,7 +2,6 @@
 .github
 .vscode
 docs
-legacy
 web/node_modules
 web/dist
 **/__pycache__
