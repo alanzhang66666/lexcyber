@@ -4,6 +4,7 @@ import type {
   Blocker,
   CandidatePath,
   CandidatePathKind,
+  ComplianceChecklistItem,
   EvidenceRef,
   ModuleApplicability,
   SentencingParameter,
@@ -22,6 +23,13 @@ type Rec = Record<string, unknown>
 
 const STATUS_VALUES: VerificationStatus[] = ['candidate', 'baseline_asserted', 'confirmed', 'rejected', 'conflicted']
 const PATH_KINDS: CandidatePathKind[] = ['candidate', 'alternative', 'excluded']
+
+/** T3 `baseline_position` 是候选路径的「基准位置」，不是审核决定；这里只映射到展示分类。 */
+const BASELINE_POSITION_KIND: Record<string, CandidatePathKind> = {
+  selected: 'candidate',
+  alternative_to_examine: 'alternative',
+  excluded: 'excluded',
+}
 
 function isRecord(v: unknown): v is Rec {
   return Boolean(v) && typeof v === 'object' && !Array.isArray(v)
@@ -52,6 +60,14 @@ function num(v: unknown): number | null {
 function statusOf(v: unknown): VerificationStatus | null {
   const s = str(v)
   return s && (STATUS_VALUES as string[]).includes(s) ? (s as VerificationStatus) : null
+}
+
+/** 候选路径分类：优先取显式 kind，其次取 T3 `baseline_position`。 */
+function pathKindOf(item: Rec): CandidatePathKind | null {
+  const direct = str(pick(item, ['kind', 'path_kind', 'pathKind', 'type']))
+  if (direct && (PATH_KINDS as string[]).includes(direct)) return direct as CandidatePathKind
+  const baseline = str(pick(item, ['baseline_position', 'baselinePosition']))
+  return baseline ? BASELINE_POSITION_KIND[baseline] ?? null : null
 }
 
 /** 证据引用：支持/相反证据可能是 id 数组，也可能是对象数组。 */
@@ -96,11 +112,10 @@ export function toCandidatePaths(content: Rec): CandidatePath[] {
   if (raw === undefined) return []
   return asArray(raw).flatMap((item): CandidatePath[] => {
     if (!isRecord(item)) return []
-    const kindRaw = str(pick(item, ['kind', 'path_kind', 'pathKind', 'type']))
     return [{
       id: str(pick(item, ['id', 'path_id', 'pathId'])),
       title: str(pick(item, ['title', 'name', 'charge', 'path', 'label'])) ?? '未命名路径',
-      kind: kindRaw && (PATH_KINDS as string[]).includes(kindRaw) ? (kindRaw as CandidatePathKind) : null,
+      kind: pathKindOf(item),
       summary: str(pick(item, ['summary', 'reasoning', 'description', 'basis', 'conclusion'])),
       supporting: toEvidence(pick(item, ['supporting', 'supporting_evidence', 'supporting_evidence_ids', 'supportingEvidenceIds'])),
       contrary: toEvidence(pick(item, ['contrary', 'contrary_evidence', 'contrary_evidence_ids', 'contraryEvidenceIds', 'opposing'])),
@@ -126,6 +141,22 @@ export function toAmounts(content: Rec): AmountEntry[] {
       status: statusOf(pick(item, ['verification_status', 'verificationStatus', 'status'])),
     }]
   })
+}
+
+/** 合规事实清单（C 案）：T3 `analyses.compliance.checklist[]`。逐项原样展示维度、客观状态与证据，不翻译状态语义。 */
+export function toComplianceChecklist(content: Rec): ComplianceChecklistItem[] {
+  const raw = pick(content, ['checklist', 'compliance_checklist', 'complianceChecklist'])
+  if (raw === undefined) return []
+  return asArray(raw).flatMap((item): ComplianceChecklistItem[] => {
+    if (!isRecord(item)) return []
+    return [{
+      category: str(pick(item, ['category', 'dimension', 'label', 'name'])),
+      status: str(pick(item, ['status', 'state', 'finding'])),
+      evidenceIds: asArray(pick(item, ['evidence_ids', 'evidenceIds', 'evidence_id']))
+        .map((v) => str(v))
+        .filter((v): v is string => Boolean(v)),
+    }]
+  }).filter((item) => item.category)
 }
 
 /** 量刑 blocked 时的阻断项。 */

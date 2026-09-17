@@ -3,7 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useCaseModule } from '../composables/useCaseModule'
 import FactCard from '../components/FactCard.vue'
-import { APPLICABILITY_LABEL, toAnalysisFacts } from '../lib/module-content'
+import { APPLICABILITY_LABEL, toAnalysisFacts, toComplianceChecklist } from '../lib/module-content'
 
 const route = useRoute()
 const router = useRouter()
@@ -11,6 +11,11 @@ const caseId = computed(() => String(route.params.caseId || ''))
 const { loading, error, caseItem, moduleState, confirming, confirmError, isPlaceholder, load, confirm } = useCaseModule(caseId, 'compliance')
 
 const facts = computed(() => (moduleState.value ? toAnalysisFacts(moduleState.value.content) : []))
+const checklist = computed(() => (moduleState.value ? toComplianceChecklist(moduleState.value.content) : []))
+const contentNote = computed(() => {
+  const note = moduleState.value?.content?.note
+  return typeof note === 'string' && note.trim() ? note : ''
+})
 const rawContent = computed(() => (moduleState.value ? JSON.stringify(moduleState.value.content, null, 2) : ''))
 const showRaw = ref(false)
 const workspaceTo = computed(() => (caseItem.value ? `/cases/${caseItem.value.id}` : '/cases'))
@@ -88,8 +93,16 @@ watch(caseId, () => void load())
 
       <section class="panel">
         <div class="panel-heading"><div><p class="section-index">02</p><h2>合规事实梳理</h2></div></div>
-        <p class="panel-note">按以下维度整理客观事实，作为行为归属与主观认识的审查底稿。</p>
-        <div v-if="facts.length" class="fact-list">
+        <p class="panel-note">按以下维度整理客观事实，作为行为归属与主观认识的审查底稿；不输出合规等级与罪责结论。</p>
+        <p v-if="contentNote" class="notice notice-info" role="note">{{ contentNote }}</p>
+        <div v-if="checklist.length" class="checklist">
+          <div v-for="(c, i) in checklist" :key="c.category ?? i" class="checklist-item">
+            <span class="checklist-category">{{ c.category }}</span>
+            <span class="checklist-status" title="状态为 T3 字段原文，待法核">{{ c.status || '待法核' }}</span>
+            <span v-if="c.evidenceIds?.length" class="checklist-evidence">{{ c.evidenceIds.length }} 项证据</span>
+          </div>
+        </div>
+        <div v-else-if="facts.length" class="fact-list">
           <FactCard v-for="f in facts" :key="f.id ?? f.statement" :fact="f" @locate="handleLocate" />
         </div>
         <dl v-else class="data-list">
@@ -142,5 +155,37 @@ watch(caseId, () => void load())
 .fact-list {
   display: grid;
   gap: 10px;
+}
+.checklist {
+  display: grid;
+  gap: 8px;
+}
+.checklist-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  background: var(--lc-surface);
+  border: 1px solid var(--lc-line);
+  border-radius: 8px;
+}
+.checklist-category {
+  color: var(--lc-ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+.checklist-status {
+  padding: 2px 10px;
+  color: var(--lc-brand-800);
+  background: var(--lc-brand-100);
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 750;
+}
+.checklist-evidence {
+  margin-left: auto;
+  color: var(--lc-muted);
+  font-size: 12px;
 }
 </style>

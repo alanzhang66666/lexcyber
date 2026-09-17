@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import logoUrl from '../assets/logo.png'
 import { loginAccount, registerAccount, safeRedirect } from '../lib/auth'
 
 const route = useRoute()
@@ -43,7 +44,7 @@ async function submit() {
   <div class="auth-page">
     <section class="auth-card">
       <div class="auth-brand">
-        <span class="brand-mark" aria-hidden="true"><i></i><b>衡</b></span>
+        <img class="brand-mark" :src="logoUrl" alt="" />
         <strong>LexCyber 网域衡鉴</strong>
         <p>涉外互联网犯罪刑事合规与量刑辅助系统</p>
       </div>

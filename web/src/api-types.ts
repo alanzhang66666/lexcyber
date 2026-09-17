@@ -383,6 +383,13 @@ export type CandidatePath = {
   status?: VerificationStatus | null
 }
 
+/** 合规事实清单项（C 案）：T3 `analyses.compliance.checklist[]` 的维度 + 客观状态 + 证据，不做合规等级→罪责映射。 */
+export type ComplianceChecklistItem = {
+  category?: string | null
+  status?: string | null
+  evidenceIds?: string[]
+}
+
 /** 单条金额口径：标签 + 数值 + 币种 + 证据定位 + 确认状态。 */
 export type AmountEntry = {
   kind: AmountKind
