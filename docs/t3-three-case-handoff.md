@@ -1,6 +1,6 @@
 # T3 三案数据、法源与计算交接说明
 
-版本：2026-09-14（待法学负责人会签）
+版本：2026-09-17（终版清单已部分会签，量刑与文书仍阻断）
 
 ## 交付范围
 
@@ -8,7 +8,7 @@
 
 - `demo_cases/three_case_demo/`：A/B/C 三案机器可读样例、原文件路径和哈希、事实—证据—阶段—金额—候选路径映射。
 - `engine/adapters/case_bundle.py`：加载单案、检查重复编号/缺文件/引用完整性/审批状态。
-- `engine/adapters/sources.py`：仅检索三案涉及的九条版本化官方法源记录；超出范围明确返回 `unsupported_query`。
+- `engine/adapters/sources.py`：仅检索三案涉及的十条版本化官方法源记录；超出范围明确返回 `unsupported_query`。
 - `engine/adapters/sentencing.py`：仅重放法学负责人批准的算术规则。规则、步骤或输入未批准时 fail closed。
 - `engine/adapters/consistency.py`：检查结果使用的证据、法源、金额快照和文书必填字段是否与案件包一致。
 - `engine/adapters/t1_contract.py`：按 API-01 将 T3 保真数据投影为 `CaseCreate` / `case.facts.v1` / T1 任务结果，严格区分服务端 ID 与数据集 ID。
@@ -18,18 +18,18 @@
 
 | 演示案 | 原素材 | 覆盖争点 | 当前阻断项 |
 | --- | --- | --- | --- |
-| A 帮助行为案 | 合成案例003 | 丙的风险认识形成、引流阶段、帮信与诈骗共犯、员工认识能否归属于单位 | 缺第二份证据材料；候选路径、行为时法、量刑和文书未会签 |
-| B 资金处置案 | 合成案例010 | 犯罪所得形成后接收/取现/转交、帮信与掩隐、单位归责、五类金额口径 | 缺第二份证据材料；2024年行为与2025年新解释的时间适用待核；量刑和文书未会签 |
-| C 单位涉外案 | 合成案例004 | 风险逐级报告、负责人决定、单位归责、形式制度与实际执行、诈骗共犯排除、涉外连接点 | 境外行为地/结果地/资金节点不足；缺第二份证据材料；量刑和文书未会签 |
+| A 帮助行为案 | 合成案例011（改） | 冯某概括明知、GOIP帮助阶段、诈骗共犯排除、员工认识能否归属于单位 | 支付结算金额口径为三级待核；量刑计算规则和文书模板结构未会签 |
+| B 资金处置案 | 合成案例009（改）；终版另要求042改编 | 黄某在上游既遂前提供账户的帮信路径、资金形成时点、帮信与掩隐界分、单位归责 | 文件夹缺042输入材料与法学标注；009量刑文本内部不一致；计算规则和模板未会签 |
+| C 单位涉外案 | 合成案例016 | 风险逐级报告、管理层决定继续、单位归责、诈骗共犯排除、境内外管辖连接点 | 七项境外连接点待核；11.8万/9.8万违法所得口径、量刑计算规则和模板未会签 |
 
-案例003和004来自同一组事实的不同分支，用来验证“未上报/私自绕过”与“逐级上报/负责人决定继续”对单位归责结果的影响。它们不能被当作两个互相独立的真实判决样本。
+2026-09-17 更新保留 `case_id` 和 A/B/C 外部键稳定，只替换包内素材、演员、证据、事实、金额与路径。输入材料是案件证据；法学标注和终版说明只记录核验结论，不作为证据。B 的 042 摘要不能替代缺失的原始输入材料和法学标注。
 
 ## 字段字典
 
 | 字段 | 含义 | T1/T2 使用要求 |
 | --- | --- | --- |
 | `case_id` / `case_code` | T3 数据包稳定标识和 A/B/C 简称 | `case_code` 写入 PR5 固定的 `metadata.datasetCaseId`，`case_id` 保存为 `metadata.t3BundleId`；绝不冒充 T1 `CaseView.id` |
-| `documents[].role` | `case_material` 是案件材料；`benchmark_annotation` 是待核标注 | 标注绝不能计入支持定罪的证据数 |
+| `documents[].role` | `case_material` 是案件材料；`benchmark_annotation` / `legal_review_summary` 是核验记录 | 标注和说明绝不能计入支持定罪的证据数 |
 | `documents[].sha256` / `source_version` | 原文件内容身份 | 解析结果、事实快照应绑定该版本 |
 | `actors[]` | 人或单位及其材料角色 | 角色不等于主从犯等法律身份 |
 | `relationships[]` | 任职、汇报、控制、通信等客观关系 | 只画事实关系，不自动推出罪责 |
@@ -57,6 +57,7 @@
 | `cn-cybercrime-interpretation-2019-11-12` | 法释〔2019〕15号，2019-11-01施行 | 明知、相反证据、情节严重 | [最高法发布页](https://www.court.gov.cn/fabu/xiangqing/193711.html) |
 | `cn-telefraud-opinion-2016-common-crime` | 法发〔2016〕32号 | A/C行为期间诈骗共犯界分 | [最高法发布页](https://www.court.gov.cn/fabu/xiangqing/33361.html) |
 | `cn-helping-opinion-2025-4-9` | 法发〔2025〕12号，2025-07-22 | 当前复核中的明知、帮信/掩隐/共犯界分和跨境从严因素 | [最高法发布页](https://www.court.gov.cn/zixun/xiangqing/472121.html) |
+| `cn-sentencing-guidance-2024-2` | 法〔2024〕132号，2024-07-01起试行一年 | 帮信罪量刑起点、基准刑、罚金和缓刑框架；不等于已批准计算规则 | [深圳市盐田区人民法院发布页](https://www.shenpan.gov.cn/sfgg/zywj/content/post_1398982.html) |
 | `cn-concealment-interpretation-2015-2021` | 2021修正版本，至2025-08-25 | B案2024年行为时旧规则候选 | [最高法公报](https://gongbao.court.gov.cn/Details/67c58e283e9987cf41af558e71e3e5.html) |
 | `cn-concealment-interpretation-2025-1-12` | 法释〔2025〕13号，2025-08-26施行 | B案当前复核、方法/明知/情节严重/事前通谋/单位 | [最高法发布页](https://www.court.gov.cn/zixun/xiangqing/474141.html) |
 
@@ -68,9 +69,9 @@
 
 ```json
 {
-  "title": "支付企业组织转移已形成涉诈资金案",
+  "title": "支付科技公司员工私自提供企业账户帮助行为案",
   "jurisdiction": "CN",
-  "asOfDate": "2026-09-14",
+  "asOfDate": "2026-09-17",
   "metadata": {
     "datasetCaseId": "B",
     "t3BundleId": "demo-case-b-proceeds",
@@ -152,7 +153,7 @@ DOCX 使用 `paragraph:n` / `table:n`，PDF 使用 `page:n`。缺少对象存储
     "taskType": "sentencing.calculate",
     "sentencing": {
       "datasetCaseId": "B",
-      "actorId": "actor-b-li"
+      "actorId": "actor-b-huang"
     }
   }
 }
@@ -165,7 +166,7 @@ DOCX 使用 `paragraph:n` / `table:n`，PDF 使用 `page:n`。缺少对象存储
   "caseId": "case-server-id",
   "datasetCaseId": "B",
   "t3BundleId": "demo-case-b-proceeds",
-  "actorId": "actor-b-li",
+  "actorId": "actor-b-huang",
   "analysisStatus": "blocked",
   "termMonths": null,
   "blockers": [{"code": "rule_not_approved", "path": "rule.legal_review_status", "message": "..."}],
@@ -182,7 +183,7 @@ T1 使用 `X-Service-Token` 调用 `POST /internal/v1/sources/search`，公开 `
 ```json
 {
   "query": "2025掩隐解释",
-  "as_of_date": "2026-09-14",
+  "as_of_date": "2026-09-17",
   "jurisdiction": "CN",
   "top_k": 5
 }
@@ -220,18 +221,17 @@ PR5 已合并。创建案件时 T3 先生成 `doc-pending-upload`，上传后通
 
 - 事实卡展示 `stage`、`verification_status`、证据定位；`baseline_asserted` 使用“待法核基准”，不能显示“已确认”。
 - 候选路径同时显示 `supporting_evidence_ids` 与 `contrary_evidence_ids`。
-- B 案同时显示账户总流入 42 万、涉诈 20 万、普通结算 22 万、公司获利 1.2 万、个人获利 4200 和退缴 1.62 万，禁止用账户总流入代替犯罪所得。
+- B 案 009 同时显示账户总流入 42 万、涉诈 20 万、普通结算 22 万、黄某获利及退缴 4200 元；不得虚构公司获利，也不得用账户总流入代替涉诈金额。
 - C 案合规页使用事实清单，不显示合规分数；涉外页明确哪些连接点只是 `candidate`。
 - 量刑返回 `blocked` 时展示待确认项，不展示 `benchmark_disposition` 为系统预测。
 
 ## 法学负责人会签清单
 
-- [ ] 确认三案选取和原案号/合成素材之间的说明准确。
-- [ ] 为每案补足至少第二份案件证据材料及定位。
-- [ ] 逐项确认事实、反证和证据冲突。
-- [ ] 确认 A/C 的帮信—诈骗共犯界分及单位归责。
-- [ ] 确认 B 的犯罪所得形成时间、掩隐—帮信界分和单位归责。
-- [ ] 确认 B 案新旧司法解释的时间适用。
-- [ ] 确认每案金额口径，不把流水、犯罪数额、所得和获利混用。
+- [x] 确认 A=011（改）、B=009+042改编、C=016 的基准组合；代码保留稳定 A/B/C 外部键。
+- [x] 逐项确认 A、009、C 的主要事实、反证和候选路径。
+- [x] 确认 A/C 的帮信—诈骗共犯界分及单位归责方向。
+- [ ] 补充 B 案 042 改编终稿输入材料和法学标注，摘要不能替代原材料。
+- [ ] 解决 A 的支付结算金额三级待核项、C 的境外连接点及违法所得口径。
+- [ ] 复核 009 量刑文字中的区间冲突和全部金额口径，不自行择取结果。
 - [ ] 提供每名主体的规则版本、计算步骤、适用条件和法源；不得只给最终区间。
 - [ ] 确认三案文书类型、模板正文、字段和缺项处理。

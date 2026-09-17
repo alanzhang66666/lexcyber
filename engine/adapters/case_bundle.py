@@ -60,12 +60,12 @@ def validate_case_bundle(bundle: dict[str, Any]) -> dict[str, Any]:
     if len(document_ids) < 2:
         errors.append(_issue("insufficient_documents", "documents", "a demo case must declare at least two source documents"))
     evidentiary_docs = [item for item in bundle.get("documents", []) if item.get("role") == "case_material"]
-    if len(evidentiary_docs) < 2:
-        warnings.append(
+    if not evidentiary_docs:
+        errors.append(
             _issue(
-                "insufficient_evidentiary_documents",
+                "case_material_missing",
                 "documents",
-                "fewer than two documents are case materials; benchmark annotations do not count as evidence",
+                "at least one case material is required; annotations and review summaries are not evidence",
             )
         )
 

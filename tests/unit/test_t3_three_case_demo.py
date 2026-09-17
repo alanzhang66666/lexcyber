@@ -30,7 +30,8 @@ def test_benchmark_annotation_does_not_count_as_case_evidence():
     bundle = load_case_bundle("A")
     result = validate_case_bundle(bundle)
     warning_codes = {item["code"] for item in result["warnings"]}
-    assert "insufficient_evidentiary_documents" in warning_codes
+    case_material_ids = {item["id"] for item in bundle["documents"] if item["role"] == "case_material"}
+    assert {item["document_id"] for item in bundle["evidence"]} <= case_material_ids
     assert "sentencing_not_approved" in warning_codes
 
 
@@ -46,6 +47,10 @@ def test_source_search_is_version_and_date_aware():
     new_current = search_legal_sources("2025掩隐解释", as_of_date="2026-09-14")
     assert new_current["documents"][0]["effective_status"] == "effective"
 
+    guidance = search_legal_sources("2024量刑指导意见二", as_of_date="2024-07-01")
+    assert guidance["documents"][0]["id"] == "cn-sentencing-guidance-2024-2"
+    assert guidance["documents"][0]["effective_status"] == "effective"
+
 
 def test_source_search_fails_clearly_outside_three_case_coverage():
     result = search_legal_sources("海商法共同海损")
@@ -55,7 +60,7 @@ def test_source_search_fails_clearly_outside_three_case_coverage():
 
 def test_case_sentencing_is_blocked_until_legal_approval():
     bundle = load_case_bundle("B")
-    result = calculate_case_sentencing(bundle, "actor-b-li")
+    result = calculate_case_sentencing(bundle, "actor-b-huang")
     assert result["status"] == "blocked"
     assert result["term_months"] is None
     assert "rule_not_approved" in {item["code"] for item in result["blockers"]}
@@ -156,7 +161,7 @@ def test_fact_extractor_normalizes_chinese_amounts_without_promoting_them_to_con
 def test_t1_case_create_keeps_server_case_id_unassigned_and_splits_organizations():
     payload = build_t1_case_create(load_case_bundle("C"))
     assert "caseId" not in payload
-    assert payload["asOfDate"] == "2026-09-14"
+    assert payload["asOfDate"] == "2026-09-17"
     assert payload["metadata"]["datasetCaseId"] == "C"
     assert payload["metadata"]["t3BundleId"] == "demo-case-c-unit-crossborder"
     relations = payload["metadata"]["relations"]
@@ -165,7 +170,7 @@ def test_t1_case_create_keeps_server_case_id_unassigned_and_splits_organizations
     assert company["organizationId"] == "org-c-company"
     assert relations["accounts"] == []
     assert relations["jurisdictionConnections"]
-    assert payload["metadata"]["sourceVersionBinding"]["temporal_review_status"] == "pending"
+    assert payload["metadata"]["sourceVersionBinding"]["temporal_review_status"] == "partial_approval"
     assert "procedureStage" not in payload["metadata"]
     assert any(item.get("documentId") == "doc-pending-upload" for item in relations["events"])
     assert relations["links"]
@@ -194,13 +199,13 @@ def test_t1_fact_view_uses_server_ids_and_projects_item_verification_status():
         load_case_bundle("B"),
         case_id="case-server-b",
         document_id_map={"doc-b-input": "doc-server-b"},
-        item_ids=["fact-b-proceeds-formed", "amount-b-fraud-inflow"],
+        item_ids=["fact-b-proceeds-formation", "amount-b-fraud-inflow"],
     )
     assert payload["caseId"] == "case-server-b"
     assert payload["status"] == "draft"
-    assert {item["id"] for item in payload["items"]} == {"fact-b-proceeds-formed", "amount-b-fraud-inflow"}
+    assert {item["id"] for item in payload["items"]} == {"fact-b-proceeds-formation", "amount-b-fraud-inflow"}
     assert all(item["sourceDocumentId"] == "doc-server-b" for item in payload["items"])
-    assert all(item["verificationStatus"] == "baseline_asserted" for item in payload["items"])
+    assert all(item["verificationStatus"] == "confirmed" for item in payload["items"])
     assert payload["status"] != "confirmed"
 
 
@@ -219,18 +224,26 @@ def test_t1_fact_confirmation_requires_explicit_human_confirmed_selection():
     bundle = load_case_bundle("A")
     with pytest.raises(T1ContractError, match="explicit item_ids"):
         build_t1_fact_view(bundle, case_id="case-server-a", document_id_map={"doc-a-input": "doc-server-a"}, status="confirmed")
+    confirmed = build_t1_fact_view(
+        bundle,
+        case_id="case-server-a",
+        document_id_map={"doc-a-input": "doc-server-a"},
+        status="confirmed",
+        item_ids=["fact-a-help"],
+    )
+    assert confirmed["status"] == "confirmed"
     with pytest.raises(T1ContractError, match="cannot confirm unconfirmed"):
         build_t1_fact_view(
             bundle,
             case_id="case-server-a",
             document_id_map={"doc-a-input": "doc-server-a"},
             status="confirmed",
-            item_ids=["fact-a-help"],
+            item_ids=["fact-a-payment-settlement-classification"],
         )
 
 
 def test_t1_mapping_keeps_blocked_inside_content_and_uses_waiting_review_task_status():
-    result = calculate_case_sentencing(load_case_bundle("B"), "actor-b-li")
+    result = calculate_case_sentencing(load_case_bundle("B"), "actor-b-huang")
     payload = map_sentencing_result_to_t1(result, case_id="case-server-b", dataset_case_id="B")
     assert payload["taskStatus"] == "waiting_review"
     assert payload["content"]["analysisStatus"] == "blocked"

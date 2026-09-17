@@ -58,7 +58,7 @@ def test_sentencing_dispatcher_preserves_blockers_for_waiting_review(monkeypatch
         "case_id": "case-server-b",
         "metadata": {
             "taskType": "sentencing.calculate",
-            "sentencing": {"datasetCaseId": "B", "actorId": "actor-b-li"},
+            "sentencing": {"datasetCaseId": "B", "actorId": "actor-b-huang"},
         },
     }
     result = build_runner().run(payload)
