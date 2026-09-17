@@ -36,9 +36,7 @@ a { color: inherit; }
   box-shadow: 0 4px 18px rgb(26 15 45 / 16%);
 }
 .brand { display: flex; align-items: center; gap: 12px; width: fit-content; color: white; text-decoration: none; }
-.brand-mark { position: relative; width: 44px; height: 44px; display: grid; place-items: center; flex: 0 0 auto; overflow: hidden; color: white; background: var(--lc-brand-500); border: 1px solid #9e8aff; border-radius: 8px; }
-.brand-mark i { position: absolute; inset: 8px; border: 1px solid rgb(255 255 255 / 42%); transform: rotate(45deg); }
-.brand-mark b { position: relative; font-size: 17px; }
+.brand-mark { width: 44px; height: 44px; object-fit: contain; flex: 0 0 auto; }
 .brand-copy { display: grid; gap: 3px; }
 .brand-copy strong { font-size: 17px; letter-spacing: .01em; }
 .brand-copy em { margin-left: 5px; color: #dcd5ff; font-style: normal; font-weight: 650; }
@@ -119,7 +117,7 @@ input:disabled, textarea:disabled { color: var(--lc-muted); background: var(--lc
 .check-row input { width: 16px; height: 16px; margin: 2px 0 0; accent-color: var(--lc-brand-500); }
 .check-row span { display: grid; gap: 4px; }
 .check-row small { color: var(--lc-muted); font-size: 11px; font-weight: 500; line-height: 1.45; }
-.button { min-height: 40px; padding: 0 16px; border: 1px solid transparent; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 750; transition: background .15s, border-color .15s, transform .15s; }
+.button { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: 0 16px; border: 1px solid transparent; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 750; transition: background .15s, border-color .15s, transform .15s; }
 .button:hover:not(:disabled) { transform: translateY(-1px); }
 .button:disabled { cursor: not-allowed; opacity: .55; }
 .button-primary { color: white; background: var(--lc-brand-500); border-color: var(--lc-brand-500); }
@@ -196,7 +194,6 @@ input:disabled, textarea:disabled { color: var(--lc-muted); background: var(--lc
   color: var(--home-ink); background: #fff; border-bottom: 1px solid var(--lc-line); box-shadow: none;
 }
 .is-home .brand, .is-auth .brand { color: var(--lc-brand-900); }
-.is-home .brand-mark, .is-auth .brand-mark { color: #fff; background: var(--home-accent); border-color: #9e8aff; border-radius: 10px; }
 .is-home .brand-copy em, .is-auth .brand-copy em { color: var(--home-accent); }
 .is-home .brand-copy small { color: var(--lc-muted); }
 .is-home .primary-nav a, .is-home .more-nav > button {

@@ -47,7 +47,8 @@ function evidenceKey(e: EvidenceRef, i: number) {
           <li v-for="(e, i) in path.supporting" :key="evidenceKey(e, i)">
             <span v-if="e.quote" class="evidence-quote">{{ e.quote }}</span>
             <LocatorChip v-if="e.locator" :locator="e.locator" @locate="(l) => emit('locate', l)" />
-            <span v-if="!e.quote && !e.locator" class="evidence-empty">—</span>
+            <code v-if="!e.quote && !e.locator && e.id" class="evidence-ref">{{ e.id }}</code>
+            <span v-if="!e.quote && !e.locator && !e.id" class="evidence-empty">—</span>
           </li>
         </ul>
         <p v-else class="evidence-empty">暂无</p>
@@ -59,7 +60,8 @@ function evidenceKey(e: EvidenceRef, i: number) {
           <li v-for="(e, i) in path.contrary" :key="evidenceKey(e, i)">
             <span v-if="e.quote" class="evidence-quote">{{ e.quote }}</span>
             <LocatorChip v-if="e.locator" :locator="e.locator" @locate="(l) => emit('locate', l)" />
-            <span v-if="!e.quote && !e.locator" class="evidence-empty">—</span>
+            <code v-if="!e.quote && !e.locator && e.id" class="evidence-ref">{{ e.id }}</code>
+            <span v-if="!e.quote && !e.locator && !e.id" class="evidence-empty">—</span>
           </li>
         </ul>
         <p v-else class="evidence-empty">暂无</p>
@@ -160,6 +162,11 @@ function evidenceKey(e: EvidenceRef, i: number) {
   font-size: 12px;
   line-height: 1.6;
   overflow-wrap: anywhere;
+}
+.evidence-ref {
+  color: var(--lc-muted);
+  font-family: var(--lc-mono, ui-monospace, monospace);
+  font-size: 11px;
 }
 .evidence-empty {
   margin: 0;

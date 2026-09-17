@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { toAmounts, toAnalysisFacts, toBlockers, toCandidatePaths, toSentencing } from './module-content'
+import { toAmounts, toAnalysisFacts, toBlockers, toCandidatePaths, toComplianceChecklist, toSentencing } from './module-content'
 
 describe('module-content 归一化', () => {
   it('从 snake_case 提取事实（stage/verification_status/locator）', () => {
@@ -28,6 +28,33 @@ describe('module-content 归一化', () => {
     expect(paths[0].kind).toBe('candidate')
     expect(paths[0].supporting[0].id).toBe('e1')
     expect(paths[0].contrary[0].id).toBe('e2')
+  })
+
+  it('从 T3 baseline_position 映射候选/替代/排除路径', () => {
+    const paths = toCandidatePaths({
+      candidate_paths: [
+        { id: 'p1', label: '帮信', baseline_position: 'selected' },
+        { id: 'p2', label: '掩隐', baseline_position: 'alternative_to_examine' },
+        { id: 'p3', label: '诈骗共犯', baseline_position: 'excluded' },
+      ],
+    })
+    expect(paths.map((p) => p.kind)).toEqual(['candidate', 'alternative', 'excluded'])
+    expect(paths[0].title).toBe('帮信')
+    expect(paths[2].title).toBe('诈骗共犯')
+  })
+
+  it('合规清单从 checklist 提取维度/状态/证据', () => {
+    const list = toComplianceChecklist({
+      checklist: [
+        { category: '制度与岗位', status: 'present', evidence_ids: ['ev-c-01'] },
+        { category: '境外关联', status: 'partially_confirmed', evidence_ids: ['ev-c-02', 'ev-c-03'] },
+      ],
+    })
+    expect(list).toHaveLength(2)
+    expect(list[0].category).toBe('制度与岗位')
+    expect(list[0].status).toBe('present')
+    expect(list[0].evidenceIds).toEqual(['ev-c-01'])
+    expect(list[1].evidenceIds).toEqual(['ev-c-02', 'ev-c-03'])
   })
 
   it('金额口径提取 kind/value/currency，字符串数值转数字', () => {
