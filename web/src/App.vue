@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
-import logoUrl from './assets/logo.png'
+import BrandMark from './components/BrandMark.vue'
 import { CORE_MODULES, modulePath } from './data/modules'
 import { currentCaseId, resolveT1CaseId, syncCurrentCaseFromStorage } from './lib/current-case'
 import { logout, refreshSession, session } from './lib/auth'
@@ -97,9 +97,9 @@ watch(() => route.path, () => {
     <a class="skip-link" href="#main-content">跳到主要内容</a>
     <header class="topbar">
       <RouterLink class="brand" to="/" aria-label="LexCyber 网域衡鉴首页">
-        <img class="brand-mark" :src="logoUrl" alt="" />
+        <BrandMark />
         <span class="brand-copy">
-          <strong>LexCyber <em>网域衡鉴</em></strong>
+          <strong>Lex<em>Cyber</em> 网域衡鉴</strong>
         </span>
       </RouterLink>
       <nav v-if="!authActive" class="primary-nav" aria-label="主要导航">

@@ -133,8 +133,7 @@ onMounted(() => {
         </span>
         <h2>{{ item.title }}</h2>
         <p>{{ item.desc }}</p>
-        <span v-if="item.dev" class="subtle-chip">开发中</span>
-        <span v-else class="home-feature-enter">进入 →</span>
+        <span class="home-feature-enter">{{ item.dev ? '开发中' : '进入 →' }}</span>
       </RouterLink>
     </section>
   </div>
@@ -143,5 +142,5 @@ onMounted(() => {
 <style scoped>
 .home-feature.is-dev { opacity: 0.72; }
 .home-feature.is-dev .home-feature-icon { color: var(--lc-muted); }
-.home-feature.is-dev .subtle-chip { margin-top: auto; width: fit-content; }
+.home-feature.is-dev .home-feature-enter { color: var(--lc-muted); }
 </style>
