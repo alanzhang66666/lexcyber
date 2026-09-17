@@ -6,6 +6,7 @@ from typing import Any
 
 DEMO_ROOT = Path(__file__).resolve().parents[2] / "demo_cases" / "three_case_demo"
 INDEX_PATH = DEMO_ROOT / "index.json"
+TEMPLATE_REGISTRY_PATH = DEMO_ROOT / "document-templates.json"
 
 
 def _issue(code: str, path: str, message: str) -> dict[str, str]:
@@ -27,7 +28,54 @@ def load_case_bundle(case_id: str, root: Path | None = None) -> dict[str, Any]:
     return _read_json(dataset_root / matches[0]["bundle"])
 
 
-def validate_case_bundle(bundle: dict[str, Any]) -> dict[str, Any]:
+def load_document_template_registry(root: Path | None = None) -> dict[str, Any]:
+    """Load the versioned legal-document template contract used by the demo bundles."""
+
+    dataset_root = root or DEMO_ROOT
+    return _read_json(dataset_root / "document-templates.json")
+
+
+def validate_document_template_registry(registry: dict[str, Any]) -> dict[str, Any]:
+    """Validate template identities, source fingerprints, and fail-closed generation policy."""
+
+    errors: list[dict[str, str]] = []
+    templates = registry.get("templates", [])
+    expected_types = {"prosecution", "sentencing_recommendation", "non_prosecution"}
+    seen_ids: set[str] = set()
+    seen_types: set[str] = set()
+
+    if registry.get("schema_version") != "lexcyber.document-template-registry.v1":
+        errors.append(_issue("template_schema_invalid", "schema_version", str(registry.get("schema_version"))))
+    policy = registry.get("generation_policy") or {}
+    for field in ("confirmed_values_only", "unresolved_placeholder_blocks_approval", "human_review_required"):
+        if policy.get(field) is not True:
+            errors.append(_issue("template_policy_unsafe", f"generation_policy.{field}", "must be true"))
+
+    for position, template in enumerate(templates):
+        template_id = template.get("id")
+        document_type = template.get("document_type")
+        if not template_id or template_id in seen_ids:
+            errors.append(_issue("template_id_invalid", f"templates[{position}].id", str(template_id)))
+        else:
+            seen_ids.add(template_id)
+        if document_type not in expected_types or document_type in seen_types:
+            errors.append(_issue("template_type_invalid", f"templates[{position}].document_type", str(document_type)))
+        else:
+            seen_types.add(document_type)
+        sha256 = template.get("sha256", "")
+        if len(sha256) != 64 or any(character not in "0123456789abcdef" for character in sha256):
+            errors.append(_issue("template_hash_invalid", f"templates[{position}].sha256", str(sha256)))
+        if not template.get("required_fields"):
+            errors.append(_issue("template_fields_missing", f"templates[{position}].required_fields", "required fields are empty"))
+        if template.get("mapping_status") not in {"structure_extracted_pending_legal_owner_approval", "approved"}:
+            errors.append(_issue("template_mapping_status_invalid", f"templates[{position}].mapping_status", str(template.get("mapping_status"))))
+
+    if seen_types != expected_types:
+        errors.append(_issue("template_types_incomplete", "templates", ", ".join(sorted(expected_types - seen_types))))
+    return {"valid": not errors, "errors": errors, "template_count": len(templates)}
+
+
+def validate_case_bundle(bundle: dict[str, Any], template_registry: dict[str, Any] | None = None) -> dict[str, Any]:
     """Validate referential integrity and review gates of one T3 case bundle."""
 
     errors: list[dict[str, str]] = []
@@ -176,6 +224,30 @@ def validate_case_bundle(bundle: dict[str, Any]) -> dict[str, Any]:
     if missing_items:
         warnings.append(_issue("open_missing_items", "missing_items", f"{len(missing_items)} item(s) still require confirmation"))
 
+    document_fields = bundle.get("document_fields") or {}
+    registry = template_registry or load_document_template_registry()
+    templates_by_id = {item.get("id"): item for item in registry.get("templates", [])}
+    referenced_template_ids = document_fields.get("template_ids", [])
+    unknown_template_ids = set(referenced_template_ids) - set(templates_by_id)
+    if unknown_template_ids:
+        errors.append(_issue("unknown_document_template", "document_fields.template_ids", ", ".join(sorted(unknown_template_ids))))
+    referenced_types = {
+        templates_by_id[template_id].get("document_type")
+        for template_id in referenced_template_ids
+        if template_id in templates_by_id
+    }
+    missing_selected_types = set(document_fields.get("selected_types", [])) - referenced_types
+    if missing_selected_types:
+        errors.append(_issue("document_template_type_unmapped", "document_fields.selected_types", ", ".join(sorted(missing_selected_types))))
+    if document_fields.get("template_legal_review_status") != "approved":
+        warnings.append(
+            _issue(
+                "document_template_mapping_not_approved",
+                "document_fields.template_legal_review_status",
+                "source templates are registered, but field mapping and conditional branches still require legal-owner approval",
+            )
+        )
+
     return {
         "case_id": bundle.get("case_id"),
         "valid": not errors,
@@ -195,6 +267,8 @@ def validate_case_bundle(bundle: dict[str, Any]) -> dict[str, Any]:
 def validate_case_dataset(root: Path | None = None) -> dict[str, Any]:
     dataset_root = root or DEMO_ROOT
     index = _read_json(dataset_root / "index.json")
+    template_registry = load_document_template_registry(dataset_root)
+    template_validation = validate_document_template_registry(template_registry)
     results: list[dict[str, Any]] = []
     errors: list[dict[str, str]] = []
     seen_ids: set[str] = set()
@@ -214,11 +288,12 @@ def validate_case_dataset(root: Path | None = None) -> dict[str, Any]:
         bundle = _read_json(bundle_path)
         if bundle.get("case_id") != case_id or bundle.get("case_code") != case_code:
             errors.append(_issue("index_identity_mismatch", f"cases[{position}]", str(bundle_path)))
-        results.append(validate_case_bundle(bundle))
+        results.append(validate_case_bundle(bundle, template_registry=template_registry))
     return {
-        "valid": not errors and len(results) == 3 and all(item["valid"] for item in results),
-        "errors": errors,
+        "valid": not errors and template_validation["valid"] and len(results) == 3 and all(item["valid"] for item in results),
+        "errors": errors + template_validation["errors"],
         "cases": results,
+        "document_templates": template_validation,
         "expected_case_count": 3,
         "actual_case_count": len(results),
     }

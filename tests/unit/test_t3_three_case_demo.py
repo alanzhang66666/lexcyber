@@ -1,6 +1,12 @@
 import pytest
 
-from engine.adapters.case_bundle import load_case_bundle, validate_case_bundle, validate_case_dataset
+from engine.adapters.case_bundle import (
+    load_case_bundle,
+    load_document_template_registry,
+    validate_case_bundle,
+    validate_case_dataset,
+    validate_document_template_registry,
+)
 from engine.adapters.consistency import validate_result_consistency
 from engine.adapters.sentencing import calculate_case_sentencing, calculate_sentencing
 from engine.adapters.sources import search_legal_sources
@@ -24,6 +30,27 @@ def test_three_case_dataset_has_stable_valid_bundles():
         "demo-case-c-unit-crossborder",
     }
     assert all(item["counts"]["evidence"] >= 8 for item in result["cases"])
+    assert result["document_templates"] == {"valid": True, "errors": [], "template_count": 3}
+
+
+def test_document_templates_are_versioned_and_referenced_by_each_case():
+    registry = load_document_template_registry()
+    assert validate_document_template_registry(registry)["valid"] is True
+    templates = {item["id"]: item for item in registry["templates"]}
+    assert {item["document_type"] for item in templates.values()} == {
+        "prosecution",
+        "sentencing_recommendation",
+        "non_prosecution",
+    }
+    assert all(len(item["sha256"]) == 64 for item in templates.values())
+    assert all(item["mapping_status"] != "approved" for item in templates.values())
+
+    for case_code in ("A", "B", "C"):
+        bundle = load_case_bundle(case_code)
+        document_fields = bundle["document_fields"]
+        assert document_fields["template_structure_status"] == "source_registered"
+        assert set(document_fields["template_ids"]) <= set(templates)
+        assert document_fields["template_legal_review_status"] != "approved"
 
 
 def test_benchmark_annotation_does_not_count_as_case_evidence():
@@ -161,7 +188,7 @@ def test_result_consistency_reports_amount_source_and_draft_gaps():
             "evidence_ids": ["ev-a-01"],
             "input_snapshot": {"amount-a-personal-profit": 999},
         },
-        {"case_name": "【待补充】"},
+        {"case_name": "【案件名称】"},
     )
     codes = {item["code"] for item in result["issues"]}
     assert result["status"] == "NEED_HUMAN"

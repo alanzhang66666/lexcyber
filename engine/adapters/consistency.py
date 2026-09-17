@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import re
 from typing import Any
+
+UNRESOLVED_TEMPLATE_PLACEHOLDER = re.compile(r"【[^】]+】")
 
 
 def validate_result_consistency(bundle: dict[str, Any], result: dict[str, Any], draft_fields: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -34,7 +37,7 @@ def validate_result_consistency(bundle: dict[str, Any], result: dict[str, Any], 
     for field in sorted(required_fields - set(supplied_fields)):
         issues.append({"code": "draft_field_missing", "path": f"draft_fields.{field}", "message": field})
     for field, value in supplied_fields.items():
-        if isinstance(value, str) and "【待补充】" in value:
+        if isinstance(value, str) and UNRESOLVED_TEMPLATE_PLACEHOLDER.search(value):
             issues.append({"code": "draft_placeholder_unresolved", "path": f"draft_fields.{field}", "message": field})
 
     return {

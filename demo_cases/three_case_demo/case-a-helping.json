@@ -21,7 +21,7 @@
     "reviewed_source": "doc-a-benchmark",
     "review_summary": "doc-a-review-summary",
     "approved_scope": ["objective_facts", "helping_path", "fraud_accomplice_exclusion", "company_crime_exclusion"],
-    "open_scope": ["payment_settlement_classification", "sentencing_calculation_rule", "document_template_structure"]
+    "open_scope": ["payment_settlement_classification", "sentencing_calculation_rule", "document_template_field_mapping_approval"]
   },
   "documents": [
     {
@@ -142,13 +142,15 @@
   },
   "document_fields": {
     "required": ["case_name", "actor_name", "confirmed_facts", "evidence_citations", "candidate_path", "legal_source_versions", "sentencing_review_status"],
-    "selected_types": ["prosecution", "non_prosecution_company_boundary"],
-    "template_legal_review_status": "pending"
+    "selected_types": ["prosecution", "non_prosecution"],
+    "template_ids": ["cn-prosecution-template-v1", "cn-non-prosecution-template-v1"],
+    "template_structure_status": "source_registered",
+    "template_legal_review_status": "source_provided_mapping_pending_approval"
   },
   "missing_items": [
     {"id": "missing-a-01", "severity": "warning", "description": "The payment-settlement amount classification remains a level-three review item."},
     {"id": "missing-a-02", "severity": "blocking", "description": "The supplied range is not an approved executable sentencing rule with exact ordered adjustments."},
-    {"id": "missing-a-03", "severity": "blocking", "description": "The prosecution and non-prosecution template structures still require legal-owner confirmation."},
+    {"id": "missing-a-03", "severity": "blocking", "description": "The prosecution and non-prosecution source templates are registered; final field mapping, branch selection and generated-draft approval still require the legal owner."},
     {"id": "missing-a-04", "severity": "warning", "description": "Confirm collection authorization, license, substantive adaptation and deidentification in the source ledger."}
   ]
 }

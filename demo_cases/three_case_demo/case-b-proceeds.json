@@ -37,7 +37,7 @@
       "case_042_subjective_knowledge_conflict",
       "case_042_adapted_disposition_not_executable_rule",
       "sentencing_calculation_rule",
-      "document_template_structure"
+      "document_template_field_mapping_approval"
     ]
   },
   "documents": [
@@ -231,11 +231,13 @@
   "document_fields": {
     "required": ["case_name", "actor_name", "fund_timeline", "confirmed_amounts", "evidence_citations", "candidate_path", "legal_source_versions", "sentencing_review_status"],
     "selected_types": ["prosecution", "sentencing_recommendation"],
-    "template_legal_review_status": "pending"
+    "template_ids": ["cn-prosecution-template-v1", "cn-sentencing-recommendation-template-v1"],
+    "template_structure_status": "source_registered",
+    "template_legal_review_status": "source_provided_mapping_pending_approval"
   },
   "missing_items": [
     {"id": "missing-b-02", "severity": "blocking", "description": "The case 009 sentencing text contains inconsistent headline and final ranges and is not an approved executable rule."},
-    {"id": "missing-b-03", "severity": "blocking", "description": "The prosecution and sentencing-recommendation template structures still require legal-owner confirmation."},
+    {"id": "missing-b-03", "severity": "blocking", "description": "The prosecution and sentencing-recommendation source templates are registered; final field mapping, branch selection and generated-draft approval still require the legal owner."},
     {"id": "missing-b-04", "severity": "warning", "description": "Confirm collection authorization, license, substantive adaptation and deidentification in the source ledger."},
     {"id": "missing-b-05", "severity": "blocking", "description": "Case 042 subjective knowledge remains conflicted by the loan-processing defence and requires case-specific human review before any operational conviction result."},
     {"id": "missing-b-06", "severity": "blocking", "description": "The case 042 concealment disposition is an explicit teaching adaptation of an original helping conviction; it is not a real judgment or approved executable sentencing rule."}

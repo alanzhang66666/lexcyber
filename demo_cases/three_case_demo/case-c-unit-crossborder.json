@@ -21,7 +21,7 @@
     "reviewed_source": "doc-c-benchmark",
     "review_summary": "doc-c-review-summary",
     "approved_scope": ["objective_facts", "unit_helping_path", "management_knowledge", "fraud_accomplice_exclusion", "confirmed_domestic_connections"],
-    "open_scope": ["foreign_connection_details", "unlawful_income_classification", "sentencing_calculation_rule", "document_template_structure"]
+    "open_scope": ["foreign_connection_details", "unlawful_income_classification", "sentencing_calculation_rule", "document_template_field_mapping_approval"]
   },
   "documents": [
     {
@@ -169,13 +169,15 @@
   "document_fields": {
     "required": ["case_name", "organization", "actor_name", "confirmed_facts", "compliance_checklist", "jurisdiction_connections", "evidence_citations", "candidate_path", "legal_source_versions", "sentencing_review_status"],
     "selected_types": ["prosecution", "sentencing_recommendation"],
-    "template_legal_review_status": "pending"
+    "template_ids": ["cn-prosecution-template-v1", "cn-sentencing-recommendation-template-v1"],
+    "template_structure_status": "source_registered",
+    "template_legal_review_status": "source_provided_mapping_pending_approval"
   },
   "missing_items": [
     {"id": "missing-c-01", "severity": "blocking", "description": "Seven foreign connection details remain unconfirmed; the confirmed domestic connections are retained separately."},
     {"id": "missing-c-02", "severity": "blocking", "description": "Whether 118,000 or 98,000 yuan is the sentencing input for unlawful income remains internally unresolved."},
     {"id": "missing-c-03", "severity": "blocking", "description": "The supplied ranges are not approved executable sentencing rules with exact ordered adjustments."},
-    {"id": "missing-c-04", "severity": "blocking", "description": "The prosecution and sentencing-recommendation template structures still require legal-owner confirmation."},
+    {"id": "missing-c-04", "severity": "blocking", "description": "The prosecution and sentencing-recommendation source templates are registered; final field mapping, branch selection and generated-draft approval still require the legal owner."},
     {"id": "missing-c-05", "severity": "warning", "description": "Confirm collection authorization, license, substantive adaptation and deidentification in the source ledger."}
   ]
 }
