@@ -35,6 +35,29 @@ def test_benchmark_annotation_does_not_count_as_case_evidence():
     assert "sentencing_not_approved" in warning_codes
 
 
+def test_case_b_includes_case_042_and_keeps_original_and_adapted_outcomes_distinct():
+    bundle = load_case_bundle("B")
+    documents = {item["id"]: item for item in bundle["documents"]}
+    assert documents["doc-b-042-input"]["role"] == "case_material"
+    assert documents["doc-b-042-input"]["archive_entry"].endswith(".docx")
+    assert documents["doc-b-042-input"]["original_archive_entry"].endswith(".doc")
+    assert documents["doc-b-042-input"]["conversion"]["content_match"] is True
+    assert documents["doc-b-042-benchmark"]["role"] == "benchmark_annotation"
+
+    facts = {item["id"]: item for item in bundle["facts"]}
+    assert facts["fact-b-042-proceeds-formed"]["verification_status"] == "confirmed"
+    assert facts["fact-b-042-knowledge"]["verification_status"] == "conflicted"
+
+    paths = {item["id"]: item for item in bundle["analyses"]["conviction"]["candidate_paths"]}
+    assert paths["path-b-chen-concealment"]["baseline_position"] == "adapted_benchmark_selected_not_actual_judgment"
+    assert paths["path-b-chen-helping"]["baseline_position"] == "original_source_outcome_not_selected_in_adaptation"
+
+    chen = next(item for item in bundle["sentencing"]["actor_baselines"] if item["actor_id"] == "actor-b-chen")
+    assert chen["benchmark_disposition"]["nature"] == "adapted_annotation_only_not_actual_judgment_or_calculated_result"
+    assert chen["original_source_disposition"]["offence"] == "帮助信息网络犯罪活动罪"
+    assert "missing-b-01" not in {item["id"] for item in bundle["missing_items"]}
+
+
 def test_source_search_is_version_and_date_aware():
     old = search_legal_sources("旧掩隐解释", as_of_date="2024-05-12")
     assert old["documents"][0]["id"] == "cn-concealment-interpretation-2015-2021"
@@ -184,6 +207,19 @@ def test_t1_case_create_projects_accounts_from_bundle_b():
     assert company["organizationId"] == "org-b-company"
     assert "actor-b-company" in company["actorIds"]
     assert company["type"] == "company_bank_account"
+    personal = next(item for item in accounts if item["accountId"] == "account-b-042-chen-bank")
+    assert personal["actorIds"] == ["actor-b-chen"]
+
+
+def test_t1_case_create_maps_case_b_comparison_events_to_their_own_documents():
+    payload = build_t1_case_create(
+        load_case_bundle("B"),
+        {"doc-b-input": "doc-server-009", "doc-b-042-input": "doc-server-042"},
+    )
+    events = {item["eventId"]: item for item in payload["metadata"]["relations"]["events"]}
+    assert events["event-b-02"]["documentId"] == "doc-server-009"
+    assert events["event-b-042-02"]["documentId"] == "doc-server-042"
+    assert events["event-b-042-02"]["locator"] == "paragraph:7"
 
 
 def test_t1_case_create_uses_uploaded_document_ids_and_string_locators():
