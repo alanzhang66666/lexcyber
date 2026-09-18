@@ -1,0 +1,34 @@
+# 云演示 override —— 与根 compose 叠加使用：
+#   docker compose --env-file .env.v03 -f docker-compose.yml -f deploy/docker-compose.demo-cloud.yml up -d
+# 场景：2C2G + 40G ECS 一日演示，公网 IP:18080 单通道访问。本地开发不要叠加本文件。
+name: lexcyber-v03
+
+services:
+  nginx:
+    ports: ["0.0.0.0:18080:8080"]   # 放开公网（安全组放 18080，建议限观众 IP）
+    restart: unless-stopped
+
+  web:
+    restart: unless-stopped
+
+  java:
+    restart: unless-stopped
+    environment:
+      _JAVA_OPTIONS: "-Xmx384m -XX:+UseSerialGC"   # 2G 内存上限下压住 JVM 堆
+
+  engine:
+    restart: unless-stopped
+
+  engine-worker:
+    restart: unless-stopped
+
+  postgres:
+    restart: unless-stopped
+
+  redis:
+    restart: unless-stopped
+
+  minio:
+    restart: unless-stopped
+
+  # engine-migrate 是一次性迁移任务，不加 restart（退出后 unless-stopped 会反复重跑）
