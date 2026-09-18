@@ -63,14 +63,17 @@
       "role": "case_material",
       "title": "042输入材料新(1).docx",
       "archive_entry": "042输入材料新(1).docx",
-      "sha256": "c96812ead2cc8dbb580aac0962d572f3ab01c3fb13729113c8d6bc18fec5eb4c",
-      "source_version": "sha256:c96812ead2cc8dbb",
-      "original_archive_entry": "042输入材料新(1).doc",
-      "original_sha256": "31eb0cb70d79610f6cc21e8d19c5af485715a41dd6e3217e1a8c9f1bba1cc14f",
+      "sha256": "b6ff8eae38c5e069db1d542e4d4d20df74f3d8b257f82010c8124d3e7c66b1e9",
+      "source_version": "sha256:b6ff8eae38c5e069",
+      "original_archive_entry": "042输入材料新.doc",
+      "original_sha256": "62522e247f7fcb4bf52be463c8498c1a30e86fad71d55cfc6ce235540748e507",
       "conversion": {
         "method": "Microsoft Word SaveAs2 DOCX",
-        "content_text_sha256": "f6abd6d2835b48ec00298ad6946146f0925e4847657377fc646d1d1a1b08ae60",
-        "content_match": true
+        "content_text_sha256": "ab7a9a6c0421b9df269eaa3a8d2e1a6d9ea717ad420d827dd0ff51e307c1e4ef",
+        "content_text_normalization": "python-docx nonempty paragraphs joined by LF",
+        "content_match": true,
+        "content_match_basis": "Word COM Content.Text identical between source .doc and converted .docx (999 chars); all 7 evidence paragraph locators verified against converted text",
+        "converted_by": "local reconversion 2026-09-19; byte-differs from previously declared legal-team conversion (unavailable), source .doc also byte-differs from previously declared original_sha256"
       }
     },
     {
@@ -78,14 +81,17 @@
       "role": "benchmark_annotation",
       "title": "042法学标注新(1).docx",
       "archive_entry": "042法学标注新(1).docx",
-      "sha256": "95da605884ccfd6180d92af7e540882a0f98641699b946b846dc2e76ae2b221b",
-      "source_version": "sha256:95da605884ccfd61",
-      "original_archive_entry": "042法学标注新(1).doc",
-      "original_sha256": "44bfe68783118e5635f4002dc97e77841d2b6104e00252b5f68eef3e767463ee",
+      "sha256": "9c65301ecc5bd63e931f6663a0d2de6983797cbfe7f77754a2988b308d7f55bb",
+      "source_version": "sha256:9c65301ecc5bd63e",
+      "original_archive_entry": "042法学标注新.doc",
+      "original_sha256": "34590d7f2f85d9f43c0d308fdf5e716f276a67f6c9e9193fa1c432a5f430c212",
       "conversion": {
         "method": "Microsoft Word SaveAs2 DOCX",
-        "content_text_sha256": "3ada044f3cfc053fcd77f856e70477f6ede8a7058f18e50aa6a62259a0dc14c1",
-        "content_match": true
+        "content_text_sha256": "a12c21ea88f39f98ec473377ca63237c4a141dc261969ed7e8506066ab3c7b58",
+        "content_text_normalization": "python-docx nonempty paragraphs joined by LF",
+        "content_match": true,
+        "content_match_basis": "Word COM Content.Text identical between source .doc and converted .docx (1519 chars)",
+        "converted_by": "local reconversion 2026-09-19; byte-differs from previously declared legal-team conversion (unavailable), source .doc also byte-differs from previously declared original_sha256"
       }
     },
     {

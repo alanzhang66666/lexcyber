@@ -15,13 +15,25 @@
 | C | 演示案例C/合成案例016-输入材料.docx | case_material → input | ✅ 已上传+解析 |
 | C | 演示案例C/合成案例016-法学标注.docx | benchmark_annotation → annotation | ✅ 已上传+解析 |
 
-当前文档清单：A/C 各 1 输入 + 1 标注；B 为 2 输入 + 1 标注（042 件仍为占位，见下）。
+当前文档清单：A/C 各 1 输入 + 1 标注；B 为 2 输入 + 2 标注（009 输入 + 042 真实输入 + 009 标注 + 042 标注），全部为真实材料。
+
+### 1.1 042 材料：已本地转换并入库（2026-09-19 二次处理）
+
+用户提供的 `.doc` 曾被改名冒充 `.docx`（OLE 魔数 `d0cf11e0…`，哈希与源 `.doc` 逐字节相同）。已用 Word COM `SaveAs2`(wdFormatDocumentDefault) 真转换：
+
+| 条目 | 转换件 | sha256 | 验证 |
+| --- | --- | --- | --- |
+| `doc-b-042-input` | `042输入材料新(1).docx` | `b6ff8eae…` | Word `Content.Text` 与源 `.doc` 逐字一致（999 字符）；bundle 内 7 条证据 locator（paragraph 6–12）逐段命中 |
+| `doc-b-042-benchmark` | `042法学标注新(1).docx` | `9c65301e…` | 同上（1519 字符） |
+
+注意：本地源 `.doc` 与 bundle 原声明的 `original_sha256` 不同，转换件与法学版转换件也不同字节（不同机器 Word SaveAs2 属正常）；bundle 溯源块已改为如实记录本次本地转换（见 `case-b-proceeds.json` `conversion.converted_by`）。法学声明的 `content_text_sha256`（`f6abd6d2…`/`3ada044f…`）规范化口径不可复现，以段落级核对代替。
+
+B 案 042 占位件已随整库重置清除；重灌后 10 条 facts `sourceDocumentId` 与 3 条事件均绑定真实件 `doc-a94720f52adb45f8`，解析文本为真实 042 案情。
 
 ## 2. 未能入库（需人工处理）
 
 | 文件 | 原因 |
 | --- | --- |
-| `042输入材料新.doc` / `042法学标注新.doc` | `.doc` 旧格式——bundle 期望的是 `.docx` 转换版（`042输入材料新(1).docx`），库内不存在该文件；API 仅收 PDF/DOCX。**B 案的 042 输入材料当前仍是占位上传**。需法学/业务侧提供 docx 版或人工转换后再以新修订 bundle 导入 |
 | `演示案例说明.docx` / `(1)` / `(4)` | 三份均为「验收基准确认清单」的**不同修订版**，与 bundle 声明的 sha256 均不符（bundle 期望 `说明(1)`=`6ec30f14…`、`说明(4)(1)`=`b1b3c027…`）。其中 `(1)` 版已部分标注"适用"，`新建+DOCX+文档.docx` 为已填事实确认清单——**这是 L2/L3 法学验收签字件本体**，按你的指示仅归档于 `法学材料/`，未入系统 |
 | `新建+DOCX+文档.docx` | 同上，验收清单已填版 |
 
@@ -101,7 +113,9 @@
 6. `docker cp` 更新 engine+worker 容器代码（镜像未含 t3-round3 的 replay 分支）+ `docker cp demo_cases`（镜像未含演示数据目录）→ 重建 2 个量刑任务：C案甲某 8–14月/8000–15000、A案冯某 12–18月/5000–10000，均 `reviewed_disposition_replay` + 留痕
 7. 归档 2 个旧 blocked 运行产生的量刑复核
 
-当前 pending 复核队列：3 定罪（v2）+ 2 量刑 = 5 条，与重置前演示态一致。
+**二次重置（042 入库）**：`.doc`→真 `.docx` 转换（Word COM SaveAs2）→ bundle `sha256`/`original_sha256`/`conversion` 溯源块如实更新 → `down -v` → 重灌（docs-dir 含真实 042 件，无占位回退）→ facts 确认 → 模块 v2 → 归档死 v1 复核 → 开 v2 复核 → 上传 4 个标注件（含 042 法学标注）→ `demo_cases` 需 `docker cp` 到 `site-packages`（worker 的运行时解析路径）→ 3 个量刑任务全部 `waiting_review`
+
+当前 pending 复核队列：3 定罪（v2）+ 3 量刑 = 6 条。B 案 042 材料全部为真实件且定位绑定正确。
 
 ## 7.5 法学结论核对（2026-09-19 法口头径）
 
