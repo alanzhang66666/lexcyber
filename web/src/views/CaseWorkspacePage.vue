@@ -217,10 +217,17 @@ onUnmounted(stopPolling)
                 <option value="annotation">法学标注</option>
               </select>
             </label>
-            <label>
-              <span>选择文件 <b>*</b></span>
-              <input ref="fileInput" type="file" @change="onFileChange" />
-            </label>
+            <div class="field">
+              <span class="field-label">选择文件 <b>*</b></span>
+              <div class="file-picker">
+                <div class="file-drop" :class="{ 'is-filled': file }">
+                  <span v-if="file" class="file-name" :title="file.name">{{ file.name }}</span>
+                  <span v-else class="file-placeholder">未选择文件</span>
+                </div>
+                <button class="button button-quiet" type="button" @click="fileInput?.click()">选择文件</button>
+                <input ref="fileInput" type="file" class="file-input-hidden" @change="onFileChange" />
+              </div>
+            </div>
             <p v-if="uploadError" class="notice notice-error" role="alert">{{ uploadError }}</p>
             <button class="button button-primary" type="submit" :disabled="uploading || !file">
               {{ uploading ? '上传中…' : '上传材料' }}
@@ -307,5 +314,54 @@ onUnmounted(stopPolling)
   align-items: center;
   gap: 10px;
   flex: 0 0 auto;
+}
+.field {
+  display: grid;
+  gap: 7px;
+  color: var(--lc-ink);
+  font-size: 13px;
+  font-weight: 700;
+}
+.field-label b { color: var(--lc-risk); }
+.file-picker { display: flex; align-items: stretch; gap: 10px; }
+.file-drop {
+  flex: 1;
+  min-width: 0;
+  min-height: 42px;
+  display: grid;
+  place-items: center;
+  padding: 0 14px;
+  color: var(--lc-muted);
+  background: var(--lc-surface-alt);
+  border: 1px dashed #c9c3d6;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: center;
+  transition: border-color .15s, background .15s, color .15s;
+}
+.file-drop.is-filled {
+  color: var(--lc-brand-900);
+  background: var(--lc-brand-100);
+  border-style: solid;
+  border-color: var(--lc-brand-500);
+}
+.file-name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-input-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }
 </style>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
+import logoUrl from '../assets/logo.png'
 import { CORE_MODULES, modulePath } from '../data/modules'
 import { currentCaseId, resolveT1CaseId } from '../lib/current-case'
 
@@ -93,8 +94,7 @@ onMounted(() => {
             </div>
           </article>
           <div class="home-float-hub">
-            <b>衡</b>
-            <small>衡链</small>
+            <img :src="logoUrl" alt="" />
           </div>
           <article class="home-float home-float-review">
             <span>人</span>
