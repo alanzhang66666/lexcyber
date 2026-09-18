@@ -191,6 +191,23 @@ def validate_case_bundle(bundle: dict[str, Any], template_registry: dict[str, An
     for position, item in enumerate(bundle.get("amounts", [])):
         if not isinstance(item.get("value"), (int, float)) or item.get("value", -1) < 0:
             errors.append(_issue("amount_invalid", f"amounts[{position}].value", "amount must be a non-negative number"))
+        included_in_amount_id = item.get("included_in_amount_id")
+        if included_in_amount_id and included_in_amount_id not in amount_ids:
+            errors.append(
+                _issue(
+                    "unknown_parent_amount",
+                    f"amounts[{position}].included_in_amount_id",
+                    str(included_in_amount_id),
+                )
+            )
+        if included_in_amount_id == item.get("id"):
+            errors.append(
+                _issue(
+                    "self_included_amount",
+                    f"amounts[{position}].included_in_amount_id",
+                    "an amount cannot be included in itself",
+                )
+            )
         unknown_evidence = set(item.get("evidence_ids", [])) - evidence_ids
         if unknown_evidence:
             errors.append(_issue("unknown_evidence", f"amounts[{position}].evidence_ids", ", ".join(sorted(unknown_evidence))))
@@ -202,6 +219,20 @@ def validate_case_bundle(bundle: dict[str, Any], template_registry: dict[str, An
         unknown_amounts = set(baseline.get("amount_ids", [])) - amount_ids
         if unknown_amounts:
             errors.append(_issue("unknown_amount", f"sentencing.actor_baselines[{position}].amount_ids", ", ".join(sorted(unknown_amounts))))
+        baseline_amount_ids = set(baseline.get("amount_ids", []))
+        double_counted_components = {
+            item["id"]
+            for item in bundle.get("amounts", [])
+            if item.get("id") in baseline_amount_ids and item.get("included_in_amount_id") in baseline_amount_ids
+        }
+        if double_counted_components:
+            errors.append(
+                _issue(
+                    "amount_component_double_counted",
+                    f"sentencing.actor_baselines[{position}].amount_ids",
+                    ", ".join(sorted(double_counted_components)),
+                )
+            )
         if baseline.get("legal_review_status") != "approved":
             warnings.append(
                 _issue(

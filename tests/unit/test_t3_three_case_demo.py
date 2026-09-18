@@ -85,6 +85,76 @@ def test_case_b_includes_case_042_and_keeps_original_and_adapted_outcomes_distin
     assert "missing-b-01" not in {item["id"] for item in bundle["missing_items"]}
 
 
+def test_round3_review_summary_is_registered_for_all_cases():
+    expected_hash = "b1b3c027e11f939cb6bb7541d50bfb7d6460de07a5d45fc1e0cc822c2c49a9d9"
+    for case_code in ("A", "B", "C"):
+        bundle = load_case_bundle(case_code)
+        review_summary_id = f"doc-{case_code.lower()}-review-summary-round3"
+        documents = {item["id"]: item for item in bundle["documents"]}
+        assert bundle["legal_review"]["review_summary"] == review_summary_id
+        assert review_summary_id in bundle["legal_review"]["reviewed_sources"]
+        assert documents[review_summary_id]["sha256"] == expected_hash
+        assert documents[review_summary_id]["role"] == "legal_review_summary"
+
+
+def test_case_a_reviewed_amount_classifications_are_resolved():
+    bundle = load_case_bundle("A")
+    facts = {item["id"]: item for item in bundle["facts"]}
+    amounts = {item["id"]: item for item in bundle["amounts"]}
+    assert facts["fact-a-payment-settlement-classification"]["verification_status"] == "confirmed"
+    assert amounts["amount-a-equipment-revenue"]["kind"] == "non_crime_flow"
+    assert amounts["amount-a-personal-profit"]["kind"] == "personal_profit"
+    assert amounts["amount-a-upstream-loss"]["kind"] == "crime_amount"
+    assert "missing-a-01" not in {item["id"] for item in bundle["missing_items"]}
+
+
+def test_case_b_009_reviewed_range_is_preserved_but_not_executed_as_a_rule():
+    bundle = load_case_bundle("B")
+    baseline = next(item for item in bundle["sentencing"]["actor_baselines"] if item["actor_id"] == "actor-b-huang")
+    disposition = baseline["benchmark_disposition"]
+    assert baseline["legal_review_status"] == "benchmark_approved_rule_pending"
+    assert disposition["term_range_months"] == [4, 8]
+    assert disposition["term_lower_kind"] == "detention"
+    assert disposition["term_upper_kind"] == "fixed_term_imprisonment"
+    assert disposition["fine_range_cny"] == [3000, 10000]
+    assert "missing-b-02" not in {item["id"] for item in bundle["missing_items"]}
+
+    result = calculate_case_sentencing(bundle, "actor-b-huang")
+    assert result["status"] == "blocked"
+    assert "rule_not_approved" in {item["code"] for item in result["blockers"]}
+
+
+def test_case_c_reviewed_amounts_avoid_double_counting_and_jurisdiction_is_resolved():
+    bundle = load_case_bundle("C")
+    amounts = {item["id"]: item for item in bundle["amounts"]}
+    assert amounts["amount-c-service-fee"]["value"] == 118000
+    assert amounts["amount-c-service-fee"]["kind"] == "crime_proceeds"
+    assert amounts["amount-c-company-receipt"]["value"] == 98000
+    assert amounts["amount-c-company-receipt"]["included_in_amount_id"] == "amount-c-service-fee"
+    assert amounts["amount-c-project-bonus"]["value"] == 20000
+    assert amounts["amount-c-project-bonus"]["kind"] == "personal_profit"
+    for baseline in bundle["sentencing"]["actor_baselines"]:
+        assert "amount-c-service-fee" in baseline["amount_ids"]
+        assert "amount-c-company-receipt" not in baseline["amount_ids"]
+        assert "amount-c-project-bonus" not in baseline["amount_ids"]
+
+    conviction = bundle["analyses"]["conviction"]
+    assert conviction["jurisdiction_status"] == "confirmed_cn_criminal_jurisdiction_foreign_details_not_required"
+    foreign_connections = [
+        item
+        for item in bundle["jurisdiction_connections"]
+        if item["verification_status"] != "confirmed"
+    ]
+    assert len(foreign_connections) == 7
+    assert all(
+        item["verification_status"] == "not_required_for_cn_criminal_jurisdiction"
+        for item in foreign_connections
+    )
+    missing_ids = {item["id"] for item in bundle["missing_items"]}
+    assert "missing-c-01" not in missing_ids
+    assert "missing-c-02" not in missing_ids
+
+
 def test_source_search_is_version_and_date_aware():
     old = search_legal_sources("旧掩隐解释", as_of_date="2024-05-12")
     assert old["documents"][0]["id"] == "cn-concealment-interpretation-2015-2021"
@@ -211,7 +281,7 @@ def test_fact_extractor_normalizes_chinese_amounts_without_promoting_them_to_con
 def test_t1_case_create_keeps_server_case_id_unassigned_and_splits_organizations():
     payload = build_t1_case_create(load_case_bundle("C"))
     assert "caseId" not in payload
-    assert payload["asOfDate"] == "2026-09-17"
+    assert payload["asOfDate"] == "2026-09-18"
     assert payload["metadata"]["datasetCaseId"] == "C"
     assert payload["metadata"]["t3BundleId"] == "demo-case-c-unit-crossborder"
     relations = payload["metadata"]["relations"]
@@ -297,11 +367,11 @@ def test_t1_fact_confirmation_requires_explicit_human_confirmed_selection():
     assert confirmed["status"] == "confirmed"
     with pytest.raises(T1ContractError, match="cannot confirm unconfirmed"):
         build_t1_fact_view(
-            bundle,
-            case_id="case-server-a",
-            document_id_map={"doc-a-input": "doc-server-a"},
+            load_case_bundle("B"),
+            case_id="case-server-b",
+            document_id_map={"doc-b-042-input": "doc-server-b"},
             status="confirmed",
-            item_ids=["fact-a-payment-settlement-classification"],
+            item_ids=["fact-b-042-knowledge"],
         )
 
 

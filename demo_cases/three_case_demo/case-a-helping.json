@@ -6,7 +6,7 @@
   "case_question": "概括明知、帮助行为阶段、诈骗共犯排除及员工认识能否归属于单位",
   "jurisdiction": "CN",
   "conduct_period": {"start": "2024-03-15", "end": "2024-08-20", "precision": "day"},
-  "analysis_as_of_date": "2026-09-17",
+  "analysis_as_of_date": "2026-09-18",
   "source_case_numbers": ["（2021）桂0502刑初230号", "（2021）桂05刑终185号"],
   "provenance": {
     "source_archive": "演示案例A",
@@ -19,9 +19,10 @@
   "legal_review": {
     "status": "partial_approval",
     "reviewed_source": "doc-a-benchmark",
-    "review_summary": "doc-a-review-summary",
-    "approved_scope": ["objective_facts", "helping_path", "fraud_accomplice_exclusion", "company_crime_exclusion"],
-    "open_scope": ["payment_settlement_classification", "sentencing_calculation_rule", "document_template_field_mapping_approval"]
+    "reviewed_sources": ["doc-a-benchmark", "doc-a-review-summary", "doc-a-review-summary-round3"],
+    "review_summary": "doc-a-review-summary-round3",
+    "approved_scope": ["objective_facts", "helping_path", "fraud_accomplice_exclusion", "company_crime_exclusion", "amount_classification"],
+    "open_scope": ["sentencing_calculation_rule", "document_template_field_mapping_approval"]
   },
   "documents": [
     {
@@ -47,6 +48,14 @@
       "archive_entry": "演示案例说明(1).docx",
       "sha256": "6ec30f14b509cdb8acaac097ac3601b263b6dc61ff3e9bbbc56bbe4597a5956c",
       "source_version": "sha256:6ec30f14b509cdb8"
+    },
+    {
+      "id": "doc-a-review-summary-round3",
+      "role": "legal_review_summary",
+      "title": "演示案例说明(4)(1).docx",
+      "archive_entry": "演示案例说明(4)(1).docx",
+      "sha256": "b1b3c027e11f939cb6bb7541d50bfb7d6460de07a5d45fc1e0cc822c2c49a9d9",
+      "source_version": "sha256:b1b3c027e11f939c"
     }
   ],
   "actors": [
@@ -81,7 +90,7 @@
     {"id": "fact-a-participation-limit", "type": "participation_scope", "actor_id": "actor-a-feng", "value": "无证据证明参与具体诈骗对象、方式、金额的事前通谋或后续诈骗实行", "stage": "whole_chain", "verification_status": "confirmed", "evidence_ids": ["ev-a-08", "ev-a-11"]},
     {"id": "fact-a-company-no-knowledge", "type": "organizational_knowledge", "actor_id": "actor-a-company", "value": "管理层不知异常要求，未授权绕过审核，也未参与3万元个人收费", "stage": "before_detection", "verification_status": "confirmed", "evidence_ids": ["ev-a-09", "ev-a-11"]},
     {"id": "fact-a-remediation", "type": "remediation", "actor_id": "actor-a-company", "value": "得知设备涉诈后立即停止交易并配合调查", "stage": "post_conduct_detection", "verification_status": "confirmed", "evidence_ids": ["ev-a-10"]},
-    {"id": "fact-a-payment-settlement-classification", "type": "amount_classification", "actor_id": "actor-a-feng", "value": "28万元设备货款是否存在支付结算金额口径仍需最终确认", "stage": "legal_classification", "verification_status": "candidate", "evidence_ids": ["ev-a-04", "ev-a-05"]}
+    {"id": "fact-a-payment-settlement-classification", "type": "amount_classification", "actor_id": "actor-a-feng", "value": "28万元为A公司设备销售合同项下经营性销售收入，不属于支付结算金额，不认定为A公司犯罪所得或冯某个人违法所得；冯某个人收取的3万元为个人违法所得；96万元为上游诈骗犯罪金额及被害人损失", "stage": "legal_classification", "verification_status": "confirmed", "evidence_ids": ["ev-a-04", "ev-a-05", "ev-a-07"]}
   ],
   "events": [
     {"id": "event-a-01", "date": "2024-03-15", "stage": "initial_contact", "description": "冯某认识梁某并接触异常设备需求", "actor_id": "actor-a-feng", "fact_ids": ["fact-a-knowledge"]},
@@ -91,9 +100,9 @@
     {"id": "event-a-05", "date": "2024-08", "stage": "post_conduct_remediation", "description": "公司停止交易并向公安机关提供材料", "actor_id": "actor-a-company", "fact_ids": ["fact-a-company-no-knowledge", "fact-a-remediation"]}
   ],
   "amounts": [
-    {"id": "amount-a-equipment-revenue", "kind": "non_crime_flow", "label": "公司设备货款", "value": 280000, "currency": "CNY", "verification_status": "confirmed", "evidence_ids": ["ev-a-04"]},
-    {"id": "amount-a-personal-profit", "kind": "personal_profit", "label": "冯某个人技术服务费", "value": 30000, "currency": "CNY", "verification_status": "confirmed", "evidence_ids": ["ev-a-05"]},
-    {"id": "amount-a-upstream-loss", "kind": "crime_amount", "label": "上游诈骗损失", "value": 960000, "currency": "CNY", "verification_status": "confirmed", "evidence_ids": ["ev-a-07"]}
+    {"id": "amount-a-equipment-revenue", "kind": "non_crime_flow", "label": "A公司经营性设备销售收入", "value": 280000, "currency": "CNY", "verification_status": "confirmed", "classification_status": "confirmed_not_payment_settlement_or_crime_proceeds", "evidence_ids": ["ev-a-04"]},
+    {"id": "amount-a-personal-profit", "kind": "personal_profit", "label": "冯某个人违法所得", "value": 30000, "currency": "CNY", "verification_status": "confirmed", "classification_status": "confirmed_personal_illegal_gain", "evidence_ids": ["ev-a-05"]},
+    {"id": "amount-a-upstream-loss", "kind": "crime_amount", "label": "上游诈骗犯罪金额及被害人损失", "value": 960000, "currency": "CNY", "verification_status": "confirmed", "classification_status": "confirmed_upstream_crime_amount_and_victim_loss", "evidence_ids": ["ev-a-07"]}
   ],
   "legal_source_ids": [
     "cn-criminal-law-287-2-current",
@@ -108,7 +117,7 @@
     "sentencing_reference_sources": ["cn-sentencing-guidance-2024-2"],
     "current_review_sources": ["cn-helping-opinion-2025-4-9"],
     "temporal_review_status": "partial_approval",
-    "note": "Conviction paths were supplied as confirmed in the final review summary. The exact sentencing arithmetic and use of post-conduct guidance remain blocked."
+    "note": "Conviction paths and amount classifications were confirmed in the 2026-09-18 review. The exact sentencing arithmetic and use of post-conduct guidance remain blocked."
   },
   "analyses": {
     "compliance": {
@@ -148,7 +157,6 @@
     "template_legal_review_status": "source_provided_mapping_pending_approval"
   },
   "missing_items": [
-    {"id": "missing-a-01", "severity": "warning", "description": "The payment-settlement amount classification remains a level-three review item."},
     {"id": "missing-a-02", "severity": "blocking", "description": "The supplied range is not an approved executable sentencing rule with exact ordered adjustments."},
     {"id": "missing-a-03", "severity": "blocking", "description": "The prosecution and non-prosecution source templates are registered; final field mapping, branch selection and generated-draft approval still require the legal owner."},
     {"id": "missing-a-04", "severity": "warning", "description": "Confirm collection authorization, license, substantive adaptation and deidentification in the source ledger."}
