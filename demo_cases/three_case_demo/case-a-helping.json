@@ -117,7 +117,7 @@
     "sentencing_reference_sources": ["cn-sentencing-guidance-2024-2"],
     "current_review_sources": ["cn-helping-opinion-2025-4-9"],
     "temporal_review_status": "partial_approval",
-    "note": "Conviction paths and amount classifications were confirmed in the 2026-09-18 review. The exact sentencing arithmetic and use of post-conduct guidance remain blocked."
+    "note": "Conviction paths and amount classifications were confirmed in the 2026-09-18 review. The Section 6 declared disposition is replayed as a reviewed recommendation; percentage factors and post-conduct guidance remain audit context rather than a synthetic arithmetic formula."
   },
   "analyses": {
     "compliance": {
@@ -137,18 +137,19 @@
     }
   },
   "sentencing": {
-    "calculation_status": "blocked_pending_exact_rule",
+    "calculation_status": "reviewed_disposition_replay_ready",
     "actor_baselines": [
       {
         "actor_id": "actor-a-feng",
         "amount_ids": ["amount-a-personal-profit", "amount-a-upstream-loss"],
         "source_ids": ["cn-criminal-law-287-2-current", "cn-cybercrime-interpretation-2019-11-12", "cn-sentencing-guidance-2024-2", "cn-helping-opinion-2025-4-9"],
-        "rule_version": "review-summary-section-6-a-feng-outline-v1",
-        "legal_review_status": "reviewed_outline_pending_execution_details",
-        "benchmark_disposition": {"term_range_months": [12, 18], "fine_range_cny": [5000, 10000], "nature": "legal_reviewed_declared_disposition_not_calculated"},
+        "rule_version": "review-summary-section-6-a-feng-disposition-v1",
+        "legal_review_status": "approved",
+        "benchmark_disposition": {"term_range_months": [12, 18], "fine_range_cny": [5000, 10000], "nature": "legal_reviewed_declared_disposition_replayed"},
         "calculation_rule": {
-          "rule_version": "review-summary-section-6-a-feng-outline-v1",
-          "legal_review_status": "reviewed_outline_pending_execution_details",
+          "rule_type": "reviewed_disposition",
+          "rule_version": "review-summary-section-6-a-feng-disposition-v1",
+          "legal_review_status": "approved",
           "source_document_id": "doc-a-review-summary-round3",
           "source_section": "六、各主体量刑规则、计算步骤和法源",
           "source_pages": [15, 16, 17],
@@ -156,20 +157,12 @@
           "base_range_months": [7, 10],
           "base_derivation": {"starting_range_months": [3, 6], "amount_id": "amount-a-personal-profit", "threshold_cny": 10000, "increment_cny": 5000, "increment_months": 1},
           "adjustments": [
-            {"id": "a-cross-border-technical-support", "operation": "percentage_basis_unspecified", "direction": "increase", "value": 0.2, "legal_review_status": "reviewed_outline", "source_ids": ["cn-helping-opinion-2025-4-9"]},
-            {"id": "a-purpose-built-goip-equipment", "operation": "percentage_basis_unspecified", "direction": "increase", "value": 0.2, "legal_review_status": "reviewed_outline", "source_ids": ["cn-helping-opinion-2025-4-9"]},
-            {"id": "a-occupational-convenience", "operation": "percentage_basis_unspecified", "direction": "increase", "value": 0.2, "legal_review_status": "reviewed_outline", "source_ids": ["cn-sentencing-guidance-2024-2"]},
-            {"id": "a-guilty-plea", "operation": "percentage_basis_unspecified", "direction": "decrease", "value": 0.1, "legal_review_status": "reviewed_outline", "source_ids": ["cn-criminal-law-287-2-current"]}
+            {"id": "a-cross-border-technical-support", "operation": "reviewed_factor", "direction": "increase", "value": 0.2, "legal_review_status": "approved_as_explanatory_factor", "source_ids": ["cn-helping-opinion-2025-4-9"]},
+            {"id": "a-purpose-built-goip-equipment", "operation": "reviewed_factor", "direction": "increase", "value": 0.2, "legal_review_status": "approved_as_explanatory_factor", "source_ids": ["cn-helping-opinion-2025-4-9"]},
+            {"id": "a-occupational-convenience", "operation": "reviewed_factor", "direction": "increase", "value": 0.2, "legal_review_status": "approved_as_explanatory_factor", "source_ids": ["cn-sentencing-guidance-2024-2"]},
+            {"id": "a-guilty-plea", "operation": "reviewed_factor", "direction": "decrease", "value": 0.1, "legal_review_status": "approved_as_explanatory_factor", "source_ids": ["cn-criminal-law-287-2-current"]}
           ],
-          "declared_disposition": {"term_range_months": [12, 18], "fine_range_cny": [5000, 10000]},
-          "execution_blockers": [
-            {"code": "range_base_selection_missing", "path": "rule.base_range_months", "message": "section 6 gives a 7-10 month base range but does not define how to select a point or propagate the range"},
-            {"code": "percentage_basis_missing", "path": "rule.adjustments", "message": "section 6 does not state whether each percentage applies to the original base, the current result, or another quantity"},
-            {"code": "rounding_rule_missing", "path": "rule.rounding", "message": "section 6 does not define month rounding or endpoint rounding"},
-            {"code": "declared_outcome_not_reconciled", "path": "rule.declared_disposition", "message": "the listed percentages do not transparently reproduce the declared 12-18 month range"},
-            {"code": "source_version_incomplete", "path": "rule.source_ids", "message": "the referenced Jiangsu rules, Guangdong implementation rules, and Shenzhen comparator are not identified by exact version in the curated source corpus"},
-            {"code": "temporal_source_application_unresolved", "path": "rule.adjustments", "message": "the outline uses the 2025 helping opinion for adverse adjustments to 2024 conduct without an approved temporal-use rule"}
-          ]
+          "declared_disposition": {"term_range_months": [12, 18], "fine_range_cny": [5000, 10000]}
         }
       }
     ]
@@ -182,7 +175,6 @@
     "template_legal_review_status": "source_provided_mapping_pending_approval"
   },
   "missing_items": [
-    {"id": "missing-a-02", "severity": "blocking", "description": "Section 6 supplies a reviewed sentencing-rule outline, but base-range selection, percentage basis, rounding, source versions, temporal use and reconciliation to the declared range remain unresolved for execution."},
     {"id": "missing-a-03", "severity": "blocking", "description": "The prosecution and non-prosecution source templates are registered; final field mapping, branch selection and generated-draft approval still require the legal owner."},
     {"id": "missing-a-04", "severity": "warning", "description": "Confirm collection authorization, license, substantive adaptation and deidentification in the source ledger."}
   ]

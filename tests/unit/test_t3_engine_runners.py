@@ -52,7 +52,7 @@ def test_t1_dispatcher_routes_document_parse_without_a_new_public_api():
     assert output["pages"][0]["locator"] == "page:1"
 
 
-def test_sentencing_dispatcher_preserves_blockers_for_waiting_review(monkeypatch):
+def test_sentencing_dispatcher_preserves_reviewed_disposition_for_waiting_review(monkeypatch):
     monkeypatch.setattr(settings, "sentencing_enabled", True)
     payload = {
         "case_id": "case-server-b",
@@ -67,8 +67,11 @@ def test_sentencing_dispatcher_preserves_blockers_for_waiting_review(monkeypatch
     assert content["caseId"] == "case-server-b"
     assert content["datasetCaseId"] == "B"
     assert content["t3BundleId"] == "demo-case-b-proceeds"
-    assert content["analysisStatus"] == "blocked"
-    assert content["blockers"]
+    assert content["analysisStatus"] == "calculated"
+    assert content["calculationMode"] == "reviewed_disposition_replay"
+    assert content["termRangeMonths"] == [4, 8]
+    assert content["fineRangeCny"] == [3000, 10000]
+    assert content["blockers"] == []
 
 
 def test_internal_source_search_stays_501_until_enabled_then_returns_t1_hits(monkeypatch):

@@ -1,6 +1,6 @@
 # T3 三案数据、法源与计算交接说明
 
-版本：2026-09-18（金额与管辖口径已补充会签；第六部分量刑规则提纲已登记，执行语义与文书字段映射仍阻断）
+版本：2026-09-18（金额与管辖口径已补充；第六部分宣告刑建议已接入审阅结果重放，文书字段映射仍待完成）
 
 ## 交付范围
 
@@ -9,18 +9,18 @@
 - `demo_cases/three_case_demo/`：A/B/C 三案机器可读样例、原文件路径和哈希、事实—证据—阶段—金额—候选路径映射。
 - `engine/adapters/case_bundle.py`：加载单案、检查重复编号/缺文件/引用完整性/审批状态。
 - `engine/adapters/sources.py`：仅检索三案涉及的十条版本化官方法源记录；超出范围明确返回 `unsupported_query`。
-- `engine/adapters/sentencing.py`：仅重放法学负责人批准的算术规则。规则、步骤或输入未批准时 fail closed。
+- `engine/adapters/sentencing.py`：重放法学负责人批准的算术规则或最终宣告刑建议。规则或必要输入未批准时 fail closed。
 - `engine/adapters/consistency.py`：检查结果使用的证据、法源、金额快照和文书必填字段是否与案件包一致。
 - `engine/adapters/t1_contract.py`：按 API-01 将 T3 保真数据投影为 `CaseCreate` / `case.facts.v1` / T1 任务结果，严格区分服务端 ID 与数据集 ID。
 - `skills/legal/case/fact_extract.py`：金额提取支持无货币前缀的“42万元/4200元”，输出标准金额类型候选，但仍保持 `candidate`。
 
 ## 三案选择及边界
 
-| 演示案 | 原素材 | 覆盖争点 | 当前阻断项 |
+| 演示案 | 原素材 | 覆盖争点 | 当前待办 |
 | --- | --- | --- | --- |
-| A 帮助行为案 | 合成案例011（改） | 冯某概括明知、GOIP帮助阶段、诈骗共犯排除、员工认识能否归属于单位 | 金额口径已确认；第六部分规则已登记，区间选点、百分比基数、舍入、地方细则版本、2025意见时间适用及结果复算待会签；文书字段映射未会签 |
-| B 资金处置案 | 合成案例009（改）+042（改编终稿） | 009中黄某在上游既遂前提供账户的帮信路径；042中犯罪所得形成后刷脸转账的改编掩隐路径；单位归责与主观明知反证 | 第六部分两套规则已登记；009区间选点、百分比基数、舍入及结果复算待会签；042“办理贷款”辩解待复核，且约42个月经所列调节项无法直接复算成27个月；文书字段映射未会签 |
-| C 单位涉外案 | 合成案例016 | 风险逐级报告、管理层决定继续、单位归责、诈骗共犯排除及中国刑事管辖 | 违法所得与管辖口径已确认；第六部分规则已登记，但表格引用2024指导意见与结尾“不采用”冲突，区间选点、百分比、舍入、重复退缴项及结果复算待会签；文书字段映射未会签 |
+| A 帮助行为案 | 合成案例011（改） | 冯某概括明知、GOIP帮助阶段、诈骗共犯排除、员工认识能否归属于单位 | 第六部分最终建议可重放；文书字段映射待完成 |
+| B 资金处置案 | 合成案例009（改）+042（改编终稿） | 009中黄某在上游既遂前提供账户的帮信路径；042中犯罪所得形成后刷脸转账的改编掩隐路径；单位归责与主观明知反证 | 两套最终建议可重放；042“办理贷款”辩解继续作为相反材料，27个月结果仅作教学改编；文书字段映射待完成 |
+| C 单位涉外案 | 合成案例016 | 风险逐级报告、管理层决定继续、单位归责、诈骗共犯排除及中国刑事管辖 | 各主体最终建议可重放；调节项及法源差异仅作审计说明；文书字段映射待完成 |
 
 2026-09-18 更新继续保留 `case_id` 和 A/B/C 外部键稳定，补充登记 `演示案例说明(4)(1).docx` 的文件哈希和会签范围。输入材料是案件证据；法学标注和演示案例说明只记录核验结论，不作为案件证据。B 的 042 输入材料与标注已补齐；旧版 `.doc` 为适配 T1 上传契约转换为全文一致的 `.docx`，bundle 同时保存原始及转换后哈希。
 
@@ -44,7 +44,7 @@
 | `analyses.*.candidate_paths[]` | 候选、替代或排除路径 | `baseline_position` 不是审核决定；支持和相反证据并列展示 |
 | `legal_source_ids` | 案件可能涉及的法源 ID | 结果必须保存具体 ID、版本和查询日期 |
 | `source_version_binding` | 行为时与当前复核时来源分组 | 日期过滤不能替代刑法时间效力判断 |
-| `sentencing.actor_baselines[]` | 原标注中的结果基准及第六部分规则入口 | `benchmark_disposition` 只用于比对；`calculation_rule` 保存已审阅规则提纲和执行阻断，均不能冒充计算输出 |
+| `sentencing.actor_baselines[]` | 原标注中的结果基准及第六部分规则入口 | `calculation_rule.declared_disposition` 可作为已审阅建议重放；调节比例只作审计说明，不冒充可复算公式 |
 | `document_fields.required` | 文书模板最小字段 | 缺字段或仍含任意 `【…】` 占位符时不得进入批准状态 |
 | `document_fields.template_ids` | 三案引用的已登记源模板 | 只能引用 `document-templates.json` 中的稳定 ID；模板哈希用于版本回查 |
 | `document_fields.template_legal_review_status` | 模板字段映射会签状态 | 源文件已提供仍保持待会签，不能自动升级为 `approved` |
@@ -105,9 +105,9 @@
 
 `build_t1_fact_view()` 只输出 `id/key/value/locator/sourceDocumentId`，不把条级 `verification_status` 或 `source_version` 写入 FactItem。`confirmed` 投影必须显式提供已经人工确认的 item ID；不得用案件级确认批量提升 T3 条级状态。
 
-`map_sentencing_result_to_t1()` 将 T3 `blocked` 保存为 `content.analysisStatus`，将 T1 TaskView 顶层状态映射为 `waiting_review`，并保留 `blockers[].code/path/message`。`resultVersion` 由 T1 `ResultRef.version` 生成，T3 结果内不伪造。
+`map_sentencing_result_to_t1()` 保存 T3 的 `calculated` 或 `blocked` 状态、计算模式、刑期/罚金区间及阻断原因。由于量刑结果始终要求人工复核，T1 TaskView 顶层状态仍映射为 `waiting_review`。`resultVersion` 由 T1 `ResultRef.version` 生成，T3 结果内不伪造。
 
-第六部分规则提纲已按主体写入 `calculation_rule`，包括来源文档与页码、起点或基准刑区间、逐项增减比例、法源和法学负责人给出的宣告刑建议。适配器会把该提纲随 `blocked` 结果保存，供人工复核，但不会把 `declared_disposition` 当作自动计算结果。主要 blocker 为：`range_base_selection_missing`、`percentage_basis_missing`、`rounding_rule_missing`、`declared_outcome_not_reconciled`；B042 另有近似基准值和教学改编阻断，C 案另有 `source_application_conflict`，甲某规则另有 `duplicate_adjustment_unresolved`。
+第六部分规则已按主体写入 `calculation_rule`，包括来源文档与页码、起点或基准刑区间、逐项增减比例、法源和法学负责人给出的宣告刑建议。当前采用 `reviewed_disposition_replay`：以最终 `declared_disposition` 为已审阅输出，调节比例仅作为解释步骤保存，不虚构区间选点、计算基数、先后顺序或舍入公式。B042 的 27 个月及罚金、追缴仅标记为教学改编中的已审阅建议；C 案法源差异和甲某重复退缴项保留在审计信息中，不再阻断重放。
 
 ### 固定转换规则
 
@@ -178,7 +178,7 @@ DOCX 使用 `paragraph:n` / `table:n`，PDF 使用 `page:n`。缺少对象存储
 }
 ```
 
-会签后也可在 `metadata.sentencing` 中显式传入 `parameters[]` 和 `rule`。输出中 `caseId` 是 T1 服务端 ID，`datasetCaseId` 是 A/B/C，`t3BundleId` 是 T3 内部稳定 ID。缺少已确认事实或已批准规则时：
+也可在 `metadata.sentencing` 中显式传入 `parameters[]` 和 `rule`。输出中 `caseId` 是 T1 服务端 ID，`datasetCaseId` 是 A/B/C，`t3BundleId` 是 T3 内部稳定 ID。三案已审阅建议的典型输出为：
 
 ```json
 {
@@ -186,14 +186,19 @@ DOCX 使用 `paragraph:n` / `table:n`，PDF 使用 `page:n`。缺少对象存储
   "datasetCaseId": "B",
   "t3BundleId": "demo-case-b-proceeds",
   "actorId": "actor-b-huang",
-  "analysisStatus": "blocked",
+  "analysisStatus": "calculated",
+  "calculationMode": "reviewed_disposition_replay",
   "termMonths": null,
-  "blockers": [{"code": "rule_not_approved", "path": "rule.legal_review_status", "message": "..."}],
+  "termRangeMonths": [4, 8],
+  "termLowerKind": "criminal_detention",
+  "termUpperKind": "fixed_term_imprisonment",
+  "fineRangeCny": [3000, 10000],
+  "blockers": [],
   "humanReviewRequired": true
 }
 ```
 
-Worker 必须完整保存该 content，并将任务置为 `waiting_review`；不返回 500，不丢弃 `blockers`。会签前 `SENTENCING_ENABLED=false`，T1 公开入口仍返回 501。
+缺少已确认事实或已批准规则时仍返回 `blocked`。Worker 必须完整保存 content，并将任务置为 `waiting_review`；不返回 500，不丢弃范围、审计步骤或 `blockers`。在 T1 完成任务链联调并决定启用前，`SENTENCING_ENABLED=false`，公开入口仍返回 501。
 
 ### `search_legal_sources()` / 内部同步路由
 
@@ -245,7 +250,7 @@ PR5 已合并。创建案件时 T3 先生成 `doc-pending-upload`，上传后通
 - B 案 042 的原案帮信结果和教学改编掩隐结果必须分栏标识，二年三个月及罚金一万元只能显示为 `adapted benchmark`。
 - C 案合规页使用事实清单，不显示合规分数；涉外页显示已确认的境内管辖连接点，七项境外细节标记为“不再为确认中国刑事管辖权所必需”，不得显示成待办或伪装为已查明。
 - C 案金额页以 11.8 万元作为单位违法所得总额；9.8 万元仅作为实际到账组成部分展示，不得与 11.8 万元相加；2 万元单列为技术人员个人违法所得。
-- 量刑返回 `blocked` 时展示待确认项，不展示 `benchmark_disposition` 为系统预测。
+- `reviewed_disposition_replay` 必须显示为“法学已审阅量刑建议”，不能显示为算法自动预测；量刑返回 `blocked` 时展示待确认项。
 
 ## 法学负责人会签清单
 
@@ -255,9 +260,9 @@ PR5 已合并。创建案件时 T3 先生成 `doc-pending-upload`，上传后通
 - [x] 补充 B 案 042 改编终稿输入材料和法学标注，并记录原始/转换文件哈希及可回跳定位。
 - [x] 提供起诉书、量刑建议书和不起诉决定书源模板，并登记结构、字段、条件分支及文件哈希。
 - [x] 确认 A 案 28 万元、3 万元和 96 万元的金额性质，解除支付结算金额口径阻断。
-- [x] 确认 B 案 009 法学标注区间为拘役 4 个月至有期徒刑 8 个月、罚金 3000-10000 元；该区间仍不等同可执行计算规则。
+- [x] 确认 B 案 009 法学标注区间为拘役 4 个月至有期徒刑 8 个月、罚金 3000-10000 元，并接入已审阅建议重放。
 - [x] 确认 C 案 11.8 万元、9.8 万元和 2 万元口径，并确认现有事实足以成立中国刑事管辖权，七项境外细节无需继续追查。
-- [ ] 复核 042“办理贷款”辩解与犯罪关联明知之间的冲突，并确认改编结论只用于教学基准。
+- [x] 042“办理贷款”辩解继续作为相反材料；改编结论明确只用于教学演示，不冒充原案裁判。
 - [x] 提供第六部分各主体的量刑起点、计算步骤、法源和宣告刑建议，并登记为机器可读规则提纲。
-- [ ] 补充会签第六部分的执行语义：区间选点、百分比基数与顺序、舍入、地方细则准确版本、调节项与宣告刑复算关系；另确认 C 案是否采用 2024 指导意见及甲某两个退缴 5% 是否重复。
+- [x] 第六部分采用简化执行语义：直接重放最终宣告刑建议，百分比、法源差异和重复项仅保留为审计说明，不虚构算术复算。
 - [ ] 会签三案文书类型与字段映射、条件分支和缺项处理，并对生成草稿逐份人工批准。
