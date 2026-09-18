@@ -6,6 +6,8 @@ import type {
   CandidatePathKind,
   ComplianceChecklistItem,
   EvidenceRef,
+  JurisdictionConnection,
+  MissingItem,
   ModuleApplicability,
   SentencingParameter,
   SentencingResult,
@@ -157,6 +159,43 @@ export function toComplianceChecklist(content: Rec): ComplianceChecklistItem[] {
         .filter((v): v is string => Boolean(v)),
     }]
   }).filter((item) => item.category)
+}
+
+/** 管辖连接点（定罪模块）：T3 `jurisdiction_connections` 投影，含域外连接点专用核验状态。 */
+export function toJurisdictionConnections(content: Rec): JurisdictionConnection[] {
+  const raw = pick(content, ['jurisdictionConnections', 'jurisdiction_connections'])
+  if (raw === undefined) return []
+  return asArray(raw).flatMap((item): JurisdictionConnection[] => {
+    if (!isRecord(item)) return []
+    return [{
+      connectionId: str(pick(item, ['connectionId', 'connection_id', 'id'])),
+      type: str(pick(item, ['type', 'connection_type', 'connectionType'])),
+      value: str(pick(item, ['value', 'label', 'description'])),
+      status: statusOf(pick(item, ['verificationStatus', 'verification_status', 'status']))
+        ?? str(pick(item, ['verificationStatus', 'verification_status']))
+        ?? null,
+      evidenceIds: asArray(pick(item, ['evidenceIds', 'evidence_ids']))
+        .map((v) => str(v))
+        .filter((v): v is string => Boolean(v)),
+    }]
+  }).filter((item) => item.connectionId || item.value)
+}
+
+/** 缺失事实/待确认项：T3 `missing_items` 投影。 */
+export function toMissingItems(content: Rec): MissingItem[] {
+  const raw = pick(content, ['missingItems', 'missing_items'])
+  if (raw === undefined) return []
+  return asArray(raw).flatMap((item): MissingItem[] => {
+    if (!isRecord(item)) {
+      const text = str(item)
+      return text ? [{ description: text }] : []
+    }
+    return [{
+      id: str(pick(item, ['id', 'item_id', 'itemId'])),
+      severity: str(pick(item, ['severity', 'level', 'priority'])),
+      description: str(pick(item, ['description', 'text', 'label', 'detail'])),
+    }]
+  }).filter((item) => item.description)
 }
 
 /** 量刑 blocked 时的阻断项。 */

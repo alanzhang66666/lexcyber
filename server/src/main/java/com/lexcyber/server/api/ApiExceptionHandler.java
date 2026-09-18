@@ -18,6 +18,7 @@ import org.springframework.web.multipart.MultipartException;
 import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 /** Stable public error envelope shared by auth, task and review endpoints. */
 @RestControllerAdvice
@@ -57,6 +58,11 @@ public class ApiExceptionHandler {
             MethodArgumentTypeMismatchException.class})
     public ResponseEntity<Map<String, Object>> malformed(Exception error) {
         return body(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", "request is malformed");
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<Map<String, Object>> notFound(NoResourceFoundException error) {
+        return body(HttpStatus.NOT_FOUND, "NOT_FOUND", "resource not found");
     }
 
     @ExceptionHandler(IllegalStateException.class)

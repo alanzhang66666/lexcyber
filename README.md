@@ -17,8 +17,14 @@ conviction shells. T3 Engine adapters for search and sentencing are on `main`
 but Compose flags stay off, so those public APIs still return `501`.
 `compliance.analyze` / `conviction.analyze` stay `501` as well. Opening only
 the Java sentencing flag creates a task that then `failed` on the Engine side.
-T2 frontend case-center (list/create/workspace/facts) is on `main`; formal
-docket/analysis pages stay empty until those APIs exist.
+T2 frontend case-center (list/create/workspace/facts) is on `main`. The formal
+module pages are wired on `feat/case-import` (local branch): docket reads
+documents + `document.parse.v1` results, analysis runs `sentencing.calculate`
+when the flags are enabled, sources searches the Engine adapter, and review
+detail can archive decided records. With `SENTENCING_ENABLED` /
+`LEGAL_SOURCE_SEARCH_ENABLED` on and the three-case demo imported, the
+case-center → conviction → sentencing → review/archive flow runs end to end.
+Compose defaults still keep both flags off.
 
 ## Start the complete local demo
 

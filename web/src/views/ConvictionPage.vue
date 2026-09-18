@@ -4,7 +4,13 @@ import { useRoute, useRouter } from 'vue-router'
 import { useCaseModule } from '../composables/useCaseModule'
 import CandidatePathCard from '../components/CandidatePathCard.vue'
 import FactCard from '../components/FactCard.vue'
-import { APPLICABILITY_LABEL, toAnalysisFacts, toCandidatePaths } from '../lib/module-content'
+import {
+  APPLICABILITY_LABEL,
+  toAnalysisFacts,
+  toCandidatePaths,
+  toJurisdictionConnections,
+  toMissingItems,
+} from '../lib/module-content'
 
 const route = useRoute()
 const router = useRouter()
@@ -13,6 +19,20 @@ const { loading, error, caseItem, moduleState, confirming, confirmError, isPlace
 
 const facts = computed(() => (moduleState.value ? toAnalysisFacts(moduleState.value.content) : []))
 const paths = computed(() => (moduleState.value ? toCandidatePaths(moduleState.value.content) : []))
+const connections = computed(() => (moduleState.value ? toJurisdictionConnections(moduleState.value.content) : []))
+const missingItems = computed(() => (moduleState.value ? toMissingItems(moduleState.value.content) : []))
+const contentField = (key: string) => {
+  const v = moduleState.value?.content?.[key]
+  return typeof v === 'string' && v ? v : ''
+}
+const jurisdictionStatus = computed(() => contentField('jurisdictionStatus') || contentField('jurisdiction_status'))
+const legalReviewStatus = computed(() => contentField('legalReviewStatus') || contentField('legal_review_status'))
+const jurisdictionSourceIds = computed(() => {
+  const raw = moduleState.value?.content?.jurisdictionSourceIds ?? moduleState.value?.content?.jurisdiction_source_ids
+  return Array.isArray(raw) ? raw.filter((v): v is string => typeof v === 'string' && v.length > 0) : []
+})
+const selectedPaths = computed(() => paths.value.filter((p) => p.kind === 'candidate'))
+const excludedPaths = computed(() => paths.value.filter((p) => p.kind === 'excluded'))
 const rawContent = computed(() => (moduleState.value ? JSON.stringify(moduleState.value.content, null, 2) : ''))
 const showRaw = ref(false)
 const workspaceTo = computed(() => (caseItem.value ? `/cases/${caseItem.value.id}` : '/cases'))
@@ -130,21 +150,55 @@ watch(caseId, () => void load())
       <section class="panel">
         <div class="panel-heading"><div><p class="section-index">05</p><h2>法域冲突研判</h2></div></div>
         <dl class="data-list">
-          <div><dt>管辖识别</dt><dd class="placeholder-text">待引擎输出</dd></div>
+          <div><dt>管辖识别</dt><dd><span v-if="jurisdictionStatus" class="mono">{{ jurisdictionStatus }}</span><span v-else class="placeholder-text">待引擎输出</span></dd></div>
+          <div><dt>管辖法源</dt><dd><span v-if="jurisdictionSourceIds.length" class="mono">{{ jurisdictionSourceIds.join('、') }}</span><span v-else class="placeholder-text">待引擎输出</span></dd></div>
           <div><dt>中外罪名对照</dt><dd class="placeholder-text">待引擎输出</dd></div>
           <div><dt>法律光谱定位</dt><dd class="placeholder-text">民事 / 行政 / 刑事边界 —— 待引擎输出</dd></div>
           <div><dt>双重追责风险</dt><dd class="placeholder-text">待引擎输出</dd></div>
         </dl>
+        <div v-if="connections.length" class="connection-list">
+          <p class="panel-note">管辖连接点（已复核数据原样展示，含域外连接点专用核验状态）</p>
+          <dl class="data-list">
+            <div v-for="(c, i) in connections" :key="c.connectionId ?? i">
+              <dt class="mono">{{ c.type || '连接点' }}</dt>
+              <dd>
+                {{ c.value }}
+                <span v-if="c.status" class="subtle-chip mono">{{ c.status }}</span>
+              </dd>
+            </div>
+          </dl>
+        </div>
       </section>
 
       <section class="panel">
-        <div class="panel-heading"><div><p class="section-index">06</p><h2>定罪结论输出</h2></div></div>
+        <div class="panel-heading"><div><p class="section-index">06</p><h2>基准位置与待确认事项</h2></div></div>
+        <p class="panel-note">以下为已复核数据中的基准位置（baseline_position）与缺失事实原样展示，不构成定罪结论。</p>
         <dl class="data-list">
-          <div><dt>罪名锚定</dt><dd class="placeholder-text">待引擎输出</dd></div>
-          <div><dt>定罪依据</dt><dd class="placeholder-text">待引擎输出</dd></div>
-          <div><dt>排除路径</dt><dd class="placeholder-text">待引擎输出</dd></div>
-          <div><dt>待确认事项</dt><dd class="placeholder-text">待引擎输出</dd></div>
+          <div>
+            <dt>基准路径（selected）</dt>
+            <dd v-if="selectedPaths.length">{{ selectedPaths.map((p) => p.title).join('；') }}</dd>
+            <dd v-else class="placeholder-text">待引擎输出</dd>
+          </div>
+          <div>
+            <dt>排除路径（excluded）</dt>
+            <dd v-if="excludedPaths.length">{{ excludedPaths.map((p) => p.title).join('；') }}</dd>
+            <dd v-else class="placeholder-text">待引擎输出</dd>
+          </div>
+          <div>
+            <dt>法学复核状态</dt>
+            <dd><span v-if="legalReviewStatus" class="mono">{{ legalReviewStatus }}</span><span v-else class="placeholder-text">待引擎输出</span></dd>
+          </div>
         </dl>
+        <div v-if="missingItems.length" class="missing-list">
+          <p class="panel-note">缺失事实 / 待确认事项（按已复核数据原样展示，不推断结论）</p>
+          <ul>
+            <li v-for="(m, i) in missingItems" :key="m.id ?? i">
+              <span v-if="m.severity" class="subtle-chip mono">{{ m.severity }}</span>
+              {{ m.description }}
+            </li>
+          </ul>
+        </div>
+        <p v-else class="panel-note">缺失事实 / 待确认事项：<span class="placeholder-text">待引擎输出</span></p>
       </section>
 
       <section v-if="moduleState" class="panel">

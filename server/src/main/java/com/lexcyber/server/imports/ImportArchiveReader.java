@@ -41,7 +41,7 @@ public final class ImportArchiveReader {
         Arrays.fill(rawZip, (byte) 0);
     }
 
-    /** Returns a defensive copy after exact descriptor size and SHA-256 checks. */
+    /** Returns the entry bytes after exact descriptor size and SHA-256 checks. Callers own the returned buffer. */
     public byte[] require(String path, long expectedSize, String expectedSha256) {
         String normalized = validatePath(path);
         if (expectedSize < 0 || expectedSize > MAX_ENTRY_BYTES) {
