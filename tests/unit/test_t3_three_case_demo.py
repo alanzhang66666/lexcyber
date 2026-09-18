@@ -80,7 +80,7 @@ def test_case_b_includes_case_042_and_keeps_original_and_adapted_outcomes_distin
     assert paths["path-b-chen-helping"]["baseline_position"] == "original_source_outcome_not_selected_in_adaptation"
 
     chen = next(item for item in bundle["sentencing"]["actor_baselines"] if item["actor_id"] == "actor-b-chen")
-    assert chen["benchmark_disposition"]["nature"] == "adapted_annotation_only_not_actual_judgment_or_calculated_result"
+    assert chen["benchmark_disposition"]["nature"] == "adapted_legal_reviewed_declared_disposition_not_calculated_or_actual_judgment"
     assert chen["original_source_disposition"]["offence"] == "帮助信息网络犯罪活动罪"
     assert "missing-b-01" not in {item["id"] for item in bundle["missing_items"]}
 
@@ -112,7 +112,7 @@ def test_case_b_009_reviewed_range_is_preserved_but_not_executed_as_a_rule():
     bundle = load_case_bundle("B")
     baseline = next(item for item in bundle["sentencing"]["actor_baselines"] if item["actor_id"] == "actor-b-huang")
     disposition = baseline["benchmark_disposition"]
-    assert baseline["legal_review_status"] == "benchmark_approved_rule_pending"
+    assert baseline["legal_review_status"] == "reviewed_outline_pending_execution_details"
     assert disposition["term_range_months"] == [4, 8]
     assert disposition["term_lower_kind"] == "detention"
     assert disposition["term_upper_kind"] == "fixed_term_imprisonment"
@@ -121,7 +121,54 @@ def test_case_b_009_reviewed_range_is_preserved_but_not_executed_as_a_rule():
 
     result = calculate_case_sentencing(bundle, "actor-b-huang")
     assert result["status"] == "blocked"
-    assert "rule_not_approved" in {item["code"] for item in result["blockers"]}
+    blocker_codes = {item["code"] for item in result["blockers"]}
+    assert {
+        "rule_not_approved",
+        "range_base_selection_missing",
+        "percentage_basis_missing",
+        "rounding_rule_missing",
+        "declared_outcome_not_reconciled",
+    } <= blocker_codes
+    declared = result["reviewed_rule_outline"]["declared_disposition"]
+    assert declared["term_range_months"] == disposition["term_range_months"]
+    assert declared["fine_range_cny"] == disposition["fine_range_cny"]
+
+
+def test_section_six_rule_outlines_are_registered_without_becoming_calculated_results():
+    expected_actors = {
+        "A": {"actor-a-feng"},
+        "B": {"actor-b-huang", "actor-b-chen"},
+        "C": {"actor-c-company", "actor-c-jia", "actor-c-yi"},
+    }
+    for case_code, actor_ids in expected_actors.items():
+        bundle = load_case_bundle(case_code)
+        baselines = {item["actor_id"]: item for item in bundle["sentencing"]["actor_baselines"]}
+        assert set(baselines) == actor_ids
+        for actor_id, baseline in baselines.items():
+            rule = baseline["calculation_rule"]
+            assert rule["rule_version"].startswith("review-summary-section-6-")
+            assert rule["legal_review_status"] == "reviewed_outline_pending_execution_details"
+            assert rule["source_document_id"] == f"doc-{case_code.lower()}-review-summary-round3"
+            assert rule["source_section"].startswith("六、各主体量刑规则")
+            assert rule["declared_disposition"]
+            assert rule["execution_blockers"]
+
+            result = calculate_case_sentencing(bundle, actor_id)
+            assert result["status"] == "blocked"
+            assert result["term_months"] is None
+            assert result["reviewed_rule_outline"]["declared_disposition"] == rule["declared_disposition"]
+
+
+def test_section_six_specific_arithmetic_conflicts_remain_explicitly_blocked():
+    case_b = load_case_bundle("B")
+    chen = calculate_case_sentencing(case_b, "actor-b-chen")
+    chen_codes = {item["code"] for item in chen["blockers"]}
+    assert {"base_value_approximate", "declared_outcome_not_reconciled", "teaching_adaptation_not_operational_rule"} <= chen_codes
+
+    case_c = load_case_bundle("C")
+    jia = calculate_case_sentencing(case_c, "actor-c-jia")
+    jia_codes = {item["code"] for item in jia["blockers"]}
+    assert {"source_application_conflict", "duplicate_adjustment_unresolved"} <= jia_codes
 
 
 def test_case_c_reviewed_amounts_avoid_double_counting_and_jurisdiction_is_resolved():
@@ -383,4 +430,6 @@ def test_t1_mapping_keeps_blocked_inside_content_and_uses_waiting_review_task_st
     assert payload["content"]["caseId"] == "case-server-b"
     assert payload["content"]["datasetCaseId"] == "B"
     assert payload["content"]["t3BundleId"] == "demo-case-b-proceeds"
+    assert payload["content"]["reviewedRuleOutline"]["declared_disposition"]["term_range_months"] == [4, 8]
+    assert "percentage_basis_missing" in {item["code"] for item in payload["content"]["blockers"]}
     assert "status" not in payload["content"]

@@ -134,6 +134,7 @@
     "cn-criminal-law-6-7-current",
     "cn-cybercrime-interpretation-2019-11-12",
     "cn-telefraud-opinion-2016-common-crime",
+    "cn-sentencing-guidance-2024-2",
     "cn-helping-opinion-2025-4-9"
   ],
   "source_version_binding": {
@@ -171,9 +172,95 @@
   "sentencing": {
     "calculation_status": "blocked_pending_exact_rule",
     "actor_baselines": [
-      {"actor_id": "actor-c-company", "amount_ids": ["amount-c-service-fee"], "source_ids": ["cn-criminal-law-287-2-current", "cn-cybercrime-interpretation-2019-11-12"], "rule_version": null, "legal_review_status": "pending", "benchmark_disposition": {"fine_range_cny": [30000, 80000], "nature": "annotation_only_not_calculated"}},
-      {"actor_id": "actor-c-jia", "amount_ids": ["amount-c-service-fee"], "source_ids": ["cn-criminal-law-287-2-current", "cn-cybercrime-interpretation-2019-11-12"], "rule_version": null, "legal_review_status": "pending", "benchmark_disposition": {"term_range_months": [8, 14], "fine_range_cny": [8000, 15000], "nature": "annotation_only_not_calculated"}},
-      {"actor_id": "actor-c-yi", "amount_ids": ["amount-c-service-fee"], "source_ids": ["cn-criminal-law-287-2-current", "cn-cybercrime-interpretation-2019-11-12"], "rule_version": null, "legal_review_status": "pending", "benchmark_disposition": {"term_range_months": [7, 12], "fine_range_cny": [5000, 12000], "nature": "annotation_only_not_calculated"}}
+      {
+        "actor_id": "actor-c-company",
+        "amount_ids": ["amount-c-service-fee"],
+        "source_ids": ["cn-criminal-law-287-2-current", "cn-cybercrime-interpretation-2019-11-12", "cn-sentencing-guidance-2024-2", "cn-helping-opinion-2025-4-9"],
+        "rule_version": "review-summary-section-6-c-company-outline-v1",
+        "legal_review_status": "reviewed_outline_pending_execution_details",
+        "benchmark_disposition": {"fine_range_cny": [30000, 80000], "nature": "legal_reviewed_declared_disposition_not_calculated"},
+        "calculation_rule": {
+          "rule_version": "review-summary-section-6-c-company-outline-v1",
+          "legal_review_status": "reviewed_outline_pending_execution_details",
+          "source_document_id": "doc-c-review-summary-round3",
+          "source_section": "六、各主体量刑规则、计算步骤和法源",
+          "source_pages": [22, 23],
+          "source_ids": ["cn-criminal-law-287-2-current", "cn-cybercrime-interpretation-2019-11-12", "cn-sentencing-guidance-2024-2", "cn-helping-opinion-2025-4-9"],
+          "declared_disposition": {"fine_range_cny": [30000, 80000]},
+          "execution_blockers": [
+            {"code": "fine_formula_missing", "path": "rule.declared_disposition.fine_range_cny", "message": "section 6 gives a 30,000-80,000 yuan fine range but no formula for selecting an amount"},
+            {"code": "penalty_type_unsupported", "path": "rule.declared_disposition", "message": "the current calculator replays custodial months and cannot execute a fine-only unit rule"},
+            {"code": "source_application_conflict", "path": "rule.source_ids", "message": "the section 6 tables cite the 2024 sentencing guidance, while the closing paragraph says it is not adopted for case 016"},
+            {"code": "temporal_source_application_unresolved", "path": "rule.source_ids", "message": "the 2025 helping opinion is described as reference only and not an adverse sentencing basis for the 2020 conduct"}
+          ]
+        }
+      },
+      {
+        "actor_id": "actor-c-jia",
+        "amount_ids": ["amount-c-service-fee"],
+        "source_ids": ["cn-criminal-law-287-2-current", "cn-cybercrime-interpretation-2019-11-12", "cn-sentencing-guidance-2024-2", "cn-helping-opinion-2025-4-9"],
+        "rule_version": "review-summary-section-6-c-jia-outline-v1",
+        "legal_review_status": "reviewed_outline_pending_execution_details",
+        "benchmark_disposition": {"term_range_months": [8, 14], "fine_range_cny": [8000, 15000], "nature": "legal_reviewed_declared_disposition_not_calculated"},
+        "calculation_rule": {
+          "rule_version": "review-summary-section-6-c-jia-outline-v1",
+          "legal_review_status": "reviewed_outline_pending_execution_details",
+          "source_document_id": "doc-c-review-summary-round3",
+          "source_section": "六、各主体量刑规则、计算步骤和法源",
+          "source_pages": [20, 21],
+          "source_ids": ["cn-criminal-law-287-2-current", "cn-cybercrime-interpretation-2019-11-12", "cn-sentencing-guidance-2024-2", "cn-helping-opinion-2025-4-9"],
+          "base_range_months": [6, 9],
+          "adjustments": [
+            {"id": "c-jia-cross-border-technical-support", "operation": "percentage_basis_unspecified", "direction": "increase", "value": 0.2, "legal_review_status": "reviewed_outline", "source_ids": ["cn-sentencing-guidance-2024-2"]},
+            {"id": "c-jia-occupational-convenience", "operation": "percentage_basis_unspecified", "direction": "increase", "value": 0.2, "legal_review_status": "reviewed_outline", "source_ids": ["cn-sentencing-guidance-2024-2"]},
+            {"id": "c-jia-confession", "operation": "percentage_basis_unspecified", "direction": "decrease", "value": 0.1, "legal_review_status": "reviewed_outline", "source_ids": ["cn-criminal-law-287-2-current"]},
+            {"id": "c-jia-guilty-plea", "operation": "percentage_basis_unspecified", "direction": "decrease", "value": 0.1, "legal_review_status": "reviewed_outline", "source_ids": ["cn-criminal-law-287-2-current"]},
+            {"id": "c-jia-restitution", "operation": "percentage_basis_unspecified", "direction": "decrease", "value": 0.05, "legal_review_status": "reviewed_outline", "source_ids": ["cn-sentencing-guidance-2024-2"]},
+            {"id": "c-jia-partial-restitution", "operation": "percentage_basis_unspecified", "direction": "decrease", "value": 0.05, "legal_review_status": "reviewed_outline", "source_ids": ["cn-sentencing-guidance-2024-2"]}
+          ],
+          "declared_disposition": {"term_range_months": [8, 14], "fine_range_cny": [8000, 15000]},
+          "execution_blockers": [
+            {"code": "range_base_selection_missing", "path": "rule.base_range_months", "message": "section 6 gives a 6-9 month base range but does not define point selection or range propagation"},
+            {"code": "percentage_basis_missing", "path": "rule.adjustments", "message": "section 6 does not state the percentage calculation basis or whether adjustments are cumulative"},
+            {"code": "duplicate_adjustment_unresolved", "path": "rule.adjustments", "message": "the outline separately deducts 5% for restitution and 5% for partial restitution without saying whether both apply to the same fact"},
+            {"code": "rounding_rule_missing", "path": "rule.rounding", "message": "section 6 does not define month rounding or endpoint rounding"},
+            {"code": "declared_outcome_not_reconciled", "path": "rule.declared_disposition", "message": "the listed adjustments do not transparently reproduce the declared 8-14 month range"},
+            {"code": "source_application_conflict", "path": "rule.source_ids", "message": "the section 6 table cites the 2024 sentencing guidance, while the closing paragraph says it is not adopted for case 016"},
+            {"code": "temporal_source_application_unresolved", "path": "rule.source_ids", "message": "the 2025 helping opinion is reference only and not an adverse sentencing basis for the 2020 conduct"}
+          ]
+        }
+      },
+      {
+        "actor_id": "actor-c-yi",
+        "amount_ids": ["amount-c-service-fee"],
+        "source_ids": ["cn-criminal-law-287-2-current", "cn-cybercrime-interpretation-2019-11-12", "cn-sentencing-guidance-2024-2", "cn-helping-opinion-2025-4-9"],
+        "rule_version": "review-summary-section-6-c-yi-outline-v1",
+        "legal_review_status": "reviewed_outline_pending_execution_details",
+        "benchmark_disposition": {"term_range_months": [7, 12], "fine_range_cny": [5000, 12000], "nature": "legal_reviewed_declared_disposition_not_calculated"},
+        "calculation_rule": {
+          "rule_version": "review-summary-section-6-c-yi-outline-v1",
+          "legal_review_status": "reviewed_outline_pending_execution_details",
+          "source_document_id": "doc-c-review-summary-round3",
+          "source_section": "六、各主体量刑规则、计算步骤和法源",
+          "source_pages": [21, 22],
+          "source_ids": ["cn-criminal-law-287-2-current", "cn-cybercrime-interpretation-2019-11-12", "cn-sentencing-guidance-2024-2", "cn-helping-opinion-2025-4-9"],
+          "base_range_months": [6, 9],
+          "adjustments": [
+            {"id": "c-yi-occupational-convenience", "operation": "percentage_basis_unspecified", "direction": "increase", "value": 0.2, "legal_review_status": "reviewed_outline", "source_ids": ["cn-sentencing-guidance-2024-2"]},
+            {"id": "c-yi-confession", "operation": "percentage_basis_unspecified", "direction": "decrease", "value": 0.1, "legal_review_status": "reviewed_outline", "source_ids": ["cn-criminal-law-287-2-current"]},
+            {"id": "c-yi-restitution", "operation": "percentage_basis_unspecified", "direction": "decrease", "value": 0.05, "legal_review_status": "reviewed_outline", "source_ids": ["cn-sentencing-guidance-2024-2"]}
+          ],
+          "declared_disposition": {"term_range_months": [7, 12], "fine_range_cny": [5000, 12000]},
+          "execution_blockers": [
+            {"code": "range_base_selection_missing", "path": "rule.base_range_months", "message": "section 6 gives a 6-9 month base range but does not define point selection or range propagation"},
+            {"code": "percentage_basis_missing", "path": "rule.adjustments", "message": "section 6 does not state the percentage calculation basis or whether adjustments are cumulative"},
+            {"code": "rounding_rule_missing", "path": "rule.rounding", "message": "section 6 does not define month rounding or endpoint rounding"},
+            {"code": "declared_outcome_not_reconciled", "path": "rule.declared_disposition", "message": "the listed adjustments do not transparently reproduce the declared 7-12 month range"},
+            {"code": "source_application_conflict", "path": "rule.source_ids", "message": "the section 6 table cites the 2024 sentencing guidance, while the closing paragraph says it is not adopted for case 016"},
+            {"code": "temporal_source_application_unresolved", "path": "rule.source_ids", "message": "the 2025 helping opinion is reference only and not an adverse sentencing basis for the 2020 conduct"}
+          ]
+        }
+      }
     ]
   },
   "document_fields": {
@@ -184,7 +271,7 @@
     "template_legal_review_status": "source_provided_mapping_pending_approval"
   },
   "missing_items": [
-    {"id": "missing-c-03", "severity": "blocking", "description": "The supplied ranges are not approved executable sentencing rules with exact ordered adjustments."},
+    {"id": "missing-c-03", "severity": "blocking", "description": "Section 6 supplies reviewed rule outlines, but range selection, percentage basis, rounding and outcome reconciliation remain unresolved; its tables also cite the 2024 guidance while the closing paragraph says not to adopt it for case 016."},
     {"id": "missing-c-04", "severity": "blocking", "description": "The prosecution and sentencing-recommendation source templates are registered; final field mapping, branch selection and generated-draft approval still require the legal owner."},
     {"id": "missing-c-05", "severity": "warning", "description": "Confirm collection authorization, license, substantive adaptation and deidentification in the source ledger."}
   ]

@@ -222,17 +222,62 @@
         "actor_id": "actor-b-huang",
         "amount_ids": ["amount-b-fraud-inflow", "amount-b-personal-profit", "amount-b-restitution"],
         "source_ids": ["cn-criminal-law-287-2-current", "cn-cybercrime-interpretation-2019-11-12", "cn-sentencing-guidance-2024-2"],
-        "rule_version": null,
-        "legal_review_status": "benchmark_approved_rule_pending",
-        "benchmark_disposition": {"term_range_months": [4, 8], "term_lower_kind": "detention", "term_upper_kind": "fixed_term_imprisonment", "fine_range_cny": [3000, 10000], "review_status": "confirmed_by_legal_owner", "nature": "legal_reviewed_annotation_not_calculated"}
+        "rule_version": "review-summary-section-6-b-009-huang-outline-v1",
+        "legal_review_status": "reviewed_outline_pending_execution_details",
+        "benchmark_disposition": {"term_range_months": [4, 8], "term_lower_kind": "detention", "term_upper_kind": "fixed_term_imprisonment", "fine_range_cny": [3000, 10000], "review_status": "confirmed_by_legal_owner", "nature": "legal_reviewed_declared_disposition_not_calculated"},
+        "calculation_rule": {
+          "rule_version": "review-summary-section-6-b-009-huang-outline-v1",
+          "legal_review_status": "reviewed_outline_pending_execution_details",
+          "source_document_id": "doc-b-review-summary-round3",
+          "source_section": "六、各主体量刑规则、计算步骤和法源",
+          "source_pages": [18, 19],
+          "source_ids": ["cn-criminal-law-287-2-current", "cn-cybercrime-interpretation-2019-11-12", "cn-sentencing-guidance-2024-2"],
+          "base_range_months": [3, 6],
+          "adjustments": [
+            {"id": "b009-occupational-convenience", "operation": "percentage_basis_unspecified", "direction": "increase", "value": 0.2, "legal_review_status": "reviewed_outline", "source_ids": ["cn-sentencing-guidance-2024-2"]},
+            {"id": "b009-company-account", "operation": "percentage_basis_unspecified", "direction": "increase", "value": 0.2, "legal_review_status": "reviewed_outline", "source_ids": ["cn-sentencing-guidance-2024-2"]},
+            {"id": "b009-guilty-plea", "operation": "percentage_basis_unspecified", "direction": "decrease", "value": 0.1, "legal_review_status": "reviewed_outline", "source_ids": ["cn-criminal-law-287-2-current"]},
+            {"id": "b009-restitution", "operation": "percentage_basis_unspecified", "direction": "decrease", "value": 0.05, "legal_review_status": "reviewed_outline", "source_ids": ["cn-sentencing-guidance-2024-2"]},
+            {"id": "b009-voluntary-surrender", "operation": "percentage_basis_unspecified", "direction": "decrease", "value": 0.2, "legal_review_status": "reviewed_outline", "source_ids": ["cn-sentencing-guidance-2024-2"]}
+          ],
+          "declared_disposition": {"term_range_months": [4, 8], "term_lower_kind": "detention", "term_upper_kind": "fixed_term_imprisonment", "fine_range_cny": [3000, 10000]},
+          "execution_blockers": [
+            {"code": "range_base_selection_missing", "path": "rule.base_range_months", "message": "section 6 gives a 3-6 month starting and base range but does not define point selection or range propagation"},
+            {"code": "percentage_basis_missing", "path": "rule.adjustments", "message": "section 6 does not state the percentage calculation basis or whether adjustments are cumulative"},
+            {"code": "rounding_rule_missing", "path": "rule.rounding", "message": "section 6 does not define month rounding or the detention-to-imprisonment boundary"},
+            {"code": "declared_outcome_not_reconciled", "path": "rule.declared_disposition", "message": "the listed adjustments do not transparently reproduce the declared 4-8 month range"}
+          ]
+        }
       },
       {
         "actor_id": "actor-b-chen",
         "amount_ids": ["amount-b-042-fraud-inflow", "amount-b-042-personal-profit", "amount-b-042-recovery"],
-        "source_ids": ["cn-criminal-law-312-current", "cn-concealment-interpretation-2015-2021"],
-        "rule_version": null,
-        "legal_review_status": "pending",
-        "benchmark_disposition": {"term_months": 27, "fine_cny": 10000, "nature": "adapted_annotation_only_not_actual_judgment_or_calculated_result"},
+        "source_ids": ["cn-criminal-law-312-current", "cn-concealment-interpretation-2015-2021", "cn-sentencing-guidance-2024-2"],
+        "rule_version": "review-summary-section-6-b-042-chen-outline-v1",
+        "legal_review_status": "reviewed_outline_pending_execution_details",
+        "benchmark_disposition": {"term_months": 27, "fine_cny": 10000, "recovery_cny": 6409, "nature": "adapted_legal_reviewed_declared_disposition_not_calculated_or_actual_judgment"},
+        "calculation_rule": {
+          "rule_version": "review-summary-section-6-b-042-chen-outline-v1",
+          "legal_review_status": "reviewed_outline_pending_execution_details",
+          "source_document_id": "doc-b-review-summary-round3",
+          "source_section": "六、各主体量刑规则、计算步骤和法源",
+          "source_pages": [19, 20],
+          "source_ids": ["cn-criminal-law-312-current", "cn-concealment-interpretation-2015-2021", "cn-sentencing-guidance-2024-2"],
+          "base_months_approximate": 42,
+          "adjustments": [
+            {"id": "b042-cross-border-factor", "operation": "percentage_basis_unspecified", "direction": "increase", "value": 0.1, "legal_review_status": "reviewed_outline", "source_ids": ["cn-sentencing-guidance-2024-2"]},
+            {"id": "b042-confession", "operation": "percentage_basis_unspecified", "direction": "decrease", "value": 0.1, "legal_review_status": "reviewed_outline", "source_ids": ["cn-criminal-law-312-current"]},
+            {"id": "b042-guilty-plea", "operation": "percentage_basis_unspecified", "direction": "decrease", "value": 0.1, "legal_review_status": "reviewed_outline", "source_ids": ["cn-criminal-law-312-current"]}
+          ],
+          "declared_disposition": {"term_months": 27, "fine_cny": 10000, "recovery_cny": 6409},
+          "execution_blockers": [
+            {"code": "base_value_approximate", "path": "rule.base_months_approximate", "message": "section 6 describes the base as about 42 months rather than one exact executable value"},
+            {"code": "percentage_basis_missing", "path": "rule.adjustments", "message": "section 6 does not state the percentage calculation basis or whether adjustments are cumulative"},
+            {"code": "rounding_rule_missing", "path": "rule.rounding", "message": "section 6 does not define month rounding"},
+            {"code": "declared_outcome_not_reconciled", "path": "rule.declared_disposition", "message": "applying the listed +10%, -10%, and -10% adjustments to about 42 months does not transparently produce 27 months"},
+            {"code": "teaching_adaptation_not_operational_rule", "path": "rule.declared_disposition", "message": "the 042 concealment result is an explicit teaching adaptation and not an actual judgment or approved operational rule"}
+          ]
+        },
         "original_source_disposition": {"offence": "帮助信息网络犯罪活动罪", "term_months": 12, "fine_cny": 5000, "nature": "reported_original_second_instance_outcome"}
       }
     ]
@@ -248,6 +293,6 @@
     {"id": "missing-b-03", "severity": "blocking", "description": "The prosecution and sentencing-recommendation source templates are registered; final field mapping, branch selection and generated-draft approval still require the legal owner."},
     {"id": "missing-b-04", "severity": "warning", "description": "Confirm collection authorization, license, substantive adaptation and deidentification in the source ledger."},
     {"id": "missing-b-05", "severity": "blocking", "description": "Case 042 subjective knowledge remains conflicted by the loan-processing defence and requires case-specific human review before any operational conviction result."},
-    {"id": "missing-b-06", "severity": "blocking", "description": "The case 042 concealment disposition is an explicit teaching adaptation of an original helping conviction; it is not a real judgment or approved executable sentencing rule."}
+    {"id": "missing-b-06", "severity": "blocking", "description": "Section 6 supplies reviewed outlines for 009 and the 042 teaching adaptation, but base selection, percentage basis, rounding and reconciliation to the declared dispositions remain unresolved; 042 is not a real judgment or operational rule."}
   ]
 }

@@ -297,6 +297,7 @@ def map_sentencing_result_to_t1(
         "analysisStatus": result.get("status"),
         "ruleVersion": result.get("rule_version"),
         "sourceIds": list(result.get("source_ids", [])),
+        "reviewedRuleOutline": dict(result.get("reviewed_rule_outline", {})),
         "inputSnapshot": dict(result.get("input_snapshot", {})),
         "termMonths": result.get("term_months"),
         "fine": result.get("fine"),

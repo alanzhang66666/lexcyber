@@ -250,6 +250,43 @@ def validate_case_bundle(bundle: dict[str, Any], template_registry: dict[str, An
                     ", ".join(sorted(unknown_sources)),
                 )
             )
+        calculation_rule = baseline.get("calculation_rule")
+        if calculation_rule is not None:
+            if not isinstance(calculation_rule, dict):
+                errors.append(
+                    _issue(
+                        "sentencing_rule_invalid",
+                        f"sentencing.actor_baselines[{position}].calculation_rule",
+                        "calculation_rule must be an object",
+                    )
+                )
+            else:
+                rule_path = f"sentencing.actor_baselines[{position}].calculation_rule"
+                if calculation_rule.get("source_document_id") not in document_ids:
+                    errors.append(
+                        _issue(
+                            "unknown_document",
+                            f"{rule_path}.source_document_id",
+                            str(calculation_rule.get("source_document_id")),
+                        )
+                    )
+                unknown_rule_sources = set(calculation_rule.get("source_ids", [])) - legal_source_ids
+                if unknown_rule_sources:
+                    errors.append(
+                        _issue(
+                            "unknown_legal_source",
+                            f"{rule_path}.source_ids",
+                            ", ".join(sorted(unknown_rule_sources)),
+                        )
+                    )
+                if not calculation_rule.get("execution_blockers") and calculation_rule.get("legal_review_status") != "approved":
+                    errors.append(
+                        _issue(
+                            "sentencing_rule_blockers_missing",
+                            f"{rule_path}.execution_blockers",
+                            "a non-approved rule outline must explain why execution remains blocked",
+                        )
+                    )
 
     missing_items = bundle.get("missing_items", [])
     if missing_items:
