@@ -54,6 +54,23 @@ class SourceSearchResponse(BaseModel):
     items: list[SourceSearchHit] = Field(default_factory=list)
 
 
+class ImportPackageValidationRequest(BaseModel):
+    storage_key: str = Field(min_length=1, max_length=1000)
+    raw_sha256: str = Field(pattern="^[0-9a-f]{64}$")
+
+
+class ImportPackageValidationResponse(BaseModel):
+    valid: bool
+    schema_version: str | None = None
+    package_id: str | None = None
+    producer_id: str | None = None
+    dataset_id: str | None = None
+    revision: str | None = None
+    package_digest: str | None = None
+    items: list[dict[str, Any]] = Field(default_factory=list)
+    errors: list[dict[str, str]] = Field(default_factory=list)
+
+
 class ExecutionView(BaseModel):
     execution_id: UUID
     task_id: UUID

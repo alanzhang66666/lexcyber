@@ -157,7 +157,7 @@ Authorization: Bearer <token>
 
 | 项 | 约定 |
 | --- | --- |
-| 三案导入 | [`scripts/import_three_case_demo.py`](../scripts/import_three_case_demo.py)（可选 [`scripts/import-three-case-demo.ps1`](../scripts/import-three-case-demo.ps1)）。`POST /v1/cases` 用 `build_t1_case_create`；只上传 `role=input` 的 `case_material`；**只轮询 `parseTaskId`**；`PATCH` 回填事件 `DocumentView.id`；可选 `PUT` facts 为 `draft`，不自动 `confirm`。账号来自 `LEXCYBER_USERNAME` / `LEXCYBER_PASSWORD`，未设则注册一次性账号。`--docs-dir` 按 `archive_entry` 文件名匹配；找不到时上传 gitignored `.t1-smoke-input.docx` 并标 `placeholderUpload=true`。报告写 `.t1-three-case-import.md`。 |
+| 三案导入 | [`scripts/import_three_case_demo.py`](../scripts/import_three_case_demo.py)（可选 [`scripts/import-three-case-demo.ps1`](../scripts/import-three-case-demo.ps1)）。`POST /v1/cases` 用 `build_t1_case_create`；只上传 `role=input` 的 `case_material`；**只轮询 `parseTaskId`**；`PATCH` 回填事件 `DocumentView.id`；可选 `PUT` facts 为 `draft`，不自动 `confirm`。账号来自 `LEXCYBER_USERNAME` / `LEXCYBER_PASSWORD`，未设则注册一次性账号。`--docs-dir` 按 `archive_entry` 文件名匹配。缺材料 **fail-closed**，不再默认上传 `.t1-smoke-input.docx`；本地冒烟必须显式 `--allow-placeholder`。报告写 `.t1-three-case-import.md`。 |
 | 文书草稿 | `POST/GET /v1/cases/{caseId}/drafts`、`GET/PUT .../drafts/{draftId}`。`body` 是不透明字符串。`PUT` 必须带当前 `version`，成功后 `version+1`；冲突 `409 DRAFT_VERSION_CONFLICT`。他案/他主 `404`。旧版本上的批准不自动落到新版本。 |
 | 量刑 facts 门闩 | `taskType=sentencing.calculate` 且带 `caseId` 时，facts 不是 `confirmed`（含无行）→ `409 FACTS_NOT_CONFIRMED`。公开创建在开关关闭时仍先 `501`。Java 与 Engine 必须同时开；只开 Java 会建成任务再 `failed`。 |
 | `ReviewRecord.module` | 不改 `review_records`。从 `tasks.metadata_json.module` 读取，没有则按 `taskType`：`document.parse`→`parse`，`sentencing.calculate`→`sentencing`，其余→`task`。`GET /v1/reviews?module=` 可选过滤。 |
@@ -174,3 +174,58 @@ Authorization: Bearer <token>
 | 草稿版本 | `templateVersion` / `sourceVersion`。`PUT` 升版本后，将该草稿旧 `draft_version` 上 `pending`/`approved` 复核标 `superseded`。 |
 | 复核开单 / 归档 | `POST /v1/cases/{id}/reviews` 可绑草稿或模块空壳，无 `taskId` 时不写 outbox。`POST /v1/reviews/{id}/archive`。`GET /v1/reviews?archiveStatus=`。无 `task_id` 的决定只改 `review_records`。属主 JOIN `tasks.case_id` / `drafts.case_id` / `review_records.case_id`。 |
 | metadata 投影 | `relations.accounts[]`、`relations.jurisdictionConnections[]`、`metadata.sourceVersionBinding`；`procedureStage` 仅当 bundle 已有才写。导入脚本 `PUT` 模块空壳，可选开一条 conviction 复核，不自动 confirm。 |
+
+## 2026-09-18 会签前增量（模块 content 冻结 / 金额与连接点 / 导入 fail-closed）
+
+不打开 `SENTENCING_ENABLED` / `LEGAL_SOURCE_SEARCH_ENABLED`。不建图谱表。公开分析任务仍 501。Java 仍把模块 `content` 当不透明 JSON；导入投影冻结为 `case.module.content.v1`。
+
+| 项 | 约定 |
+| --- | --- |
+| 模块空壳 `content` | `build_t1_module_state` 写入 `schemaVersion=case.module.content.v1`。合规：`facts[]`（展开为带 `statement` 的对象，不再只放 fact id）、`checklist[]`、`amounts[]`、`missingItems[]`、`sourceVersionBinding`。定罪：`candidatePaths[]`（`baselinePosition`、`supportingEvidenceIds` / `contraryEvidenceIds` / `legalSourceIds`）、`amounts[]`、`missingItems[]`、`jurisdictionStatus`、`jurisdictionConnections[]`。同时写 snake_case 别名，供 T2 现有 `pick()` 读取。不是分析任务结果，不输出罪名或责任结论。 |
+| 金额与法域 | 八类金额进 `metadata.amounts[]`、facts 投影（`FactItem.key` = amount `kind`）、模块 `content.amounts[]`。C 案连接点继续在 `metadata.relations.jurisdictionConnections[]`，并写入定罪 `content.jurisdictionConnections[]`。 |
+| 导入缺材料 | 默认 fail-closed：无 `--docs-dir` 命中、或目录里缺 `case_material`，导入在建案前退出。`--allow-placeholder` 才上传 `.t1-smoke-input.docx`。 |
+
+### 样例：定罪空壳 `PUT /v1/cases/{id}/conviction`
+
+```json
+{
+  "applicability": "unknown",
+  "sourceVersion": "{\"temporal_review_status\":\"partial_approval\"}",
+  "version": 0,
+  "content": {
+    "schemaVersion": "case.module.content.v1",
+    "applicability": "unknown",
+    "candidatePaths": [
+      {
+        "id": "path-c-company-helping",
+        "actorId": "actor-c-company",
+        "label": "单位帮助信息网络犯罪活动罪",
+        "baselinePosition": "selected",
+        "supportingEvidenceIds": ["ev-c-02"],
+        "contraryEvidenceIds": ["ev-c-12"],
+        "legalSourceIds": ["cn-criminal-law-287-2-current"]
+      }
+    ],
+    "amounts": [
+      {
+        "id": "amount-c-service-fee",
+        "kind": "unclassified_amount",
+        "label": "项目服务费",
+        "value": 118000,
+        "currency": "CNY",
+        "verificationStatus": "confirmed",
+        "classificationStatus": "pending_unlawful_income_review",
+        "evidenceIds": ["ev-c-07"]
+      }
+    ],
+    "jurisdictionConnections": [
+      {
+        "connectionId": "jur-c-victim",
+        "type": "victim_location",
+        "value": "重庆市T区存在境内被害人",
+        "verificationStatus": "confirmed"
+      }
+    ]
+  }
+}
+```

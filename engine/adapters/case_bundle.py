@@ -4,9 +4,14 @@ import json
 from pathlib import Path
 from typing import Any
 
+from jsonschema import Draft202012Validator, FormatChecker
+
 DEMO_ROOT = Path(__file__).resolve().parents[2] / "demo_cases" / "three_case_demo"
+CONTRACT_SCHEMA_ROOT = Path(__file__).resolve().parents[2] / "contracts" / "schemas"
 INDEX_PATH = DEMO_ROOT / "index.json"
 TEMPLATE_REGISTRY_PATH = DEMO_ROOT / "document-templates.json"
+INDEX_SCHEMA_PATH = CONTRACT_SCHEMA_ROOT / "collaboration-case-index.schema.json"
+BUNDLE_SCHEMA_PATH = CONTRACT_SCHEMA_ROOT / "collaboration-case-bundle.schema.json"
 
 
 def _issue(code: str, path: str, message: str) -> dict[str, str]:
@@ -17,14 +22,40 @@ def _read_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _json_path(prefix: str, parts: Any) -> str:
+    path = prefix
+    for part in parts:
+        path += f"[{part}]" if isinstance(part, int) else (f".{part}" if path else str(part))
+    return path or "$"
+
+
+def _schema_issues(instance: Any, schema_path: Path, prefix: str = "") -> list[dict[str, str]]:
+    schema = _read_json(schema_path)
+    Draft202012Validator.check_schema(schema)
+    validator = Draft202012Validator(schema, format_checker=FormatChecker())
+    return [
+        _issue("schema_validation_failed", _json_path(prefix, error.absolute_path), error.message)
+        for error in sorted(validator.iter_errors(instance), key=lambda item: list(item.absolute_path))
+    ]
+
+
+def load_case_dataset_index(root: Path | None = None) -> dict[str, Any]:
+    """Load the collaboration identity manifest without weakening validation."""
+
+    dataset_root = root or DEMO_ROOT
+    return _read_json(dataset_root / "index.json")
+
+
 def load_case_bundle(case_id: str, root: Path | None = None) -> dict[str, Any]:
     """Load a case by stable demo id; callers never need repository-relative guesses."""
 
     dataset_root = root or DEMO_ROOT
-    index = _read_json(dataset_root / "index.json")
+    index = load_case_dataset_index(dataset_root)
     matches = [item for item in index.get("cases", []) if item.get("case_id") == case_id or item.get("case_code") == case_id]
     if not matches:
         raise KeyError(f"unsupported demo case: {case_id}")
+    if len(matches) > 1:
+        raise KeyError(f"ambiguous demo case identity: {case_id}")
     return _read_json(dataset_root / matches[0]["bundle"])
 
 
@@ -141,6 +172,14 @@ def validate_case_bundle(bundle: dict[str, Any], template_registry: dict[str, An
         if unknown_facts:
             errors.append(_issue("unknown_fact", f"events[{position}].fact_ids", ", ".join(sorted(unknown_facts))))
 
+    for position, account in enumerate(bundle.get("accounts", [])):
+        linked_actors = set(account.get("controller_ids") or account.get("actor_ids") or [])
+        unknown_actors = linked_actors - actor_ids
+        if unknown_actors:
+            errors.append(
+                _issue("unknown_actor", f"accounts[{position}]", ", ".join(sorted(unknown_actors)))
+            )
+
     for position, relationship in enumerate(bundle.get("relationships", [])):
         unknown_actors = {relationship.get("from_id"), relationship.get("to_id")} - actor_ids
         if unknown_actors:
@@ -155,6 +194,24 @@ def validate_case_bundle(bundle: dict[str, Any], template_registry: dict[str, An
         if not isinstance(analysis, dict):
             errors.append(_issue("analysis_invalid", f"analyses.{analysis_name}", "analysis must be an object"))
             continue
+        unknown_facts = set(analysis.get("facts", [])) - fact_ids
+        if unknown_facts:
+            errors.append(
+                _issue(
+                    "unknown_fact",
+                    f"analyses.{analysis_name}.facts",
+                    ", ".join(sorted(unknown_facts)),
+                )
+            )
+        unknown_jurisdiction_sources = set(analysis.get("jurisdiction_source_ids", [])) - legal_source_ids
+        if unknown_jurisdiction_sources:
+            errors.append(
+                _issue(
+                    "unknown_legal_source",
+                    f"analyses.{analysis_name}.jurisdiction_source_ids",
+                    ", ".join(sorted(unknown_jurisdiction_sources)),
+                )
+            )
         for position, path in enumerate(analysis.get("candidate_paths", [])):
             if path.get("actor_id") and path["actor_id"] not in actor_ids:
                 errors.append(_issue("unknown_actor", f"analyses.{analysis_name}.candidate_paths[{position}].actor_id", path["actor_id"]))
@@ -333,32 +390,60 @@ def validate_case_bundle(bundle: dict[str, Any], template_registry: dict[str, An
 
 
 def validate_case_dataset(root: Path | None = None) -> dict[str, Any]:
+    """Validate the formal JSON shape and all cross-record references before import."""
+
     dataset_root = root or DEMO_ROOT
-    index = _read_json(dataset_root / "index.json")
+    index = load_case_dataset_index(dataset_root)
+    index_schema_errors = _schema_issues(index, INDEX_SCHEMA_PATH)
+    safe_index = index if isinstance(index, dict) else {}
     template_registry = load_document_template_registry(dataset_root)
     template_validation = validate_document_template_registry(template_registry)
     results: list[dict[str, Any]] = []
-    errors: list[dict[str, str]] = []
+    errors: list[dict[str, str]] = list(index_schema_errors)
     seen_ids: set[str] = set()
     seen_codes: set[str] = set()
-    for position, item in enumerate(index.get("cases", [])):
+    seen_external_ids: set[str] = set()
+    cases = safe_index.get("cases", [])
+    if not isinstance(cases, list):
+        cases = []
+    for position, item in enumerate(cases):
+        if not isinstance(item, dict):
+            continue
         case_id = item.get("case_id")
         case_code = item.get("case_code")
-        if case_id in seen_ids or case_code in seen_codes:
-            errors.append(_issue("duplicate_case", f"cases[{position}]", f"duplicate case identity: {case_id}/{case_code}"))
+        external_case_id = item.get("external_case_id")
+        if case_id in seen_ids or case_code in seen_codes or external_case_id in seen_external_ids:
+            errors.append(
+                _issue(
+                    "duplicate_case",
+                    f"cases[{position}]",
+                    f"duplicate case identity: {case_id}/{case_code}/{external_case_id}",
+                )
+            )
             continue
         seen_ids.add(case_id)
         seen_codes.add(case_code)
+        seen_external_ids.add(external_case_id)
         bundle_path = dataset_root / str(item.get("bundle", ""))
         if not bundle_path.is_file():
             errors.append(_issue("bundle_missing", f"cases[{position}].bundle", str(bundle_path)))
             continue
         bundle = _read_json(bundle_path)
+        bundle_schema_errors = _schema_issues(bundle, BUNDLE_SCHEMA_PATH, str(item.get("bundle", "bundle")))
         if bundle.get("case_id") != case_id or bundle.get("case_code") != case_code:
             errors.append(_issue("index_identity_mismatch", f"cases[{position}]", str(bundle_path)))
-        results.append(validate_case_bundle(bundle, template_registry=template_registry))
+        semantic = validate_case_bundle(bundle, template_registry=template_registry)
+        semantic["external_case_id"] = external_case_id
+        semantic["schema_errors"] = bundle_schema_errors
+        semantic["errors"] = bundle_schema_errors + semantic["errors"]
+        semantic["valid"] = not semantic["errors"]
+        results.append(semantic)
     return {
         "valid": not errors and template_validation["valid"] and len(results) == 3 and all(item["valid"] for item in results),
+        "schema_version": safe_index.get("schema_version"),
+        "producer_id": safe_index.get("producer_id"),
+        "dataset_id": safe_index.get("dataset_id"),
+        "revision": safe_index.get("revision"),
         "errors": errors + template_validation["errors"],
         "cases": results,
         "document_templates": template_validation,

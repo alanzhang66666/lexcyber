@@ -55,6 +55,155 @@ def _first_evidence(
     return None
 
 
+MODULE_CONTENT_SCHEMA = "case.module.content.v1"
+
+
+def _str_list(values: Any) -> list[str]:
+    if not values:
+        return []
+    return [str(item) for item in values]
+
+
+def _alias(item: dict[str, Any], camel: str, snake: str) -> None:
+    if camel in item:
+        item[snake] = item[camel]
+
+
+def _fact_value(value: Any) -> str:
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return str(value)
+    return json.dumps(value, ensure_ascii=False, sort_keys=True)
+
+
+def _source_version_string(binding: Any) -> str | None:
+    if isinstance(binding, str) and binding.strip():
+        return binding
+    if binding is not None:
+        return json.dumps(binding, ensure_ascii=False, sort_keys=True)
+    return None
+
+
+def _project_jurisdiction_connections(bundle: Mapping[str, Any]) -> list[dict[str, Any]]:
+    connections: list[dict[str, Any]] = []
+    for item in bundle.get("jurisdiction_connections", []):
+        projected: dict[str, Any] = {
+            "connectionId": str(item["id"]),
+            "type": str(item.get("type", "")),
+            "value": str(item.get("value", "")),
+        }
+        if item.get("verification_status"):
+            projected["verificationStatus"] = str(item["verification_status"])
+            _alias(projected, "verificationStatus", "verification_status")
+        if item.get("evidence_ids"):
+            projected["evidenceIds"] = _str_list(item["evidence_ids"])
+            _alias(projected, "evidenceIds", "evidence_ids")
+        connections.append(projected)
+    return connections
+
+
+def _project_amounts(bundle: Mapping[str, Any]) -> list[dict[str, Any]]:
+    amounts: list[dict[str, Any]] = []
+    for item in bundle.get("amounts", []):
+        projected: dict[str, Any] = {
+            "id": str(item["id"]),
+            "kind": str(item.get("kind", "")),
+            "label": str(item.get("label", "")),
+            "value": item.get("value"),
+            "currency": str(item.get("currency") or "CNY"),
+        }
+        if item.get("verification_status"):
+            projected["verificationStatus"] = str(item["verification_status"])
+            _alias(projected, "verificationStatus", "verification_status")
+        projected["evidenceIds"] = _str_list(item.get("evidence_ids"))
+        _alias(projected, "evidenceIds", "evidence_ids")
+        if item.get("classification_status"):
+            projected["classificationStatus"] = str(item["classification_status"])
+            _alias(projected, "classificationStatus", "classification_status")
+        amounts.append(projected)
+    return amounts
+
+
+def _expand_module_facts(bundle: Mapping[str, Any], fact_ids: Any) -> list[dict[str, Any]]:
+    facts_by_id = {str(item["id"]): item for item in bundle.get("facts", [])}
+    expanded: list[dict[str, Any]] = []
+    for fact_id in fact_ids or []:
+        item = facts_by_id.get(str(fact_id))
+        if not item:
+            expanded.append({"id": str(fact_id)})
+            continue
+        projected: dict[str, Any] = {
+            "id": str(item["id"]),
+            "statement": _fact_value(item.get("value")),
+        }
+        if item.get("type"):
+            projected["type"] = str(item["type"])
+        if item.get("actor_id"):
+            projected["actorId"] = str(item["actor_id"])
+        if item.get("stage"):
+            projected["stage"] = str(item["stage"])
+        if item.get("verification_status"):
+            projected["verificationStatus"] = str(item["verification_status"])
+            _alias(projected, "verificationStatus", "verification_status")
+        projected["evidenceIds"] = _str_list(item.get("evidence_ids"))
+        _alias(projected, "evidenceIds", "evidence_ids")
+        expanded.append(projected)
+    return expanded
+
+
+def _project_candidate_paths(paths: Any) -> list[dict[str, Any]]:
+    projected_paths: list[dict[str, Any]] = []
+    for item in paths or []:
+        if not isinstance(item, Mapping):
+            continue
+        projected: dict[str, Any] = {
+            "id": str(item.get("id", "")),
+            "label": str(item.get("label") or item.get("title") or ""),
+        }
+        if item.get("actor_id"):
+            projected["actorId"] = str(item["actor_id"])
+        if item.get("baseline_position"):
+            projected["baselinePosition"] = str(item["baseline_position"])
+            _alias(projected, "baselinePosition", "baseline_position")
+        projected["supportingEvidenceIds"] = _str_list(item.get("supporting_evidence_ids"))
+        projected["contraryEvidenceIds"] = _str_list(item.get("contrary_evidence_ids"))
+        projected["legalSourceIds"] = _str_list(item.get("legal_source_ids"))
+        _alias(projected, "supportingEvidenceIds", "supporting_evidence_ids")
+        _alias(projected, "contraryEvidenceIds", "contrary_evidence_ids")
+        _alias(projected, "legalSourceIds", "legal_source_ids")
+        projected_paths.append(projected)
+    return projected_paths
+
+
+def _project_checklist(items: Any) -> list[dict[str, Any]]:
+    checklist: list[dict[str, Any]] = []
+    for item in items or []:
+        if not isinstance(item, Mapping):
+            continue
+        projected: dict[str, Any] = {
+            "category": str(item.get("category", "")),
+            "status": str(item.get("status", "")),
+        }
+        projected["evidenceIds"] = _str_list(item.get("evidence_ids") or item.get("evidenceIds"))
+        _alias(projected, "evidenceIds", "evidence_ids")
+        checklist.append(projected)
+    return checklist
+
+
+def _project_missing_items(bundle: Mapping[str, Any]) -> list[dict[str, Any]]:
+    missing: list[dict[str, Any]] = []
+    for item in bundle.get("missing_items", []):
+        missing.append(
+            {
+                "id": str(item.get("id", "")),
+                "severity": str(item.get("severity", "")),
+                "description": str(item.get("description", "")),
+            }
+        )
+    return missing
+
+
 def build_t1_case_create(
     bundle: Mapping[str, Any], document_id_map: Mapping[str, str] | None = None
 ) -> dict[str, Any]:
@@ -135,18 +284,8 @@ def build_t1_case_create(
             projected_account["jurisdiction"] = str(account["jurisdiction"])
         accounts.append(projected_account)
 
-    connections: list[dict[str, Any]] = []
-    for item in bundle.get("jurisdiction_connections", []):
-        projected_connection: dict[str, Any] = {
-            "connectionId": str(item["id"]),
-            "type": str(item.get("type", "")),
-            "value": str(item.get("value", "")),
-        }
-        if item.get("verification_status"):
-            projected_connection["verificationStatus"] = str(item["verification_status"])
-        if item.get("evidence_ids"):
-            projected_connection["evidenceIds"] = [str(value) for value in item["evidence_ids"]]
-        connections.append(projected_connection)
+    connections = _project_jurisdiction_connections(bundle)
+    amounts = _project_amounts(bundle)
 
     metadata: dict[str, Any] = {
         # PR5 froze datasetCaseId as the external A/B/C dataset key.
@@ -162,6 +301,8 @@ def build_t1_case_create(
             "jurisdictionConnections": connections,
         },
     }
+    if amounts:
+        metadata["amounts"] = amounts
     if bundle.get("source_version_binding") is not None:
         metadata["sourceVersionBinding"] = bundle.get("source_version_binding")
     procedure_stage = bundle.get("procedure_stage")
@@ -177,14 +318,6 @@ def build_t1_case_create(
         "asOfDate": str(bundle.get("analysis_as_of_date", "")),
         "metadata": metadata,
     }
-
-
-def _fact_value(value: Any) -> str:
-    if isinstance(value, str):
-        return value
-    if isinstance(value, (int, float)) and not isinstance(value, bool):
-        return str(value)
-    return json.dumps(value, ensure_ascii=False, sort_keys=True)
 
 
 def build_t1_fact_view(
@@ -255,27 +388,66 @@ def build_t1_fact_view(
 
 
 def build_t1_module_state(bundle: Mapping[str, Any], module: str, case_id: str) -> dict[str, Any]:
-    """Project one T3 analysis block into an opaque T1 module shell."""
+    """Project one T3 analysis block into frozen T1 module-shell content.
+
+    Content is still opaque to Java (not validated as law). Keys are the public
+    ``case.module.content.v1`` shape plus snake_case aliases T2 already reads.
+    """
 
     if module not in {"compliance", "conviction"}:
         raise T1ContractError(f"unsupported T1 module: {module}")
     if not case_id or case_id == bundle.get("case_id"):
         raise T1ContractError("case_id must be the server CaseView.id, not the T3 dataset case id")
     analysis = (bundle.get("analyses") or {}).get(module)
-    content = dict(analysis) if isinstance(analysis, Mapping) else {}
-    applicability = content.get("applicability") or "unknown"
+    analysis = dict(analysis) if isinstance(analysis, Mapping) else {}
+    applicability = analysis.get("applicability") or "unknown"
     binding = bundle.get("source_version_binding")
-    source_version = None
-    if isinstance(binding, str) and binding.strip():
-        source_version = binding
-    elif binding is not None:
-        source_version = json.dumps(binding, ensure_ascii=False, sort_keys=True)
+    content: dict[str, Any] = {
+        "schemaVersion": MODULE_CONTENT_SCHEMA,
+        "applicability": str(applicability),
+    }
+    if analysis.get("result_status"):
+        content["resultStatus"] = str(analysis["result_status"])
+        _alias(content, "resultStatus", "result_status")
+    if analysis.get("legal_review_status"):
+        content["legalReviewStatus"] = str(analysis["legal_review_status"])
+        _alias(content, "legalReviewStatus", "legal_review_status")
+    if analysis.get("note"):
+        content["note"] = str(analysis["note"])
+    facts = _expand_module_facts(bundle, analysis.get("facts"))
+    if facts:
+        content["facts"] = facts
+    paths = _project_candidate_paths(analysis.get("candidate_paths") or analysis.get("candidatePaths"))
+    if paths:
+        content["candidatePaths"] = paths
+        _alias(content, "candidatePaths", "candidate_paths")
+    checklist = _project_checklist(analysis.get("checklist"))
+    if checklist:
+        content["checklist"] = checklist
+    amounts = _project_amounts(bundle)
+    if amounts:
+        content["amounts"] = amounts
+    missing = _project_missing_items(bundle)
+    if missing:
+        content["missingItems"] = missing
+        _alias(content, "missingItems", "missing_items")
+    if analysis.get("jurisdiction_status"):
+        content["jurisdictionStatus"] = str(analysis["jurisdiction_status"])
+        _alias(content, "jurisdictionStatus", "jurisdiction_status")
+    if analysis.get("jurisdiction_source_ids"):
+        content["jurisdictionSourceIds"] = _str_list(analysis["jurisdiction_source_ids"])
+        _alias(content, "jurisdictionSourceIds", "jurisdiction_source_ids")
+    connections = _project_jurisdiction_connections(bundle)
+    if module == "conviction" and connections:
+        content["jurisdictionConnections"] = connections
+    if binding is not None:
+        content["sourceVersionBinding"] = binding
     return {
         "caseId": case_id,
         "module": module,
         "applicability": str(applicability),
         "content": content,
-        "sourceVersion": source_version,
+        "sourceVersion": _source_version_string(binding),
         "version": 0,
     }
 

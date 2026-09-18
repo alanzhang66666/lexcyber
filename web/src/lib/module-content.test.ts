@@ -77,6 +77,29 @@ describe('module-content 归一化', () => {
     expect(blockers[0].message).toBe('缺少数额')
   })
 
+  it('读取 T1 冻结的 camelCase 模块 content', () => {
+    const content = {
+      schemaVersion: 'case.module.content.v1',
+      candidatePaths: [
+        {
+          id: 'p1',
+          label: '帮信',
+          baselinePosition: 'selected',
+          supportingEvidenceIds: ['e1'],
+          contraryEvidenceIds: ['e2'],
+        },
+      ],
+      amounts: [{ kind: 'personal_profit', value: 30000, currency: 'CNY', verificationStatus: 'confirmed' }],
+      checklist: [{ category: '制度与岗位', status: 'formally_present', evidenceIds: ['ev-c-01'] }],
+      facts: [{ stage: 'pre_conduct', statement: '已建立审核制度', verificationStatus: 'confirmed' }],
+    }
+    expect(toCandidatePaths(content)[0].kind).toBe('candidate')
+    expect(toCandidatePaths(content)[0].supporting[0].id).toBe('e1')
+    expect(toAmounts(content)[0].value).toBe(30000)
+    expect(toComplianceChecklist(content)[0].evidenceIds).toEqual(['ev-c-01'])
+    expect(toAnalysisFacts(content)[0].status).toBe('confirmed')
+  })
+
   it('未知结构返回空数组，不抛错', () => {
     expect(toAnalysisFacts({})).toEqual([])
     expect(toCandidatePaths({})).toEqual([])

@@ -29,8 +29,12 @@ public class CaseReviewController {
     @PostMapping
     public ResponseEntity<Map<String, Object>> open(@PathVariable String caseId,
                                                     @Valid @RequestBody ReviewOpen request,
-                                                    @RequestHeader(value = "Authorization", required = false) String authorization) {
+                                                    @RequestHeader(value = "Authorization", required = false) String authorization,
+                                                    @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey) {
         AuthAccount account = auth.require(authorization);
-        return ResponseEntity.status(HttpStatus.CREATED).body(reviews.open(account.id(), caseId, request));
+        Map<String, Object> opened = idempotencyKey == null
+                ? reviews.open(account.id(), caseId, request)
+                : reviews.open(account.id(), caseId, request, idempotencyKey);
+        return ResponseEntity.status(HttpStatus.CREATED).body(opened);
     }
 }

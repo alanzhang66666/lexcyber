@@ -34,13 +34,29 @@ sources = search_legal_sources("2025掩隐解释", as_of_date="2026-09-18")
 sentencing_result = calculate_case_sentencing(case_b, "actor-b-huang")
 ```
 
-也可直接运行 `python scripts/validate_three_case_demo.py` 输出完整校验报告；结构或引用错误时退出码为 1，法学待核项保留为 warnings。
+也可直接运行 `python scripts/validate_three_case_demo.py` 输出完整校验报告；导入契约由
+`contracts/schemas/collaboration-case-index.schema.json` 和
+`contracts/schemas/collaboration-case-bundle.schema.json` 冻结。验证顺序是 JSON Schema、跨文件身份与引用、法学门闩；任一步失败时退出码为 1，法学待核项保留为 warnings。
 
-联调上传真实材料时，使用：
+索引必须提供稳定的 `producer_id`、`dataset_id`、`revision` 和每案 `external_case_id`。其中
+`producer_id + external_case_id` 是协作身份，`dataset_id + revision` 是本次交付版本；不得使用标题、文件名或数组位置推导身份。
+
+联调上传真实材料前，先设置固定账号（不得依赖随机注册）：
 
 ```powershell
+$env:LEXCYBER_USERNAME = "<local import account>"
+$env:LEXCYBER_PASSWORD = "<local password>"
 python scripts/import_three_case_demo.py --docs-dir "F:\1项目\111量刑预测"
 ```
+
+首次有意创建该固定账号时额外传 `--register-account`。凭据只放环境变量，不写 checkpoint 或仓库。
+
+导入器在任何网络写入前校验全部数据包、材料存在性和实际 SHA-256。它把恢复状态原子写入
+`.t1-three-case-import.checkpoint.json`，记录外部案件/材料到 Java ID 的映射，但不保存 token 或密码；重复运行会核对服务器现状并从最后完成步骤继续。同一 checkpoint 绑定 base URL、用户名、producer、dataset、revision 和数据摘要，任一变化都会拒绝复用。可用 `--checkpoint <path>` 为不同目标分离状态。
+
+已有旧版三案数据只有 `datasetCaseId + t3BundleId`，没有新的协作身份。默认导入会停止而不是重复建案；确认目标无歧义后，可一次性用 `--adopt-legacy` 将唯一旧案件写入本地 checkpoint。案件创建、材料上传和复核开单都使用稳定 `Idempotency-Key`，Java 通过 Flyway V10 持久绑定请求内容与返回资源；同一身份在请求响应丢失或多客户端并发时会重放同一资源，不会重复创建。
+
+缺材料时导入失败并列出缺失的 `case_material`，不会默默上传 `.t1-smoke-input.docx`。本地冒烟才加 `--allow-placeholder`；占位文件会在报告中明确标识，不能作为实际交付。
 
 导入器只上传 `case_material`，不会把法学标注或终版说明当作案件证据。由于公开上传接口只接受 PDF/DOCX，运行前应确认根目录存在 `042输入材料新(1).docx`；原 `.doc` 仅用于来源追溯。
 

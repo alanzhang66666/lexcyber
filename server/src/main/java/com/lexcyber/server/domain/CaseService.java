@@ -2,6 +2,7 @@ package com.lexcyber.server.domain;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import com.lexcyber.server.api.ApiException;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -23,16 +24,30 @@ import org.springframework.transaction.annotation.Transactional;
 public class CaseService {
     private final JdbcTemplate jdbc;
     private final ObjectMapper objectMapper;
+    private final ObjectMapper canonicalObjectMapper;
 
     public CaseService(JdbcTemplate jdbc, ObjectMapper objectMapper) {
         this.jdbc = jdbc;
         this.objectMapper = objectMapper;
+        this.canonicalObjectMapper = objectMapper.copy()
+                .enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS);
     }
 
     @Transactional
     public CaseView create(UUID ownerAccountId, CaseCreate request) {
+        return create(ownerAccountId, request, null);
+    }
+
+    @Transactional
+    public CaseView create(UUID ownerAccountId, CaseCreate request, String idempotencyKey) {
         String title = request.title().trim();
         Map<String, Object> metadata = request.metadata() == null ? Map.of() : request.metadata();
+        String key = normalizeIdempotencyKey(idempotencyKey);
+        String requestHash = key == null ? null : caseRequestHash(request, metadata);
+        if (key != null) {
+            CaseView replay = claimCaseIdempotency(ownerAccountId, key, requestHash);
+            if (replay != null) return replay;
+        }
         DuplicateKeyException last = null;
         for (int attempt = 0; attempt < 3; attempt++) {
             String id = DocumentPolicies.newCaseId();
@@ -42,6 +57,12 @@ public class CaseService {
                         VALUES (?, ?, ?, ?, ?, ?::jsonb)
                         """,
                         id, ownerAccountId, title, request.jurisdiction(), request.asOfDate(), writeJson(metadata));
+                if (key != null) {
+                    jdbc.update("""
+                            UPDATE app.case_create_idempotency SET case_id = ?
+                            WHERE account_id = ? AND idempotency_key = ? AND request_hash = ?
+                            """, id, ownerAccountId, key, requestHash);
+                }
                 return requireOwned(ownerAccountId, id);
             } catch (DuplicateKeyException duplicate) {
                 last = duplicate;
@@ -155,6 +176,49 @@ public class CaseService {
                 parseMap(rs.getString("metadata_json")),
                 rs.getObject("created_at", OffsetDateTime.class),
                 rs.getObject("updated_at", OffsetDateTime.class));
+    }
+
+    private CaseView claimCaseIdempotency(UUID ownerAccountId, String key, String requestHash) {
+        jdbc.update("""
+                INSERT INTO app.case_create_idempotency(account_id, idempotency_key, request_hash, case_id)
+                VALUES (?, ?, ?, NULL)
+                ON CONFLICT (account_id, idempotency_key) DO NOTHING
+                """, ownerAccountId, key, requestHash);
+        Map<String, Object> row = jdbc.queryForMap("""
+                SELECT request_hash, case_id
+                FROM app.case_create_idempotency
+                WHERE account_id = ? AND idempotency_key = ?
+                FOR UPDATE
+                """, ownerAccountId, key);
+        if (!requestHash.equals(String.valueOf(row.get("request_hash")))) {
+            throw new ApiException(HttpStatus.CONFLICT, "IDEMPOTENCY_CONFLICT",
+                    "相同幂等键已用于不同案件内容");
+        }
+        Object caseId = row.get("case_id");
+        return caseId == null ? null : requireOwned(ownerAccountId, String.valueOf(caseId));
+    }
+
+    private String caseRequestHash(CaseCreate request, Map<String, Object> metadata) {
+        Map<String, Object> canonical = new LinkedHashMap<>();
+        canonical.put("title", request.title().trim());
+        canonical.put("jurisdiction", request.jurisdiction());
+        canonical.put("asOfDate", request.asOfDate());
+        canonical.put("metadata", metadata);
+        try {
+            String json = canonicalObjectMapper.writeValueAsString(canonical);
+            return DocumentPolicies.sha256Hex(json.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        } catch (JsonProcessingException ex) {
+            throw new IllegalStateException("unable to hash case request", ex);
+        }
+    }
+
+    private static String normalizeIdempotencyKey(String value) {
+        if (value == null || value.isBlank()) return null;
+        String key = value.trim();
+        if (key.length() > 128) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", "Idempotency-Key is too long");
+        }
+        return key;
     }
 
     private Map<String, Object> parseMap(String json) {
