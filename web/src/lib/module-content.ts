@@ -6,6 +6,8 @@ import type {
   CandidatePathKind,
   ComplianceChecklistItem,
   EvidenceRef,
+  JurisdictionConnection,
+  MissingItem,
   ModuleApplicability,
   SentencingParameter,
   SentencingResult,
@@ -159,6 +161,43 @@ export function toComplianceChecklist(content: Rec): ComplianceChecklistItem[] {
   }).filter((item) => item.category)
 }
 
+/** 管辖连接点（定罪模块）：T3 `jurisdiction_connections` 投影，含域外连接点专用核验状态。 */
+export function toJurisdictionConnections(content: Rec): JurisdictionConnection[] {
+  const raw = pick(content, ['jurisdictionConnections', 'jurisdiction_connections'])
+  if (raw === undefined) return []
+  return asArray(raw).flatMap((item): JurisdictionConnection[] => {
+    if (!isRecord(item)) return []
+    return [{
+      connectionId: str(pick(item, ['connectionId', 'connection_id', 'id'])),
+      type: str(pick(item, ['type', 'connection_type', 'connectionType'])),
+      value: str(pick(item, ['value', 'label', 'description'])),
+      status: statusOf(pick(item, ['verificationStatus', 'verification_status', 'status']))
+        ?? str(pick(item, ['verificationStatus', 'verification_status']))
+        ?? null,
+      evidenceIds: asArray(pick(item, ['evidenceIds', 'evidence_ids']))
+        .map((v) => str(v))
+        .filter((v): v is string => Boolean(v)),
+    }]
+  }).filter((item) => item.connectionId || item.value)
+}
+
+/** 缺失事实/待确认项：T3 `missing_items` 投影。 */
+export function toMissingItems(content: Rec): MissingItem[] {
+  const raw = pick(content, ['missingItems', 'missing_items'])
+  if (raw === undefined) return []
+  return asArray(raw).flatMap((item): MissingItem[] => {
+    if (!isRecord(item)) {
+      const text = str(item)
+      return text ? [{ description: text }] : []
+    }
+    return [{
+      id: str(pick(item, ['id', 'item_id', 'itemId'])),
+      severity: str(pick(item, ['severity', 'level', 'priority'])),
+      description: str(pick(item, ['description', 'text', 'label', 'detail'])),
+    }]
+  }).filter((item) => item.description)
+}
+
 /** 量刑 blocked 时的阻断项。 */
 export function toBlockers(content: Rec): Blocker[] {
   const raw = pick(content, ['blockers', 'blocking_issues', 'blockingIssues', 'blocks'])
@@ -196,6 +235,121 @@ export function toSentencing(content: Rec): SentencingResult {
     steps,
     interval: str(pick(content, ['interval', 'range', 'sentence_range', 'sentenceRange', 'recommended_range'])) ?? null,
     missing,
+    amounts: toAmounts(content),
+    blockers: toBlockers(content),
+  }
+}
+
+/** T1 `sentencing.calculate` 结果里的刑种英文枚举（Engine mapped content 原样值）。 */
+const TERM_KIND_LABEL: Record<string, string> = {
+  detention: '拘役',
+  fixed_term_imprisonment: '有期徒刑',
+  life_imprisonment: '无期徒刑',
+  public_surveillance: '管制',
+  criminal_detention: '拘役',
+}
+
+function termKindLabel(v: unknown): string | undefined {
+  const s = str(v)
+  if (!s) return undefined
+  return TERM_KIND_LABEL[s] ?? s
+}
+
+function monthsText(v: unknown): string | undefined {
+  const n = num(v)
+  if (n === null) return undefined
+  return `${n} 个月`
+}
+
+function moneyText(v: unknown): string | undefined {
+  const n = num(v)
+  if (n === null) return undefined
+  return `${n} 元`
+}
+
+function rangeText(v: unknown, unit: '个月' | '元'): string | undefined {
+  if (!Array.isArray(v) || v.length < 2) return undefined
+  const lo = num(v[0])
+  const hi = num(v[1])
+  if (lo === null || hi === null) return undefined
+  return `${lo} — ${hi} ${unit}`
+}
+
+function formatTermInterval(content: Rec): string | null {
+  const single = monthsText(pick(content, ['termMonths', 'term_months']))
+  if (single) {
+    return single
+  }
+  const range = pick(content, ['termRangeMonths', 'term_range_months'])
+  if (Array.isArray(range) && range.length >= 2) {
+    const lo = num(range[0])
+    const hi = num(range[1])
+    if (lo !== null && hi !== null) {
+      const loKind = termKindLabel(pick(content, ['termLowerKind', 'term_lower_kind']))
+      const hiKind = termKindLabel(pick(content, ['termUpperKind', 'term_upper_kind']))
+      const loText = loKind ? `${loKind} ${lo} 个月` : `${lo} 个月`
+      const hiText = hiKind ? `${hiKind} ${hi} 个月` : `${hi} 个月`
+      return `${loText} — ${hiText}`
+    }
+  }
+  return null
+}
+
+function formatFineInterval(content: Rec): string | null {
+  const single = moneyText(pick(content, ['fine', 'fineCny', 'fine_cny']))
+  if (single) return `罚金 ${single}`
+  const range = rangeText(pick(content, ['fineRangeCny', 'fine_range_cny']), '元')
+  return range ? `罚金 ${range}` : null
+}
+
+/**
+ * T1 `sentencing.calculate` 任务结果归一化。
+ * 输入是 `GET /v1/tasks/{id}/result` 的 `content`（Engine `map_sentencing_result_to_t1` 输出，
+ * camelCase）。blocked 时 `analysisStatus === 'blocked'` 且只有阻断项可信；calculated 时
+ * 刑期/罚金均为法学负责人已复核的宣告口径重放，不重新计算。
+ */
+export function toSentencingTaskResult(content: Rec): SentencingResult {
+  const snapshot = pick(content, ['inputSnapshot', 'input_snapshot'])
+  const parameters = isRecord(snapshot)
+    ? Object.entries(snapshot).map(([name, value]): SentencingParameter => ({
+        name,
+        value: typeof value === 'string' ? value : JSON.stringify(value),
+      }))
+    : []
+
+  const steps = asArray(pick(content, ['steps'])).flatMap((item): SentencingStep[] => {
+    if (!isRecord(item)) return []
+    const operation = str(pick(item, ['operation']))
+    const id = str(pick(item, ['id']))
+    const label = [id, operation].filter(Boolean).join(' · ') || undefined
+    const sources = asArray(pick(item, ['source_ids', 'sourceIds'])).map((v) => str(v)).filter(Boolean)
+    const before = monthsText(pick(item, ['before_months', 'beforeMonths']))
+    const after = monthsText(pick(item, ['after_months', 'afterMonths']))
+    const delta = num(pick(item, ['delta_months', 'deltaMonths']))
+    const replayValue = str(pick(item, ['value']))
+    const direction = str(pick(item, ['direction']))
+    let value: string | undefined
+    if (before && after) value = `${before} → ${after}`
+    else if (after) value = after
+    else if (delta !== null) value = `${delta > 0 ? '+' : ''}${delta} 个月`
+    else if (replayValue) value = `${replayValue}${direction ? `（${direction}）` : ''}`
+    return [{ label, detail: sources.length ? sources.join('、') : undefined, value }]
+  })
+
+  const warnings = asArray(pick(content, ['warnings'])).map((item) =>
+    typeof item === 'string' ? item : JSON.stringify(item),
+  ).filter(Boolean)
+
+  const intervalParts = [formatTermInterval(content), formatFineInterval(content)].filter(Boolean)
+  const recovery = moneyText(pick(content, ['recoveryCny', 'recovery_cny']))
+  if (recovery) intervalParts.push(`追缴 ${recovery}`)
+
+  return {
+    ruleVersion: str(pick(content, ['ruleVersion', 'rule_version'])) ?? null,
+    parameters,
+    steps,
+    interval: intervalParts.length ? intervalParts.join('；') : null,
+    missing: warnings,
     amounts: toAmounts(content),
     blockers: toBlockers(content),
   }

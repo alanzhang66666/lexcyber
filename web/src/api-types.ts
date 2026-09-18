@@ -390,6 +390,23 @@ export type ComplianceChecklistItem = {
   evidenceIds?: string[]
 }
 
+/** 管辖连接点：T3 `jurisdiction_connections[]` 投影，原样展示类型/值/核验状态。 */
+export type JurisdictionConnection = {
+  connectionId?: string | null
+  type?: string | null
+  value?: string | null
+  /** 允许域外专用状态（如 `not_required_for_cn_criminal_jurisdiction`），不限于五值核验枚举。 */
+  status?: string | null
+  evidenceIds?: string[]
+}
+
+/** 缺失事实/待确认项：T3 `missing_items[]` 投影，原样展示，不推断结论。 */
+export type MissingItem = {
+  id?: string | null
+  severity?: string | null
+  description?: string | null
+}
+
 /** 单条金额口径：标签 + 数值 + 币种 + 证据定位 + 确认状态。 */
 export type AmountEntry = {
   kind: AmountKind
@@ -429,4 +446,95 @@ export type SentencingResult = {
   missing?: string[]
   amounts?: AmountEntry[]
   blockers?: Blocker[]
+}
+
+/* ── 协作导入（case-import.v1；独立于 MVP 演示链路）── */
+
+export type ImportBatchStatus =
+  | 'uploading'
+  | 'uploaded'
+  | 'validating'
+  | 'validation_failed'
+  | 'diff_ready'
+  | 'review_required'
+  | 'approved'
+  | 'applying'
+  | 'partially_completed'
+  | 'completed'
+  | 'failed'
+
+export type ImportStepStatus = 'pending' | 'running' | 'completed' | 'failed' | 'skipped'
+
+export type ImportItemStatus =
+  | 'pending'
+  | 'validating'
+  | 'invalid'
+  | 'diff_ready'
+  | 'review_required'
+  | 'approved'
+  | 'applying'
+  | 'applied'
+  | 'no_op'
+  | 'conflict'
+  | 'failed'
+
+export type ImportStep = {
+  stepKey: string
+  attempt: number
+  status: ImportStepStatus
+  error?: Record<string, unknown> | null
+  startedAt?: string | null
+  finishedAt?: string | null
+}
+
+export type ImportBatch = {
+  id: string
+  status: ImportBatchStatus
+  originalFilename: string
+  contentType: string
+  sizeBytes: number
+  rawSha256: string
+  createdAt: string
+  updatedAt: string
+  schemaVersion?: string | null
+  packageId?: string | null
+  producerId?: string | null
+  datasetId?: string | null
+  revision?: string | null
+  packageDigest?: string | null
+  error?: Record<string, unknown> | null
+  approvedAt?: string | null
+  startedAt?: string | null
+  completedAt?: string | null
+}
+
+export type ImportItem = {
+  id: string
+  ordinal: number
+  itemId: string
+  externalCaseId: string
+  status: ImportItemStatus
+  payloadPath: string
+  payloadSha256: string
+  steps: ImportStep[]
+  createdAt: string
+  updatedAt: string
+  caseId?: string | null
+  diff?: { action?: 'create' | 'no_op' | 'conflict'; [key: string]: unknown } | null
+  error?: Record<string, unknown> | null
+  completedAt?: string | null
+}
+
+export type PageImportBatch = {
+  items: ImportBatch[]
+  page: number
+  size: number
+  total: number
+}
+
+export type PageImportItem = {
+  items: ImportItem[]
+  page: number
+  size: number
+  total: number
 }

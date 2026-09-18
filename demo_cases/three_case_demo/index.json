@@ -1,10 +1,27 @@
 {
   "schema_version": "lexcyber.demo-index.v1",
+  "producer_id": "lexcyber-three-case-demo",
   "dataset_id": "lexcyber-three-case-demo-2026-09-18",
+  "revision": "2026-09-18.1",
   "legal_review_status": "partial_approval",
   "cases": [
-    {"case_id": "demo-case-a-helping", "case_code": "A", "bundle": "case-a-helping.json"},
-    {"case_id": "demo-case-b-proceeds", "case_code": "B", "bundle": "case-b-proceeds.json"},
-    {"case_id": "demo-case-c-unit-crossborder", "case_code": "C", "bundle": "case-c-unit-crossborder.json"}
+    {
+      "case_id": "demo-case-a-helping",
+      "case_code": "A",
+      "external_case_id": "demo-case-a-helping",
+      "bundle": "case-a-helping.json"
+    },
+    {
+      "case_id": "demo-case-b-proceeds",
+      "case_code": "B",
+      "external_case_id": "demo-case-b-proceeds",
+      "bundle": "case-b-proceeds.json"
+    },
+    {
+      "case_id": "demo-case-c-unit-crossborder",
+      "case_code": "C",
+      "external_case_id": "demo-case-c-unit-crossborder",
+      "bundle": "case-c-unit-crossborder.json"
+    }
   ]
 }

@@ -404,15 +404,74 @@ def test_t1_fact_view_uses_server_ids_and_projects_item_verification_status():
     assert payload["status"] != "confirmed"
 
 
-def test_t1_module_state_puts_analysis_block_in_opaque_content():
+def test_t1_module_state_freezes_compliance_content_shape():
     payload = build_t1_module_state(load_case_bundle("C"), "compliance", "case-server-c")
     assert payload["caseId"] == "case-server-c"
     assert payload["version"] == 0
     assert payload["applicability"] == "applicable"
-    assert payload["content"]["applicability"] == "applicable"
+    content = payload["content"]
+    assert content["schemaVersion"] == "case.module.content.v1"
+    assert content["applicability"] == "applicable"
+    assert content["checklist"]
+    assert content["checklist"][0]["evidenceIds"]
+    assert content["checklist"][0]["evidence_ids"] == content["checklist"][0]["evidenceIds"]
+    assert "facts" not in content
+    assert content["amounts"]
+    assert {item["kind"] for item in content["amounts"]} == {"crime_proceeds", "personal_profit"}
+    assert content["missingItems"]
+    assert "candidatePaths" not in content
     assert payload["sourceVersion"]
     with pytest.raises(T1ContractError, match="server CaseView.id"):
         build_t1_module_state(load_case_bundle("C"), "conviction", "demo-case-c-unit-crossborder")
+
+
+def test_t1_module_state_expands_compliance_fact_ids():
+    content = build_t1_module_state(load_case_bundle("A"), "compliance", "case-server-a")["content"]
+    assert {item["id"] for item in content["facts"]} == {
+        "fact-a-controls",
+        "fact-a-company-no-knowledge",
+        "fact-a-remediation",
+    }
+    assert all(item.get("statement") for item in content["facts"])
+    assert content["facts"][0]["verificationStatus"]
+
+
+def test_t1_module_state_projects_conviction_paths_and_jurisdiction():
+    payload = build_t1_module_state(load_case_bundle("C"), "conviction", "case-server-c")
+    content = payload["content"]
+    assert content["schemaVersion"] == "case.module.content.v1"
+    assert content["candidatePaths"]
+    helping = next(item for item in content["candidatePaths"] if item["id"] == "path-c-company-helping")
+    assert helping["baselinePosition"] == "selected"
+    assert helping["supportingEvidenceIds"]
+    assert helping["contraryEvidenceIds"]
+    assert content["candidate_paths"] is content["candidatePaths"]
+    assert content["jurisdictionConnections"]
+    assert content["jurisdictionStatus"]
+    assert content["amounts"]
+    assert "applicability" not in load_case_bundle("C")["analyses"]["conviction"]
+    assert payload["applicability"] == "unknown"
+
+
+def test_t1_case_create_and_facts_expose_amounts_without_graph_tables():
+    created = build_t1_case_create(load_case_bundle("A"))
+    amounts = created["metadata"]["amounts"]
+    assert {item["id"] for item in amounts} == {
+        "amount-a-equipment-revenue",
+        "amount-a-personal-profit",
+        "amount-a-upstream-loss",
+    }
+    assert {item["kind"] for item in amounts} == {"non_crime_flow", "personal_profit", "crime_amount"}
+    facts = build_t1_fact_view(
+        load_case_bundle("A"),
+        case_id="case-server-a",
+        document_id_map={"doc-a-input": "doc-server-a"},
+        item_ids=["amount-a-personal-profit"],
+    )
+    item = facts["items"][0]
+    assert item["id"] == "amount-a-personal-profit"
+    assert item["key"] == "personal_profit"
+    assert item["value"] == "30000"
 
 
 def test_t1_fact_confirmation_requires_explicit_human_confirmed_selection():

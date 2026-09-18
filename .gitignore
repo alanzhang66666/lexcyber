@@ -17,6 +17,7 @@ data/
 logs/
 target/
 .t1-*
+.tmp-*
 .pr-body-*
 技术分工*
 docs/local-*

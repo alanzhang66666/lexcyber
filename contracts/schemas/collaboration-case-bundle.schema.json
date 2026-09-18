@@ -1,0 +1,179 @@
+{
+  "title": "LexCyber collaboration case bundle",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["schema_version", "case_id", "case_code", "title", "jurisdiction", "analysis_as_of_date", "documents", "actors", "evidence", "facts", "events", "analyses"],
+  "properties": {
+    "schema_version": { "const": "lexcyber.case-bundle.v1" },
+    "case_id": { "$ref": "#/$defs/stableId" },
+    "case_code": { "type": "string", "minLength": 1, "maxLength": 32 },
+    "title": { "type": "string", "minLength": 1, "maxLength": 500 },
+    "jurisdiction": { "type": "string", "minLength": 1, "maxLength": 32 },
+    "analysis_as_of_date": { "type": "string", "format": "date" },
+    "documents": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/document" } },
+    "actors": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/actor" } },
+    "accounts": { "type": "array", "items": { "$ref": "#/$defs/account" } },
+    "relationships": { "type": "array", "items": { "$ref": "#/$defs/relationship" } },
+    "jurisdiction_connections": { "type": "array", "items": { "$ref": "#/$defs/jurisdictionConnection" } },
+    "evidence": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/evidence" } },
+    "facts": { "type": "array", "items": { "$ref": "#/$defs/fact" } },
+    "events": { "type": "array", "items": { "$ref": "#/$defs/event" } },
+    "amounts": { "type": "array", "items": { "$ref": "#/$defs/amount" } },
+    "legal_source_ids": { "type": "array", "items": { "$ref": "#/$defs/stableId" }, "uniqueItems": true },
+    "source_version_binding": { "type": "object" },
+    "analyses": {
+      "type": "object",
+      "required": ["compliance", "conviction"],
+      "properties": { "compliance": { "type": "object" }, "conviction": { "type": "object" } },
+      "additionalProperties": { "type": "object" }
+    },
+    "sentencing": { "type": "object" },
+    "document_fields": { "type": "object" },
+    "missing_items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "severity", "description"],
+        "properties": {
+          "id": { "$ref": "#/$defs/stableId" },
+          "severity": { "enum": ["warning", "blocking"] },
+          "description": { "type": "string", "minLength": 1 }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "$defs": {
+    "stableId": { "type": "string", "minLength": 1, "maxLength": 200, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$" },
+    "idList": { "type": "array", "items": { "$ref": "#/$defs/stableId" }, "uniqueItems": true },
+    "verificationStatus": { "enum": ["candidate", "baseline_asserted", "confirmed", "rejected", "conflicted"] },
+    "document": {
+      "type": "object",
+      "required": ["id", "role", "title", "archive_entry", "sha256", "source_version"],
+      "properties": {
+        "id": { "$ref": "#/$defs/stableId" },
+        "role": { "enum": ["case_material", "benchmark_annotation", "legal_review_summary"] },
+        "title": { "type": "string", "minLength": 1 },
+        "archive_entry": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?![A-Za-z]:)(?!.*(?:^|[\\\\/])\\.\\.(?:[\\\\/]|$)).+\\.(pdf|docx)$"
+        },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "source_version": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": true
+    },
+    "actor": {
+      "type": "object",
+      "required": ["id", "type", "name", "role"],
+      "properties": {
+        "id": { "$ref": "#/$defs/stableId" },
+        "type": { "enum": ["person", "organization", "group"] },
+        "name": { "type": "string", "minLength": 1 },
+        "role": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": true
+    },
+    "account": {
+      "type": "object",
+      "required": ["id", "type"],
+      "properties": {
+        "id": { "$ref": "#/$defs/stableId" },
+        "type": { "type": "string", "minLength": 1 },
+        "controller_ids": { "$ref": "#/$defs/idList" },
+        "actor_ids": { "$ref": "#/$defs/idList" },
+        "jurisdiction": { "type": "string" }
+      },
+      "anyOf": [{ "required": ["controller_ids"] }, { "required": ["actor_ids"] }],
+      "additionalProperties": true
+    },
+    "relationship": {
+      "type": "object",
+      "required": ["from_id", "to_id", "type"],
+      "properties": {
+        "from_id": { "$ref": "#/$defs/stableId" },
+        "to_id": { "$ref": "#/$defs/stableId" },
+        "type": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": true
+    },
+    "locator": {
+      "type": "object",
+      "properties": {
+        "page": { "type": ["integer", "string"] },
+        "paragraph": { "type": ["integer", "string"] },
+        "start": { "type": ["integer", "string"] },
+        "end": { "type": ["integer", "string"] }
+      },
+      "anyOf": [{ "required": ["page"] }, { "required": ["paragraph"] }, { "required": ["start"] }, { "required": ["end"] }],
+      "additionalProperties": true
+    },
+    "evidence": {
+      "type": "object",
+      "required": ["id", "type", "label", "document_id", "locator"],
+      "properties": {
+        "id": { "$ref": "#/$defs/stableId" },
+        "type": { "type": "string", "minLength": 1 },
+        "label": { "type": "string", "minLength": 1 },
+        "document_id": { "$ref": "#/$defs/stableId" },
+        "locator": { "$ref": "#/$defs/locator" }
+      },
+      "additionalProperties": true
+    },
+    "fact": {
+      "type": "object",
+      "required": ["id", "type", "value", "verification_status", "evidence_ids"],
+      "properties": {
+        "id": { "$ref": "#/$defs/stableId" },
+        "type": { "type": "string", "minLength": 1 },
+        "actor_id": { "$ref": "#/$defs/stableId" },
+        "stage": { "type": "string" },
+        "verification_status": { "$ref": "#/$defs/verificationStatus" },
+        "evidence_ids": { "$ref": "#/$defs/idList" }
+      },
+      "additionalProperties": true
+    },
+    "event": {
+      "type": "object",
+      "required": ["id", "date", "stage", "description", "actor_id", "fact_ids"],
+      "properties": {
+        "id": { "$ref": "#/$defs/stableId" },
+        "date": { "type": "string", "minLength": 1 },
+        "stage": { "type": "string", "minLength": 1 },
+        "description": { "type": "string", "minLength": 1 },
+        "actor_id": { "$ref": "#/$defs/stableId" },
+        "fact_ids": { "$ref": "#/$defs/idList" }
+      },
+      "additionalProperties": true
+    },
+    "amount": {
+      "type": "object",
+      "required": ["id", "kind", "label", "value", "currency", "verification_status", "evidence_ids"],
+      "properties": {
+        "id": { "$ref": "#/$defs/stableId" },
+        "kind": { "type": "string", "minLength": 1 },
+        "label": { "type": "string", "minLength": 1 },
+        "value": { "type": "number", "minimum": 0 },
+        "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+        "verification_status": { "$ref": "#/$defs/verificationStatus" },
+        "evidence_ids": { "$ref": "#/$defs/idList" }
+      },
+      "additionalProperties": true
+    },
+    "jurisdictionConnection": {
+      "type": "object",
+      "required": ["id", "type", "value", "verification_status", "evidence_ids"],
+      "properties": {
+        "id": { "$ref": "#/$defs/stableId" },
+        "type": { "type": "string", "minLength": 1 },
+        "value": { "type": "string", "minLength": 1 },
+        "verification_status": {
+          "enum": ["candidate", "baseline_asserted", "confirmed", "rejected", "conflicted", "not_required_for_cn_criminal_jurisdiction"]
+        },
+        "evidence_ids": { "$ref": "#/$defs/idList" }
+      },
+      "additionalProperties": true
+    }
+  }
+}

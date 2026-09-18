@@ -9,6 +9,7 @@ tags:
   - name: auth
   - name: tasks
   - name: cases
+  - name: imports
   - name: reviews
   - name: sources
 paths:
@@ -72,6 +73,125 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/SessionView' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+  /imports:
+    post:
+      tags: [imports]
+      summary: Upload an immutable case-import.v1 ZIP package
+      operationId: createImport
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary, description: ZIP transport profile, maximum 50 MB. }
+      responses:
+        '201': { description: Raw package retained; validation has not run., content: { application/json: { schema: { $ref: '#/components/schemas/ImportBatch' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+    get:
+      tags: [imports]
+      summary: List import batches owned by the current account
+      operationId: listImports
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200': { description: Import batches., content: { application/json: { schema: { $ref: '#/components/schemas/PageImportBatch' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /imports/{importId}:
+    get:
+      tags: [imports]
+      summary: Read one owned import batch
+      operationId: getImport
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ImportId'
+      responses:
+        '200': { description: Import batch., content: { application/json: { schema: { $ref: '#/components/schemas/ImportBatch' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /imports/{importId}/items:
+    get:
+      tags: [imports]
+      summary: Read staged items, diffs, errors and durable steps
+      operationId: listImportItems
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ImportId'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200': { description: Staged import items., content: { application/json: { schema: { $ref: '#/components/schemas/PageImportItem' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /imports/{importId}/validate:
+    post:
+      tags: [imports]
+      summary: Validate the retained package and prepare create/no-op/conflict diffs
+      operationId: validateImport
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ImportId'
+      responses:
+        '200': { description: Validation completed or recorded as validation_failed., content: { application/json: { schema: { $ref: '#/components/schemas/ImportBatch' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+  /imports/{importId}/approve:
+    post:
+      tags: [imports]
+      summary: Approve a conflict-free prepared diff for application
+      operationId: approveImport
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ImportId'
+      responses:
+        '200': { description: Import approved by the current account., content: { application/json: { schema: { $ref: '#/components/schemas/ImportBatch' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /imports/{importId}/apply:
+    post:
+      tags: [imports]
+      summary: Apply approved create/no-op items through durable idempotent steps
+      operationId: applyImport
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ImportId'
+      responses:
+        '200': { description: 'Apply completed, partially completed, or failed with item details.', content: { application/json: { schema: { $ref: '#/components/schemas/ImportBatch' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /imports/{importId}/retry:
+    post:
+      tags: [imports]
+      summary: Retry validation failures or failed apply steps without replaying completed resources
+      operationId: retryImport
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ImportId'
+      responses:
+        '200': { description: Retry completed with the current batch state., content: { application/json: { schema: { $ref: '#/components/schemas/ImportBatch' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /cases:
     post:
       tags: [cases]
@@ -79,6 +199,8 @@ paths:
       operationId: createCase
       security:
         - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
@@ -92,6 +214,7 @@ paths:
               schema: { $ref: '#/components/schemas/CaseView' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
     get:
       tags: [cases]
       summary: List cases owned by the current account
@@ -336,6 +459,7 @@ paths:
         - bearerAuth: []
       parameters:
         - $ref: '#/components/parameters/CaseId'
+        - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
@@ -697,6 +821,11 @@ paths:
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
 components:
   parameters:
+    ImportId:
+      name: importId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
     TaskId:
       name: taskId
       in: path
@@ -729,6 +858,9 @@ components:
       name: Idempotency-Key
       in: header
       required: false
+      description: >
+        Stable retry key for case creation, document upload, and case review creation.
+        Reusing a key with different request content returns 409 IDEMPOTENCY_CONFLICT.
       schema: { type: string, minLength: 1, maxLength: 128 }
   responses:
     BadRequest:
@@ -746,6 +878,9 @@ components:
     UnsupportedMediaType:
       description: Uploaded file type is not supported.
       content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } }
+    PayloadTooLarge:
+      description: Uploaded package exceeds the 50 MB API transport profile.
+      content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } }
     ServiceUnavailable:
       description: Object storage or a dependent service is unavailable.
       content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } }
@@ -757,6 +892,80 @@ components:
       type: http
       scheme: bearer
   schemas:
+    ImportBatch:
+      type: object
+      required: [id, status, originalFilename, contentType, sizeBytes, rawSha256, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        status:
+          type: string
+          enum: [uploading, uploaded, validating, validation_failed, diff_ready, review_required, approved, applying, partially_completed, completed, failed]
+        schemaVersion: { type: string }
+        packageId: { type: string }
+        producerId: { type: string }
+        datasetId: { type: string }
+        revision: { type: string }
+        packageDigest: { type: string, pattern: '^[0-9a-f]{64}$' }
+        originalFilename: { type: string }
+        contentType: { type: string }
+        sizeBytes: { type: integer, format: int64 }
+        rawSha256: { type: string, pattern: '^[0-9a-f]{64}$' }
+        error: { type: object, additionalProperties: true }
+        approvedAt: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        startedAt: { type: string, format: date-time }
+        completedAt: { type: string, format: date-time }
+    ImportStep:
+      type: object
+      required: [stepKey, attempt, status]
+      properties:
+        stepKey: { type: string }
+        attempt: { type: integer, minimum: 0 }
+        status: { type: string, enum: [pending, running, completed, failed, skipped] }
+        error: { type: object, additionalProperties: true }
+        startedAt: { type: string, format: date-time }
+        finishedAt: { type: string, format: date-time }
+    ImportItem:
+      type: object
+      required: [id, ordinal, itemId, externalCaseId, status, payloadPath, payloadSha256, steps, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        ordinal: { type: integer, minimum: 0 }
+        itemId: { type: string }
+        externalCaseId: { type: string }
+        status:
+          type: string
+          enum: [pending, validating, invalid, diff_ready, review_required, approved, applying, applied, no_op, conflict, failed]
+        caseId: { type: string }
+        payloadPath: { type: string }
+        payloadSha256: { type: string, pattern: '^[0-9a-f]{64}$' }
+        diff:
+          type: object
+          additionalProperties: true
+          properties:
+            action: { type: string, enum: [create, no_op, conflict] }
+        error: { type: object, additionalProperties: true }
+        steps: { type: array, items: { $ref: '#/components/schemas/ImportStep' } }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        completedAt: { type: string, format: date-time }
+    PageImportBatch:
+      type: object
+      required: [items, page, size, total]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/ImportBatch' } }
+        page: { type: integer }
+        size: { type: integer }
+        total: { type: integer, format: int64 }
+    PageImportItem:
+      type: object
+      required: [items, page, size, total]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/ImportItem' } }
+        page: { type: integer }
+        size: { type: integer }
+        total: { type: integer, format: int64 }
     AuthRegister:
       type: object
       required: [username, password]
@@ -790,7 +999,9 @@ components:
           additionalProperties: true
           description: >
             Opaque case bag. Three-case actor/organization/account/event relations
-            go in metadata.relations (see docs/t1-api-01-increment.md). No graph tables this round.
+            go in metadata.relations; amount kinds in metadata.amounts; jurisdiction
+            connection points in metadata.relations.jurisdictionConnections
+            (see docs/t1-api-01-increment.md). No graph tables this round.
     CaseView:
       type: object
       required: [id, title, createdAt, updatedAt]
@@ -873,7 +1084,13 @@ components:
       required: [key, value]
       properties:
         id: { type: string, description: Stable factId. Server assigns a UUID when omitted. }
-        key: { type: string }
+        key:
+          type: string
+          description: >
+            Fact type, or amount kind when the item is projected from bundle amounts
+            (account_total_flow, fraud_related_inflow, payment_settlement, crime_amount,
+            criminal_proceeds, personal_participation, personal_profit, restitution,
+            non_crime_flow, unclassified_amount).
         value: { type: string }
         locator: { type: string }
         sourceDocumentId: { type: string }
@@ -938,7 +1155,11 @@ components:
         content:
           type: object
           additionalProperties: true
-          description: Opaque object. Not validated as law.
+          description: >
+            Opaque object, not validated as law. Import projection uses
+            schemaVersion case.module.content.v1 with candidatePaths, facts,
+            checklist, amounts, missingItems, jurisdictionConnections, and
+            sourceVersionBinding. Snake_case aliases are also written for T2.
         sourceVersion: { type: string }
         version: { type: integer, minimum: 0, description: Must match the current ModuleStateView.version. Empty shells are 0. }
     ModuleStateView:
@@ -954,6 +1175,7 @@ components:
         content:
           type: object
           additionalProperties: true
+          description: Echo of ModuleStateUpdate.content; frozen import shape is case.module.content.v1.
         sourceVersion: { type: string }
         factsUpdatedAt: { type: string, format: date-time }
         factsStale: { type: boolean }

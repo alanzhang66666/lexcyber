@@ -14,6 +14,7 @@ const result = ref<ResultPayload | null>(null)
 const comment = ref('')
 const loading = ref(true)
 const deciding = ref<'approve' | 'reject' | ''>('')
+const archiving = ref(false)
 const error = ref('')
 const success = ref('')
 const versionConflict = computed(() => Boolean(
@@ -59,6 +60,21 @@ async function decide(decision: 'approve' | 'reject') {
       : caught instanceof Error ? caught.message : '复核决定提交失败。'
   } finally {
     deciding.value = ''
+  }
+}
+
+async function archive() {
+  if (!review.value) return
+  archiving.value = true
+  error.value = ''
+  success.value = ''
+  try {
+    review.value = await api.archiveReview(review.value.id)
+    success.value = '已归档。该记录保留决定留痕，不再出现在未归档队列中。'
+  } catch (caught) {
+    error.value = caught instanceof Error ? caught.message : '归档失败。'
+  } finally {
+    archiving.value = false
   }
 }
 
@@ -136,6 +152,15 @@ onMounted(() => void load())
           </button>
         </div>
         <div v-else class="notice"><strong>复核已经结束</strong><span>决定：{{ review.decision }}<template v-if="review.actor"> · 操作人：{{ review.actor }}</template></span></div>
+        <div v-if="review.status !== 'pending'" class="archive-row">
+          <template v-if="review.archiveStatus !== 'archived'">
+            <small>归档后将保留决定留痕，并从默认队列视图中收起。</small>
+            <button class="button button-quiet" type="button" :disabled="archiving" @click="archive">
+              {{ archiving ? '正在归档…' : '归档此复核记录' }}
+            </button>
+          </template>
+          <small v-else>此记录已归档，留痕可在归档视图中查看。</small>
+        </div>
       </aside>
     </section>
   </div>
@@ -146,5 +171,17 @@ onMounted(() => void load())
   display: flex;
   align-items: center;
   gap: 8px;
+}
+.archive-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--lc-border, #e5e7eb);
+}
+.archive-row small {
+  color: var(--lc-muted, #6b7280);
 }
 </style>

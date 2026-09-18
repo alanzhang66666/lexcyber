@@ -2,7 +2,9 @@ package com.lexcyber.server.review;
 
 import com.lexcyber.server.api.ApiException;
 import com.lexcyber.server.domain.CaseService;
+import com.lexcyber.server.domain.DocumentPolicies;
 import com.lexcyber.server.domain.ModulePolicies;
+import java.nio.charset.StandardCharsets;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -123,6 +125,11 @@ public class ReviewService {
 
     @Transactional
     public Map<String, Object> open(UUID ownerAccountId, String caseId, ReviewOpen request) {
+        return open(ownerAccountId, caseId, request, null);
+    }
+
+    @Transactional
+    public Map<String, Object> open(UUID ownerAccountId, String caseId, ReviewOpen request, String idempotencyKey) {
         cases.lockOwned(ownerAccountId, caseId);
         String module = ModulePolicies.requireReviewModule(request.module());
         UUID taskId = request.taskId();
@@ -131,6 +138,12 @@ public class ReviewService {
         if (taskId == null && draftId == null && moduleState == null) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_REQUEST",
                     "review needs taskId, draftId, or moduleState");
+        }
+        String key = normalizeIdempotencyKey(idempotencyKey);
+        String requestHash = key == null ? null : reviewRequestHash(request);
+        if (key != null) {
+            Map<String, Object> replay = claimReviewIdempotency(ownerAccountId, caseId, key, requestHash);
+            if (replay != null) return replay;
         }
 
         Integer draftVersion = request.draftVersion();
@@ -220,6 +233,12 @@ public class ReviewService {
                 INSERT INTO app.business_audit(actor, action, resource_type, resource_id, payload_json)
                 VALUES (?, 'review.open', 'review', ?, jsonb_build_object('caseId', ?, 'module', ?, 'resultVersion', ?))
                 """, "account:" + ownerAccountId, reviewId.toString(), caseId, module, resultVersion);
+        if (key != null) {
+            jdbc.update("""
+                    UPDATE app.review_open_idempotency SET review_id = ?
+                    WHERE account_id = ? AND case_id = ? AND idempotency_key = ? AND request_hash = ?
+                    """, reviewId, ownerAccountId, caseId, key, requestHash);
+        }
         return requireOwned(ownerAccountId, reviewId);
     }
 
@@ -267,6 +286,57 @@ public class ReviewService {
                     """, actor, decision, reviewId.toString(), taskId.toString(), requestId.toString(), executionId.toString(), resultVersion);
         }
         return requireOwned(ownerAccountId, reviewId);
+    }
+
+    private Map<String, Object> claimReviewIdempotency(UUID ownerAccountId, String caseId,
+                                                        String key, String requestHash) {
+        jdbc.update("""
+                INSERT INTO app.review_open_idempotency(
+                    account_id, case_id, idempotency_key, request_hash, review_id)
+                VALUES (?, ?, ?, ?, NULL)
+                ON CONFLICT (account_id, case_id, idempotency_key) DO NOTHING
+                """, ownerAccountId, caseId, key, requestHash);
+        Map<String, Object> row = jdbc.queryForMap("""
+                SELECT request_hash, review_id
+                FROM app.review_open_idempotency
+                WHERE account_id = ? AND case_id = ? AND idempotency_key = ?
+                FOR UPDATE
+                """, ownerAccountId, caseId, key);
+        if (!requestHash.equals(String.valueOf(row.get("request_hash")))) {
+            throw new ApiException(HttpStatus.CONFLICT, "IDEMPOTENCY_CONFLICT",
+                    "相同幂等键已用于不同复核内容");
+        }
+        Object reviewId = row.get("review_id");
+        if (reviewId == null) return null;
+        UUID resolved = reviewId instanceof UUID uuid ? uuid : UUID.fromString(String.valueOf(reviewId));
+        return requireOwned(ownerAccountId, resolved);
+    }
+
+    private static String reviewRequestHash(ReviewOpen request) {
+        StringBuilder canonical = new StringBuilder();
+        appendHashPart(canonical, request.module());
+        appendHashPart(canonical, request.draftId());
+        appendHashPart(canonical, request.draftVersion());
+        appendHashPart(canonical, request.moduleState());
+        appendHashPart(canonical, request.moduleVersion());
+        appendHashPart(canonical, request.resultVersion());
+        appendHashPart(canonical, request.taskId());
+        appendHashPart(canonical, request.returnTarget());
+        return DocumentPolicies.sha256Hex(canonical.toString().getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static void appendHashPart(StringBuilder target, Object value) {
+        String part = value == null ? "" : String.valueOf(value);
+        target.append(part.length()).append(':').append(part).append(';');
+    }
+
+    private static String normalizeIdempotencyKey(String value) {
+        if (value == null || value.isBlank()) return null;
+        String key = value.trim();
+        if (key.length() > 128) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", "Idempotency-Key is too long");
+        }
+        return key;
     }
 
     private void requireLiveTarget(Map<String, Object> current) {

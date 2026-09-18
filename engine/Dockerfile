@@ -18,6 +18,7 @@ COPY skill_runtime skill_runtime
 COPY skills skills
 COPY storage storage
 COPY tools tools
+COPY demo_cases demo_cases
 RUN pip install --no-cache-dir .
 EXPOSE 8100
 CMD ["uvicorn", "engine.run_api_v03:app", "--host", "0.0.0.0", "--port", "8100"]

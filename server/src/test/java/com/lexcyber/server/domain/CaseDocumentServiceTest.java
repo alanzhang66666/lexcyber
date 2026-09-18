@@ -1,6 +1,7 @@
 package com.lexcyber.server.domain;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -21,7 +22,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.containers.PostgreSQLContainer;
 
 class CaseDocumentServiceTest {
@@ -131,6 +134,23 @@ class CaseDocumentServiceTest {
                 alice, created.id(), "b.docx", DocumentPolicies.DOCX, "other-bytes".getBytes(), "input", "key-1"));
         assertEquals(HttpStatus.CONFLICT, conflict.status());
         assertEquals("IDEMPOTENCY_CONFLICT", conflict.code());
+    }
+
+    @Test
+    void uploadCleansStoredObjectWhenEnclosingTransactionRollsBack() {
+        CaseView created = cases.create(alice, new CaseCreate("rollback", "CN", null, Map.of()));
+        byte[] bytes = "rollback-body".getBytes();
+        DataSourceTransactionManager transactionManager = new DataSourceTransactionManager(dataSource());
+        TransactionTemplate transactions = new TransactionTemplate(transactionManager);
+        java.util.concurrent.atomic.AtomicReference<String> key = new java.util.concurrent.atomic.AtomicReference<>();
+        transactions.executeWithoutResult(status -> {
+            DocumentView staged = documents.upload(alice, created.id(), "staged.docx", DocumentPolicies.DOCX,
+                    bytes, "input", null);
+            key.set(DocumentPolicies.storageKey(created.id(), staged.id(), DocumentPolicies.sha256Hex(bytes)));
+            status.setRollbackOnly();
+        });
+        assertTrue(key.get() != null && !key.get().isBlank());
+        assertFalse(storage.contains(key.get()));
     }
 
     @Test

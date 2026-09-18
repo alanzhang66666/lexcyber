@@ -33,9 +33,13 @@ public class CaseController {
 
     @PostMapping
     public ResponseEntity<CaseView> create(@Valid @RequestBody CaseCreate request,
-                                           @RequestHeader(value = "Authorization", required = false) String authorization) {
+                                           @RequestHeader(value = "Authorization", required = false) String authorization,
+                                           @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey) {
         AuthAccount account = auth.require(authorization);
-        return ResponseEntity.status(HttpStatus.CREATED).body(cases.create(account.id(), request));
+        CaseView created = idempotencyKey == null
+                ? cases.create(account.id(), request)
+                : cases.create(account.id(), request, idempotencyKey);
+        return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
     @GetMapping

@@ -15,6 +15,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Service
 public class DocumentService {
@@ -65,6 +67,20 @@ public class DocumentService {
         String documentId = allocateDocumentId();
         String storageKey = DocumentPolicies.storageKey(caseId, documentId, sha256);
         storage.put(storageKey, data, resolvedType);
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCompletion(int status) {
+                    if (status == TransactionSynchronization.STATUS_ROLLED_BACK) {
+                        try {
+                            storage.delete(storageKey);
+                        } catch (RuntimeException deleteError) {
+                            log.warn("failed to delete object {} after upload rollback", storageKey, deleteError);
+                        }
+                    }
+                }
+            });
+        }
         try {
             Map<String, Object> metadata = new LinkedHashMap<>();
             metadata.put("taskType", "document.parse");

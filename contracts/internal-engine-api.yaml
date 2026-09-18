@@ -42,6 +42,21 @@ paths:
       responses:
         '200': { description: Accepted idempotently. }
         '409': { description: Result content or execution association conflict. }
+  /internal/v1/imports/validate:
+    post:
+      summary: Validate a retained case-import.v1 package and return a normalized application plan
+      security: [{ serviceToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ImportPackageValidationRequest' }
+      responses:
+        '200':
+          description: Validation result; invalid package details are returned with valid=false.
+          content: { application/json: { schema: { $ref: '#/components/schemas/ImportPackageValidationResponse' } } }
+        '401': { description: Invalid service token. }
+        '503': { description: Object storage is unavailable. }
   /internal/v1/sources/search:
     post:
       summary: Search legal sources without using the public sample corpus
@@ -96,6 +111,25 @@ components:
         result_ref: { type: object, nullable: true, additionalProperties: true }
         input_hash: { type: string, nullable: true }
         enqueued_at: { type: string, format: date-time, nullable: true }
+    ImportPackageValidationRequest:
+      type: object
+      required: [storage_key, raw_sha256]
+      properties:
+        storage_key: { type: string, minLength: 1, maxLength: 1000 }
+        raw_sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
+    ImportPackageValidationResponse:
+      type: object
+      required: [valid, items, errors]
+      properties:
+        valid: { type: boolean }
+        schema_version: { type: string, nullable: true }
+        package_id: { type: string, nullable: true }
+        producer_id: { type: string, nullable: true }
+        dataset_id: { type: string, nullable: true }
+        revision: { type: string, nullable: true }
+        package_digest: { type: string, nullable: true }
+        items: { type: array, items: { type: object, additionalProperties: true } }
+        errors: { type: array, items: { type: object, additionalProperties: true } }
     SourceSearchRequest:
       type: object
       required: [query]
