@@ -48,6 +48,10 @@ docker load -i /opt/lexcyber-demo-images.tar
 docker compose --env-file .env.v03 -f docker-compose.yml -f deploy/docker-compose.demo-cloud.yml up -d
 curl http://127.0.0.1:18080/healthz   # {"status":"ok",...}
 
+# 关键：把仓库当前 engine 代码 + demo_cases 注入容器 site-packages
+#（镜像内 pip 安装的 engine 包可能是旧版，缺 replay 分支与演示数据）
+bash deploy/fix_engine_runtime.sh
+
 # 备料 + 导入 + 恢复演示态（需 python3）
 python3 deploy/stage_materials.py --src 法学材料 --out .tmp-legal-docs
 LEXCYBER_USERNAME=demo_owner LEXCYBER_PASSWORD='<新密码>' \
@@ -82,4 +86,12 @@ swapoff /swapfile && rm /swapfile   # 如需还原
 - 裸 HTTP 明文，仅适合限时演示；长期对外要走域名+ICP+HTTPS
 - 单账号 `trusted-header` 模型：知道密码的人看到的都是 demo_owner 视角
 - `demo_restore.py` 依赖 `.t1-three-case-import.checkpoint.json` 取 caseId 映射（同目录下自动生成）
-- 若 ECS 上 engine/worker 行为异常：检查容器内 site-packages 的代码版本（本项目曾出现镜像层旧代码问题，`docker exec ... grep -c reviewed_disposition /usr/local/lib/python3.12/site-packages/engine/adapters/sentencing.py` 应为 2）
+- **必须跑 `fix_engine_runtime.sh`**：engine/worker 可能从 `/app/engine` 或 `site-packages/engine` 解析代码（取决于启动上下文），脚本两处都注入新代码 + `demo_cases`，跳过它量刑任务会走旧路径产出 blocker 或报文件缺失
+
+## 已实测（本机彩排 2026-09-19）
+
+完整走通 `down -v → up -d（叠加本 override）→ fix_engine_runtime → stage_materials → import → demo_restore`：
+- nginx `ports` 必须用 `!override`（compose 对列表是合并语义，直接写会产生双重绑定）
+- 标注文件上传的文件名必须 UTF-8 原样写入 multipart 头，不能 percent-encode
+- Docker Desktop 重启后 `unless-stopped` 策略正常拉起全栈
+- 终态：6 条 pending 复核（3 定罪 v2 + 3 量刑 replay 结果）

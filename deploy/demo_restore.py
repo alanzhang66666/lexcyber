@@ -45,11 +45,12 @@ def req(base: str, path: str, method: str = "GET", body=None, token: str | None 
     if form:
         file_bytes, filename, ctype, role = form
         bnd = uuid.uuid4().hex
+        # 文件名按 UTF-8 原样写入 multipart 头（服务端不解码 %xx；quote() 会留下编码后的丑文件名）
         data = (
             f"--{bnd}\r\nContent-Disposition: form-data; name=\"role\"\r\n\r\n{role}\r\n"
-            f"--{bnd}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{urllib.parse.quote(filename)}\"\r\n"
+            f"--{bnd}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{filename}\"\r\n"
             f"Content-Type: {ctype}\r\n\r\n"
-        ).encode() + file_bytes + f"\r\n--{bnd}--\r\n".encode()
+        ).encode("utf-8") + file_bytes + f"\r\n--{bnd}--\r\n".encode()
         r.add_header("Content-Type", f"multipart/form-data; boundary={bnd}")
     elif body is not None:
         data = json.dumps(body, ensure_ascii=False).encode()

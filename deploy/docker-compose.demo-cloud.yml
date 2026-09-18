@@ -5,7 +5,9 @@ name: lexcyber-v03
 
 services:
   nginx:
-    ports: ["0.0.0.0:18080:8080"]   # 放开公网（安全组放 18080，建议限观众 IP）
+    # !override：compose 的 ports 列表默认与基础文件“合并”，必须显式覆盖，
+    # 否则会同时尝试 127.0.0.1:18080 和 0.0.0.0:18080 两个绑定
+    ports: !override ["0.0.0.0:18080:8080"]
     restart: unless-stopped
 
   web:
