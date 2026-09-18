@@ -103,6 +103,23 @@
 
 当前 pending 复核队列：3 定罪（v2）+ 2 量刑 = 5 条，与重置前演示态一致。
 
+## 7.5 法学结论核对（2026-09-19 法口头径）
+
+法学给出的正式结论与 bundle 数据**逐条核对一致**，且已在重建后的演示库上实测可复现：
+
+| 法学结论 | bundle 编码 | 运行实测 |
+| --- | --- | --- |
+| A：28万=A公司经营性销售收入，非犯罪所得/非冯某个人违法所得 | `non_crime_flow` + `confirmed_not_payment_settlement_or_crime_proceeds` | 已确认展示 |
+| A：冯某3万=个人违法所得 | `personal_profit` + `confirmed_personal_illegal_gain` | 已确认展示 |
+| A：96万=上游诈骗犯罪金额/被害人损失 | `crime_amount` + `confirmed_upstream_crime_amount_and_victim_loss` | 已确认展示 |
+| B：009刑期以法学标注为准，拘役4月~有期徒刑8月，罚金3000–10000 | `term_range_months:[4,8]`、`detention→fixed_term_imprisonment`、`fine:[3000,10000]`、`confirmed_by_legal_owner` | actor-b-huang 任务 `reviewed_disposition_replay` 复现（5 步留痕，0 blocker） |
+| C：11.8万=单位帮信违法所得（项目服务收入），非支付结算金额 | `crime_proceeds` + `confirmed_unlawful_income_not_payment_settlement` | 已确认展示 |
+| C：9.8万⊂11.8万不重复评价 | `included_in_amount_id` + `confirmed_component_of_service_fee` | 已确认展示 |
+| C：2万=技术人员个人违法所得 | `personal_profit` + `personal_illegal_gain_not_company_addition` | 已确认展示 |
+| C：境内连接点足以确认中国刑事管辖权，境外连接点不追查 | 7 条境内 `confirmed` + 7 条境外 `not_required_for_cn_criminal_jurisdiction`（value 原文即此口径） | 定罪页 05 段已接线展示 |
+
+**数据无需修订**——bundle 即按此口径构建。当前 pending 复核队列：3 定罪 v2 + 3 量刑（A/B/C 各一）= 6 条。
+
 ## 8. 遗留环境注意
 
 - Engine/Web/Java 镜像均为"离线拼装"（docker cp 代码 + 本地 dist/jar），**`docker compose up --build` 在有网环境才可全新构建**；`engine/Dockerfile` 的 `COPY demo_cases` 修复已入库但镜像未重建
