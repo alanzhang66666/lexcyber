@@ -59,7 +59,7 @@ def test_benchmark_annotation_does_not_count_as_case_evidence():
     warning_codes = {item["code"] for item in result["warnings"]}
     case_material_ids = {item["id"] for item in bundle["documents"] if item["role"] == "case_material"}
     assert {item["document_id"] for item in bundle["evidence"]} <= case_material_ids
-    assert "sentencing_not_approved" in warning_codes
+    assert "sentencing_not_approved" not in warning_codes
 
 
 def test_case_b_includes_case_042_and_keeps_original_and_adapted_outcomes_distinct():
@@ -80,9 +80,127 @@ def test_case_b_includes_case_042_and_keeps_original_and_adapted_outcomes_distin
     assert paths["path-b-chen-helping"]["baseline_position"] == "original_source_outcome_not_selected_in_adaptation"
 
     chen = next(item for item in bundle["sentencing"]["actor_baselines"] if item["actor_id"] == "actor-b-chen")
-    assert chen["benchmark_disposition"]["nature"] == "adapted_annotation_only_not_actual_judgment_or_calculated_result"
+    assert chen["benchmark_disposition"]["nature"] == "adapted_legal_reviewed_declared_disposition_replayed_not_actual_judgment"
     assert chen["original_source_disposition"]["offence"] == "帮助信息网络犯罪活动罪"
     assert "missing-b-01" not in {item["id"] for item in bundle["missing_items"]}
+
+
+def test_round3_review_summary_is_registered_for_all_cases():
+    expected_hash = "b1b3c027e11f939cb6bb7541d50bfb7d6460de07a5d45fc1e0cc822c2c49a9d9"
+    for case_code in ("A", "B", "C"):
+        bundle = load_case_bundle(case_code)
+        review_summary_id = f"doc-{case_code.lower()}-review-summary-round3"
+        documents = {item["id"]: item for item in bundle["documents"]}
+        assert bundle["legal_review"]["review_summary"] == review_summary_id
+        assert review_summary_id in bundle["legal_review"]["reviewed_sources"]
+        assert documents[review_summary_id]["sha256"] == expected_hash
+        assert documents[review_summary_id]["role"] == "legal_review_summary"
+
+
+def test_case_a_reviewed_amount_classifications_are_resolved():
+    bundle = load_case_bundle("A")
+    facts = {item["id"]: item for item in bundle["facts"]}
+    amounts = {item["id"]: item for item in bundle["amounts"]}
+    assert facts["fact-a-payment-settlement-classification"]["verification_status"] == "confirmed"
+    assert amounts["amount-a-equipment-revenue"]["kind"] == "non_crime_flow"
+    assert amounts["amount-a-personal-profit"]["kind"] == "personal_profit"
+    assert amounts["amount-a-upstream-loss"]["kind"] == "crime_amount"
+    assert "missing-a-01" not in {item["id"] for item in bundle["missing_items"]}
+
+
+def test_case_b_009_reviewed_range_is_replayed_without_synthetic_arithmetic():
+    bundle = load_case_bundle("B")
+    baseline = next(item for item in bundle["sentencing"]["actor_baselines"] if item["actor_id"] == "actor-b-huang")
+    disposition = baseline["benchmark_disposition"]
+    assert baseline["legal_review_status"] == "approved"
+    assert disposition["term_range_months"] == [4, 8]
+    assert disposition["term_lower_kind"] == "detention"
+    assert disposition["term_upper_kind"] == "fixed_term_imprisonment"
+    assert disposition["fine_range_cny"] == [3000, 10000]
+    assert "missing-b-02" not in {item["id"] for item in bundle["missing_items"]}
+
+    result = calculate_case_sentencing(bundle, "actor-b-huang")
+    assert result["status"] == "calculated"
+    assert result["calculation_mode"] == "reviewed_disposition_replay"
+    assert result["term_range_months"] == [4, 8]
+    assert result["fine_range_cny"] == [3000, 10000]
+    assert result["blockers"] == []
+    declared = result["reviewed_rule_outline"]["declared_disposition"]
+    assert declared["term_range_months"] == disposition["term_range_months"]
+    assert declared["fine_range_cny"] == disposition["fine_range_cny"]
+
+
+def test_section_six_reviewed_dispositions_are_registered_and_replayed():
+    expected_actors = {
+        "A": {"actor-a-feng"},
+        "B": {"actor-b-huang", "actor-b-chen"},
+        "C": {"actor-c-company", "actor-c-jia", "actor-c-yi"},
+    }
+    for case_code, actor_ids in expected_actors.items():
+        bundle = load_case_bundle(case_code)
+        baselines = {item["actor_id"]: item for item in bundle["sentencing"]["actor_baselines"]}
+        assert set(baselines) == actor_ids
+        for actor_id, baseline in baselines.items():
+            rule = baseline["calculation_rule"]
+            assert rule["rule_type"] == "reviewed_disposition"
+            assert rule["rule_version"].startswith("review-summary-section-6-")
+            assert rule["legal_review_status"] == "approved"
+            assert rule["source_document_id"] == f"doc-{case_code.lower()}-review-summary-round3"
+            assert rule["source_section"].startswith("六、各主体量刑规则")
+            assert rule["declared_disposition"]
+            assert "execution_blockers" not in rule
+
+            result = calculate_case_sentencing(bundle, actor_id)
+            assert result["status"] == "calculated"
+            assert result["calculation_mode"] == "reviewed_disposition_replay"
+            assert result["blockers"] == []
+            assert result["reviewed_rule_outline"]["declared_disposition"] == rule["declared_disposition"]
+
+
+def test_section_six_exact_and_fine_only_dispositions_are_supported():
+    case_b = load_case_bundle("B")
+    chen = calculate_case_sentencing(case_b, "actor-b-chen")
+    assert chen["status"] == "calculated"
+    assert chen["term_months"] == 27
+    assert chen["fine"] == 10000
+    assert chen["recovery_cny"] == 6409
+
+    case_c = load_case_bundle("C")
+    company = calculate_case_sentencing(case_c, "actor-c-company")
+    assert company["status"] == "calculated"
+    assert company["term_months"] is None
+    assert company["fine_range_cny"] == [30000, 80000]
+
+
+def test_case_c_reviewed_amounts_avoid_double_counting_and_jurisdiction_is_resolved():
+    bundle = load_case_bundle("C")
+    amounts = {item["id"]: item for item in bundle["amounts"]}
+    assert amounts["amount-c-service-fee"]["value"] == 118000
+    assert amounts["amount-c-service-fee"]["kind"] == "crime_proceeds"
+    assert amounts["amount-c-company-receipt"]["value"] == 98000
+    assert amounts["amount-c-company-receipt"]["included_in_amount_id"] == "amount-c-service-fee"
+    assert amounts["amount-c-project-bonus"]["value"] == 20000
+    assert amounts["amount-c-project-bonus"]["kind"] == "personal_profit"
+    for baseline in bundle["sentencing"]["actor_baselines"]:
+        assert "amount-c-service-fee" in baseline["amount_ids"]
+        assert "amount-c-company-receipt" not in baseline["amount_ids"]
+        assert "amount-c-project-bonus" not in baseline["amount_ids"]
+
+    conviction = bundle["analyses"]["conviction"]
+    assert conviction["jurisdiction_status"] == "confirmed_cn_criminal_jurisdiction_foreign_details_not_required"
+    foreign_connections = [
+        item
+        for item in bundle["jurisdiction_connections"]
+        if item["verification_status"] != "confirmed"
+    ]
+    assert len(foreign_connections) == 7
+    assert all(
+        item["verification_status"] == "not_required_for_cn_criminal_jurisdiction"
+        for item in foreign_connections
+    )
+    missing_ids = {item["id"] for item in bundle["missing_items"]}
+    assert "missing-c-01" not in missing_ids
+    assert "missing-c-02" not in missing_ids
 
 
 def test_source_search_is_version_and_date_aware():
@@ -108,9 +226,23 @@ def test_source_search_fails_clearly_outside_three_case_coverage():
     assert result["documents"] == []
 
 
-def test_case_sentencing_is_blocked_until_legal_approval():
-    bundle = load_case_bundle("B")
-    result = calculate_case_sentencing(bundle, "actor-b-huang")
+def test_case_sentencing_still_fails_closed_for_an_unapproved_rule():
+    result = calculate_sentencing(
+        {
+            "case_id": "test-unapproved",
+            "actor_id": "actor-test",
+            "parameters": [
+                {"id": "amount", "value": 1, "verification_status": "confirmed", "evidence_ids": ["ev-test"]}
+            ],
+            "rule": {
+                "rule_type": "reviewed_disposition",
+                "rule_version": "pending-v1",
+                "legal_review_status": "pending",
+                "source_ids": ["source-test"],
+                "declared_disposition": {"term_months": 1},
+            },
+        }
+    )
     assert result["status"] == "blocked"
     assert result["term_months"] is None
     assert "rule_not_approved" in {item["code"] for item in result["blockers"]}
@@ -211,7 +343,7 @@ def test_fact_extractor_normalizes_chinese_amounts_without_promoting_them_to_con
 def test_t1_case_create_keeps_server_case_id_unassigned_and_splits_organizations():
     payload = build_t1_case_create(load_case_bundle("C"))
     assert "caseId" not in payload
-    assert payload["asOfDate"] == "2026-09-17"
+    assert payload["asOfDate"] == "2026-09-18"
     assert payload["metadata"]["datasetCaseId"] == "C"
     assert payload["metadata"]["t3BundleId"] == "demo-case-c-unit-crossborder"
     relations = payload["metadata"]["relations"]
@@ -297,20 +429,25 @@ def test_t1_fact_confirmation_requires_explicit_human_confirmed_selection():
     assert confirmed["status"] == "confirmed"
     with pytest.raises(T1ContractError, match="cannot confirm unconfirmed"):
         build_t1_fact_view(
-            bundle,
-            case_id="case-server-a",
-            document_id_map={"doc-a-input": "doc-server-a"},
+            load_case_bundle("B"),
+            case_id="case-server-b",
+            document_id_map={"doc-b-042-input": "doc-server-b"},
             status="confirmed",
-            item_ids=["fact-a-payment-settlement-classification"],
+            item_ids=["fact-b-042-knowledge"],
         )
 
 
-def test_t1_mapping_keeps_blocked_inside_content_and_uses_waiting_review_task_status():
+def test_t1_mapping_preserves_reviewed_range_and_uses_waiting_review_task_status():
     result = calculate_case_sentencing(load_case_bundle("B"), "actor-b-huang")
     payload = map_sentencing_result_to_t1(result, case_id="case-server-b", dataset_case_id="B")
     assert payload["taskStatus"] == "waiting_review"
-    assert payload["content"]["analysisStatus"] == "blocked"
+    assert payload["content"]["analysisStatus"] == "calculated"
+    assert payload["content"]["calculationMode"] == "reviewed_disposition_replay"
     assert payload["content"]["caseId"] == "case-server-b"
     assert payload["content"]["datasetCaseId"] == "B"
     assert payload["content"]["t3BundleId"] == "demo-case-b-proceeds"
+    assert payload["content"]["reviewedRuleOutline"]["declared_disposition"]["term_range_months"] == [4, 8]
+    assert payload["content"]["termRangeMonths"] == [4, 8]
+    assert payload["content"]["fineRangeCny"] == [3000, 10000]
+    assert payload["content"]["blockers"] == []
     assert "status" not in payload["content"]

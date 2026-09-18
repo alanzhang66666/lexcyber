@@ -26,6 +26,23 @@ class SentencingInputError(ValueError):
         return {"code": self.code, "path": self.path, "message": self.message, "retryable": False}
 
 
+def _reviewed_rule_outline(rule: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: rule[key]
+        for key in (
+            "source_document_id",
+            "source_section",
+            "source_pages",
+            "base_range_months",
+            "base_months_approximate",
+            "base_derivation",
+            "adjustments",
+            "declared_disposition",
+        )
+        if key in rule
+    }
+
+
 def _decimal(value: Any, path: str, blockers: list[dict[str, str]]) -> Decimal | None:
     try:
         parsed = Decimal(str(value))
@@ -44,8 +61,9 @@ def _blocked(
     *,
     case_id: str | None = None,
     actor_id: str | None = None,
+    rule: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    return {
+    result = {
         "status": "blocked",
         "case_id": case_id,
         "actor_id": actor_id,
@@ -56,6 +74,11 @@ def _blocked(
         "warnings": warnings or [],
         "human_review_required": True,
     }
+    if rule:
+        result["rule_version"] = rule.get("rule_version")
+        result["source_ids"] = rule.get("source_ids", [])
+        result["reviewed_rule_outline"] = _reviewed_rule_outline(rule)
+    return result
 
 
 def calculate_sentencing(payload: dict[str, Any]) -> dict[str, Any]:
@@ -75,6 +98,23 @@ def calculate_sentencing(payload: dict[str, Any]) -> dict[str, Any]:
         blockers.append({"code": "rule_version_missing", "path": "rule.rule_version", "message": "rule_version is required"})
     if not rule.get("source_ids"):
         blockers.append({"code": "rule_sources_missing", "path": "rule.source_ids", "message": "at least one versioned legal source is required"})
+    for position, blocker in enumerate(rule.get("execution_blockers", [])):
+        if not isinstance(blocker, dict) or not blocker.get("code") or not blocker.get("message"):
+            blockers.append(
+                {
+                    "code": "execution_blocker_invalid",
+                    "path": f"rule.execution_blockers[{position}]",
+                    "message": "each execution blocker requires code and message",
+                }
+            )
+            continue
+        blockers.append(
+            {
+                "code": str(blocker["code"]),
+                "path": str(blocker.get("path") or f"rule.execution_blockers[{position}]"),
+                "message": str(blocker["message"]),
+            }
+        )
 
     parameters = payload.get("parameters") or []
     if not parameters:
@@ -88,9 +128,69 @@ def calculate_sentencing(payload: dict[str, Any]) -> dict[str, Any]:
             blockers.append({"code": "parameter_source_missing", "path": f"{path}.evidence_ids", "message": str(parameter.get("id"))})
         snapshot[str(parameter.get("id"))] = parameter.get("value")
 
-    base = _decimal(rule.get("base_months"), "rule.base_months", blockers)
+    if rule.get("rule_type") == "reviewed_disposition":
+        disposition = rule.get("declared_disposition") or {}
+        if not disposition:
+            blockers.append(
+                {
+                    "code": "declared_disposition_missing",
+                    "path": "rule.declared_disposition",
+                    "message": "reviewed disposition replay requires a declared disposition",
+                }
+            )
+        if blockers:
+            return _blocked(
+                blockers,
+                case_id=payload.get("case_id"),
+                actor_id=payload.get("actor_id"),
+                rule=rule,
+            )
+        audit_steps = [
+            {
+                "id": adjustment.get("id"),
+                "operation": "reviewed_factor",
+                "direction": adjustment.get("direction"),
+                "value": adjustment.get("value"),
+                "source_ids": adjustment.get("source_ids", []),
+            }
+            for adjustment in rule.get("adjustments", [])
+        ]
+        return {
+            "status": "calculated",
+            "calculation_mode": "reviewed_disposition_replay",
+            "case_id": payload.get("case_id"),
+            "actor_id": payload.get("actor_id"),
+            "rule_version": rule["rule_version"],
+            "source_ids": rule["source_ids"],
+            "reviewed_rule_outline": _reviewed_rule_outline(rule),
+            "input_snapshot": snapshot,
+            "term_months": disposition.get("term_months"),
+            "term_range_months": disposition.get("term_range_months"),
+            "term_lower_kind": disposition.get("term_lower_kind"),
+            "term_upper_kind": disposition.get("term_upper_kind"),
+            "fine": disposition.get("fine_cny"),
+            "fine_range_cny": disposition.get("fine_range_cny"),
+            "recovery_cny": disposition.get("recovery_cny"),
+            "steps": audit_steps,
+            "blockers": [],
+            "warnings": [
+                "replays the legal-review declared disposition; listed factors are preserved for audit and are not recomputed as a synthetic formula"
+            ],
+            "human_review_required": True,
+        }
+
+    base_value = rule.get("base_months")
+    base = _decimal(base_value, "rule.base_months", blockers) if base_value is not None else None
+    if base is None and rule.get("legal_review_status") == "approved":
+        blockers.append(
+            {
+                "code": "base_months_missing",
+                "path": "rule.base_months",
+                "message": "an approved executable rule requires one numeric base_months value",
+            }
+        )
     for position, adjustment in enumerate(rule.get("adjustments", [])):
-        if adjustment.get("legal_review_status") != "approved":
+        if rule.get("legal_review_status") == "approved" and adjustment.get("legal_review_status") != "approved":
             blockers.append(
                 {
                     "code": "adjustment_not_approved",
@@ -103,7 +203,12 @@ def calculate_sentencing(payload: dict[str, Any]) -> dict[str, Any]:
                 {"code": "adjustment_sources_missing", "path": f"rule.adjustments[{position}].source_ids", "message": str(adjustment.get("id"))}
             )
     if blockers:
-        return _blocked(blockers, case_id=payload.get("case_id"), actor_id=payload.get("actor_id"))
+        return _blocked(
+            blockers,
+            case_id=payload.get("case_id"),
+            actor_id=payload.get("actor_id"),
+            rule=rule,
+        )
 
     assert base is not None
     current = base

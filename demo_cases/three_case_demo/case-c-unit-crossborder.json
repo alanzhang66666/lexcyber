@@ -6,7 +6,7 @@
   "case_question": "单位归责、管理层明知、诈骗共犯排除及涉外管辖连接点",
   "jurisdiction": "CN",
   "conduct_period": {"start": "2020-10-01", "end": null, "precision": "month"},
-  "analysis_as_of_date": "2026-09-17",
+  "analysis_as_of_date": "2026-09-18",
   "source_case_numbers": ["（2021）渝0151刑初470号"],
   "provenance": {
     "source_archive": "演示案例C",
@@ -19,9 +19,10 @@
   "legal_review": {
     "status": "partial_approval",
     "reviewed_source": "doc-c-benchmark",
-    "review_summary": "doc-c-review-summary",
-    "approved_scope": ["objective_facts", "unit_helping_path", "management_knowledge", "fraud_accomplice_exclusion", "confirmed_domestic_connections"],
-    "open_scope": ["foreign_connection_details", "unlawful_income_classification", "sentencing_calculation_rule", "document_template_field_mapping_approval"]
+    "reviewed_sources": ["doc-c-benchmark", "doc-c-review-summary", "doc-c-review-summary-round3"],
+    "review_summary": "doc-c-review-summary-round3",
+    "approved_scope": ["objective_facts", "unit_helping_path", "management_knowledge", "fraud_accomplice_exclusion", "cn_criminal_jurisdiction", "unlawful_income_classification"],
+    "open_scope": ["sentencing_calculation_rule", "document_template_field_mapping_approval"]
   },
   "documents": [
     {
@@ -47,6 +48,14 @@
       "archive_entry": "演示案例说明(1).docx",
       "sha256": "6ec30f14b509cdb8acaac097ac3601b263b6dc61ff3e9bbbc56bbe4597a5956c",
       "source_version": "sha256:6ec30f14b509cdb8"
+    },
+    {
+      "id": "doc-c-review-summary-round3",
+      "role": "legal_review_summary",
+      "title": "演示案例说明(4)(1).docx",
+      "archive_entry": "演示案例说明(4)(1).docx",
+      "sha256": "b1b3c027e11f939cb6bb7541d50bfb7d6460de07a5d45fc1e0cc822c2c49a9d9",
+      "source_version": "sha256:b1b3c027e11f939c"
     }
   ],
   "actors": [
@@ -73,13 +82,13 @@
     {"id": "jur-c-decision", "type": "decision_location", "value": "甲某、乙某的经营决策发生于中国境内", "verification_status": "confirmed", "evidence_ids": ["ev-c-02", "ev-c-04"]},
     {"id": "jur-c-victim", "type": "victim_location", "value": "重庆市T区存在境内被害人", "verification_status": "confirmed", "evidence_ids": ["ev-c-06"]},
     {"id": "jur-c-result", "type": "result_location", "value": "中国境内发生实际财产损害结果", "verification_status": "confirmed", "evidence_ids": ["ev-c-06"]},
-    {"id": "jur-c-client-location", "type": "foreign_client_location", "value": "境外客户实际所在地待核", "verification_status": "candidate", "evidence_ids": ["ev-c-02"]},
-    {"id": "jur-c-server-location", "type": "foreign_server_location", "value": "境外服务器具体所在地待核", "verification_status": "candidate", "evidence_ids": ["ev-c-02", "ev-c-03"]},
-    {"id": "jur-c-operation-location", "type": "website_operation_location", "value": "网站实际运营所在地待核", "verification_status": "candidate", "evidence_ids": ["ev-c-05"]},
-    {"id": "jur-c-data-location", "type": "data_storage_location", "value": "网站数据实际存储地点待核", "verification_status": "candidate", "evidence_ids": ["ev-c-03"]},
-    {"id": "jur-c-fund-destination", "type": "fund_destination", "value": "诈骗资金最终流向待核", "verification_status": "candidate", "evidence_ids": ["ev-c-06"]},
-    {"id": "jur-c-upstream-location", "type": "upstream_actor_location", "value": "境外诈骗人员所在地待核", "verification_status": "candidate", "evidence_ids": ["ev-c-06"]},
-    {"id": "jur-c-other-actors", "type": "other_foreign_actors", "value": "境外其他犯罪参与人员身份待核", "verification_status": "candidate", "evidence_ids": ["ev-c-06"]}
+    {"id": "jur-c-client-location", "type": "foreign_client_location", "value": "境外客户实际所在地未查明；现有境内行为地和结果地足以确认中国刑事管辖权，无需为管辖结论继续追查", "verification_status": "not_required_for_cn_criminal_jurisdiction", "evidence_ids": ["ev-c-02"]},
+    {"id": "jur-c-server-location", "type": "foreign_server_location", "value": "境外服务器具体所在地未查明；现有境内行为地和结果地足以确认中国刑事管辖权，无需为管辖结论继续追查", "verification_status": "not_required_for_cn_criminal_jurisdiction", "evidence_ids": ["ev-c-02", "ev-c-03"]},
+    {"id": "jur-c-operation-location", "type": "website_operation_location", "value": "网站实际运营所在地未查明；现有境内行为地和结果地足以确认中国刑事管辖权，无需为管辖结论继续追查", "verification_status": "not_required_for_cn_criminal_jurisdiction", "evidence_ids": ["ev-c-05"]},
+    {"id": "jur-c-data-location", "type": "data_storage_location", "value": "网站数据实际存储地点未查明；现有境内行为地和结果地足以确认中国刑事管辖权，无需为管辖结论继续追查", "verification_status": "not_required_for_cn_criminal_jurisdiction", "evidence_ids": ["ev-c-03"]},
+    {"id": "jur-c-fund-destination", "type": "fund_destination", "value": "诈骗资金最终流向未查明；现有境内行为地和结果地足以确认中国刑事管辖权，无需为管辖结论继续追查", "verification_status": "not_required_for_cn_criminal_jurisdiction", "evidence_ids": ["ev-c-06"]},
+    {"id": "jur-c-upstream-location", "type": "upstream_actor_location", "value": "境外诈骗人员所在地未查明；现有境内行为地和结果地足以确认中国刑事管辖权，无需为管辖结论继续追查", "verification_status": "not_required_for_cn_criminal_jurisdiction", "evidence_ids": ["ev-c-06"]},
+    {"id": "jur-c-other-actors", "type": "other_foreign_actors", "value": "境外其他参与人员身份未查明；现有境内行为地和结果地足以确认中国刑事管辖权，无需为管辖结论继续追查", "verification_status": "not_required_for_cn_criminal_jurisdiction", "evidence_ids": ["ev-c-06"]}
   ],
   "evidence": [
     {"id": "ev-c-01", "type": "corporate_record", "label": "公司在山东省H市成立及业务范围", "document_id": "doc-c-input", "locator": {"paragraph": 4}},
@@ -103,7 +112,8 @@
     {"id": "fact-c-help", "type": "conduct", "actor_id": "actor-c-company", "value": "持续提供网站代码、特殊交易接口、服务器配置和技术更新", "stage": "continued_help", "verification_status": "confirmed", "evidence_ids": ["ev-c-02", "ev-c-05"]},
     {"id": "fact-c-upstream-use", "type": "upstream_offence", "actor_id": "actor-c-client", "value": "境外客户实际利用涉案网站实施网络诈骗", "stage": "upstream_offence_execution", "verification_status": "confirmed", "evidence_ids": ["ev-c-06"]},
     {"id": "fact-c-participation-limit", "type": "participation_scope", "actor_id": "actor-c-company", "value": "没有共同诈骗故意、诈骗实行分工或诈骗实质参与，排除诈骗共犯", "stage": "whole_chain", "verification_status": "confirmed", "evidence_ids": ["ev-c-06", "ev-c-12"]},
-    {"id": "fact-c-revenue", "type": "project_revenue", "actor_id": "actor-c-company", "value": "项目服务费11.8万元，其中9.8万元进入公司账户、2万元作为项目奖金", "stage": "project_operation", "verification_status": "confirmed", "evidence_ids": ["ev-c-07"]},
+    {"id": "fact-c-revenue", "type": "project_revenue", "actor_id": "actor-c-company", "value": "11.8万元为A公司实施涉案技术帮助取得的项目服务收入，并作为单位帮信犯罪违法所得评价，不属于支付结算金额；9.8万元为公司账户实际收款且属于11.8万元的一部分，不重复评价；2万元为技术人员个人违法所得", "stage": "project_operation", "verification_status": "confirmed", "evidence_ids": ["ev-c-07"]},
+    {"id": "fact-c-cn-jurisdiction", "type": "jurisdiction_conclusion", "actor_id": "actor-c-company", "value": "根据已查明的境内公司经营、代码开发、技术维护、经营决策、境内被害人及境内财产损害结果，足以确认中国刑事管辖权；其余境外连接点无需为该管辖结论继续追查", "stage": "jurisdiction_review", "verification_status": "confirmed", "evidence_ids": ["ev-c-01", "ev-c-03", "ev-c-05", "ev-c-06"]},
     {"id": "fact-c-cooperation", "type": "post_conduct", "actor_id": "actor-c-jia", "value": "甲某、乙某如实供述并代公司退出部分违法所得", "stage": "post_conduct", "verification_status": "confirmed", "evidence_ids": ["ev-c-11"]}
   ],
   "events": [
@@ -114,9 +124,9 @@
     {"id": "event-c-05", "date": "unknown", "stage": "post_conduct", "description": "案发后如实供述并代公司退出部分违法所得", "actor_id": "actor-c-jia", "fact_ids": ["fact-c-cooperation"]}
   ],
   "amounts": [
-    {"id": "amount-c-service-fee", "kind": "unclassified_amount", "label": "项目服务费", "value": 118000, "currency": "CNY", "verification_status": "confirmed", "classification_status": "pending_unlawful_income_review", "evidence_ids": ["ev-c-07"]},
-    {"id": "amount-c-company-receipt", "kind": "unclassified_amount", "label": "进入公司账户的项目款", "value": 98000, "currency": "CNY", "verification_status": "confirmed", "classification_status": "pending_unlawful_income_review", "evidence_ids": ["ev-c-07"]},
-    {"id": "amount-c-project-bonus", "kind": "unclassified_amount", "label": "项目奖金", "value": 20000, "currency": "CNY", "verification_status": "confirmed", "classification_status": "pending_recipient_and_liability_review", "evidence_ids": ["ev-c-07"]}
+    {"id": "amount-c-service-fee", "kind": "crime_proceeds", "label": "A公司单位帮信违法所得（项目服务收入）", "value": 118000, "currency": "CNY", "verification_status": "confirmed", "classification_status": "confirmed_unlawful_income_not_payment_settlement", "calculation_role": "primary_unlawful_income_amount", "evidence_ids": ["ev-c-07"]},
+    {"id": "amount-c-company-receipt", "kind": "crime_proceeds", "label": "进入公司账户的项目款（11.8万元组成部分）", "value": 98000, "currency": "CNY", "verification_status": "confirmed", "classification_status": "confirmed_component_of_service_fee", "included_in_amount_id": "amount-c-service-fee", "calculation_role": "component_do_not_add_separately", "evidence_ids": ["ev-c-07"]},
+    {"id": "amount-c-project-bonus", "kind": "personal_profit", "label": "技术人员个人违法所得", "value": 20000, "currency": "CNY", "verification_status": "confirmed", "classification_status": "confirmed_personal_illegal_gain", "calculation_role": "personal_illegal_gain_not_company_addition", "evidence_ids": ["ev-c-07"]}
   ],
   "legal_source_ids": [
     "cn-criminal-law-287-2-current",
@@ -124,13 +134,14 @@
     "cn-criminal-law-6-7-current",
     "cn-cybercrime-interpretation-2019-11-12",
     "cn-telefraud-opinion-2016-common-crime",
+    "cn-sentencing-guidance-2024-2",
     "cn-helping-opinion-2025-4-9"
   ],
   "source_version_binding": {
     "conduct_time_sources": ["cn-criminal-law-287-2-current", "cn-criminal-law-266-current", "cn-criminal-law-6-7-current", "cn-cybercrime-interpretation-2019-11-12", "cn-telefraud-opinion-2016-common-crime"],
     "current_review_sources": ["cn-helping-opinion-2025-4-9"],
     "temporal_review_status": "partial_approval",
-    "note": "The final annotation says the 2025 opinion is reference material only and must not be used to worsen punishment for the earlier conduct. Foreign connection details remain candidate."
+    "note": "The final annotation says the 2025 opinion is reference material only and must not be used to worsen punishment for the earlier conduct. Confirmed domestic conduct and result connections establish Chinese criminal jurisdiction; the remaining foreign details are not required for that conclusion."
   },
   "analyses": {
     "compliance": {
@@ -154,16 +165,82 @@
         {"id": "path-c-yi-helping", "actor_id": "actor-c-yi", "label": "帮助信息网络犯罪活动罪（其他直接责任人员）", "baseline_position": "selected", "supporting_evidence_ids": ["ev-c-03", "ev-c-05", "ev-c-08", "ev-c-09"], "contrary_evidence_ids": ["ev-c-12"], "legal_source_ids": ["cn-criminal-law-287-2-current", "cn-cybercrime-interpretation-2019-11-12"]},
         {"id": "path-c-company-fraud-accomplice", "actor_id": "actor-c-company", "label": "诈骗罪共同犯罪", "baseline_position": "excluded", "supporting_evidence_ids": ["ev-c-04", "ev-c-05", "ev-c-08"], "contrary_evidence_ids": ["ev-c-06", "ev-c-12"], "legal_source_ids": ["cn-criminal-law-266-current", "cn-telefraud-opinion-2016-common-crime"]}
       ],
-      "jurisdiction_status": "confirmed_domestic_connections_with_foreign_details_pending",
+      "jurisdiction_status": "confirmed_cn_criminal_jurisdiction_foreign_details_not_required",
       "jurisdiction_source_ids": ["cn-criminal-law-6-7-current"]
     }
   },
   "sentencing": {
-    "calculation_status": "blocked_pending_exact_rule",
+    "calculation_status": "reviewed_disposition_replay_ready",
     "actor_baselines": [
-      {"actor_id": "actor-c-company", "amount_ids": ["amount-c-service-fee", "amount-c-company-receipt"], "source_ids": ["cn-criminal-law-287-2-current", "cn-cybercrime-interpretation-2019-11-12"], "rule_version": null, "legal_review_status": "pending", "benchmark_disposition": {"fine_range_cny": [30000, 80000], "nature": "annotation_only_not_calculated"}},
-      {"actor_id": "actor-c-jia", "amount_ids": ["amount-c-service-fee", "amount-c-company-receipt"], "source_ids": ["cn-criminal-law-287-2-current", "cn-cybercrime-interpretation-2019-11-12"], "rule_version": null, "legal_review_status": "pending", "benchmark_disposition": {"term_range_months": [8, 14], "fine_range_cny": [8000, 15000], "nature": "annotation_only_not_calculated"}},
-      {"actor_id": "actor-c-yi", "amount_ids": ["amount-c-service-fee", "amount-c-project-bonus"], "source_ids": ["cn-criminal-law-287-2-current", "cn-cybercrime-interpretation-2019-11-12"], "rule_version": null, "legal_review_status": "pending", "benchmark_disposition": {"term_range_months": [7, 12], "fine_range_cny": [5000, 12000], "nature": "annotation_only_not_calculated"}}
+      {
+        "actor_id": "actor-c-company",
+        "amount_ids": ["amount-c-service-fee"],
+        "source_ids": ["cn-criminal-law-287-2-current", "cn-cybercrime-interpretation-2019-11-12", "cn-sentencing-guidance-2024-2", "cn-helping-opinion-2025-4-9"],
+        "rule_version": "review-summary-section-6-c-company-disposition-v1",
+        "legal_review_status": "approved",
+        "benchmark_disposition": {"fine_range_cny": [30000, 80000], "nature": "legal_reviewed_declared_disposition_replayed"},
+        "calculation_rule": {
+          "rule_type": "reviewed_disposition",
+          "rule_version": "review-summary-section-6-c-company-disposition-v1",
+          "legal_review_status": "approved",
+          "source_document_id": "doc-c-review-summary-round3",
+          "source_section": "六、各主体量刑规则、计算步骤和法源",
+          "source_pages": [22, 23],
+          "source_ids": ["cn-criminal-law-287-2-current", "cn-cybercrime-interpretation-2019-11-12", "cn-sentencing-guidance-2024-2", "cn-helping-opinion-2025-4-9"],
+          "declared_disposition": {"fine_range_cny": [30000, 80000]}
+        }
+      },
+      {
+        "actor_id": "actor-c-jia",
+        "amount_ids": ["amount-c-service-fee"],
+        "source_ids": ["cn-criminal-law-287-2-current", "cn-cybercrime-interpretation-2019-11-12", "cn-sentencing-guidance-2024-2", "cn-helping-opinion-2025-4-9"],
+        "rule_version": "review-summary-section-6-c-jia-disposition-v1",
+        "legal_review_status": "approved",
+        "benchmark_disposition": {"term_range_months": [8, 14], "fine_range_cny": [8000, 15000], "nature": "legal_reviewed_declared_disposition_replayed"},
+        "calculation_rule": {
+          "rule_type": "reviewed_disposition",
+          "rule_version": "review-summary-section-6-c-jia-disposition-v1",
+          "legal_review_status": "approved",
+          "source_document_id": "doc-c-review-summary-round3",
+          "source_section": "六、各主体量刑规则、计算步骤和法源",
+          "source_pages": [20, 21],
+          "source_ids": ["cn-criminal-law-287-2-current", "cn-cybercrime-interpretation-2019-11-12", "cn-sentencing-guidance-2024-2", "cn-helping-opinion-2025-4-9"],
+          "base_range_months": [6, 9],
+          "adjustments": [
+            {"id": "c-jia-cross-border-technical-support", "operation": "reviewed_factor", "direction": "increase", "value": 0.2, "legal_review_status": "approved_as_explanatory_factor", "source_ids": ["cn-sentencing-guidance-2024-2"]},
+            {"id": "c-jia-occupational-convenience", "operation": "reviewed_factor", "direction": "increase", "value": 0.2, "legal_review_status": "approved_as_explanatory_factor", "source_ids": ["cn-sentencing-guidance-2024-2"]},
+            {"id": "c-jia-confession", "operation": "reviewed_factor", "direction": "decrease", "value": 0.1, "legal_review_status": "approved_as_explanatory_factor", "source_ids": ["cn-criminal-law-287-2-current"]},
+            {"id": "c-jia-guilty-plea", "operation": "reviewed_factor", "direction": "decrease", "value": 0.1, "legal_review_status": "approved_as_explanatory_factor", "source_ids": ["cn-criminal-law-287-2-current"]},
+            {"id": "c-jia-restitution", "operation": "reviewed_factor", "direction": "decrease", "value": 0.05, "legal_review_status": "approved_as_explanatory_factor", "source_ids": ["cn-sentencing-guidance-2024-2"]},
+            {"id": "c-jia-partial-restitution", "operation": "reviewed_factor", "direction": "decrease", "value": 0.05, "legal_review_status": "approved_as_explanatory_factor", "source_ids": ["cn-sentencing-guidance-2024-2"]}
+          ],
+          "declared_disposition": {"term_range_months": [8, 14], "fine_range_cny": [8000, 15000]}
+        }
+      },
+      {
+        "actor_id": "actor-c-yi",
+        "amount_ids": ["amount-c-service-fee"],
+        "source_ids": ["cn-criminal-law-287-2-current", "cn-cybercrime-interpretation-2019-11-12", "cn-sentencing-guidance-2024-2", "cn-helping-opinion-2025-4-9"],
+        "rule_version": "review-summary-section-6-c-yi-disposition-v1",
+        "legal_review_status": "approved",
+        "benchmark_disposition": {"term_range_months": [7, 12], "fine_range_cny": [5000, 12000], "nature": "legal_reviewed_declared_disposition_replayed"},
+        "calculation_rule": {
+          "rule_type": "reviewed_disposition",
+          "rule_version": "review-summary-section-6-c-yi-disposition-v1",
+          "legal_review_status": "approved",
+          "source_document_id": "doc-c-review-summary-round3",
+          "source_section": "六、各主体量刑规则、计算步骤和法源",
+          "source_pages": [21, 22],
+          "source_ids": ["cn-criminal-law-287-2-current", "cn-cybercrime-interpretation-2019-11-12", "cn-sentencing-guidance-2024-2", "cn-helping-opinion-2025-4-9"],
+          "base_range_months": [6, 9],
+          "adjustments": [
+            {"id": "c-yi-occupational-convenience", "operation": "reviewed_factor", "direction": "increase", "value": 0.2, "legal_review_status": "approved_as_explanatory_factor", "source_ids": ["cn-sentencing-guidance-2024-2"]},
+            {"id": "c-yi-confession", "operation": "reviewed_factor", "direction": "decrease", "value": 0.1, "legal_review_status": "approved_as_explanatory_factor", "source_ids": ["cn-criminal-law-287-2-current"]},
+            {"id": "c-yi-restitution", "operation": "reviewed_factor", "direction": "decrease", "value": 0.05, "legal_review_status": "approved_as_explanatory_factor", "source_ids": ["cn-sentencing-guidance-2024-2"]}
+          ],
+          "declared_disposition": {"term_range_months": [7, 12], "fine_range_cny": [5000, 12000]}
+        }
+      }
     ]
   },
   "document_fields": {
@@ -174,9 +251,6 @@
     "template_legal_review_status": "source_provided_mapping_pending_approval"
   },
   "missing_items": [
-    {"id": "missing-c-01", "severity": "blocking", "description": "Seven foreign connection details remain unconfirmed; the confirmed domestic connections are retained separately."},
-    {"id": "missing-c-02", "severity": "blocking", "description": "Whether 118,000 or 98,000 yuan is the sentencing input for unlawful income remains internally unresolved."},
-    {"id": "missing-c-03", "severity": "blocking", "description": "The supplied ranges are not approved executable sentencing rules with exact ordered adjustments."},
     {"id": "missing-c-04", "severity": "blocking", "description": "The prosecution and sentencing-recommendation source templates are registered; final field mapping, branch selection and generated-draft approval still require the legal owner."},
     {"id": "missing-c-05", "severity": "warning", "description": "Confirm collection authorization, license, substantive adaptation and deidentification in the source ledger."}
   ]

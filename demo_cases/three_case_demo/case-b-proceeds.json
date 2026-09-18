@@ -6,7 +6,7 @@
   "case_question": "帮助发生时点、犯罪所得形成时点、帮信与掩隐界分及员工行为能否归属于单位",
   "jurisdiction": "CN",
   "conduct_period": {"start": "2024-05-08", "end": "2024-06-15", "precision": "day"},
-  "analysis_as_of_date": "2026-09-17",
+  "analysis_as_of_date": "2026-09-18",
   "source_case_numbers": [
     "（2025）闽0111刑初34号",
     "（2025）闽01刑终688号",
@@ -24,14 +24,15 @@
   "legal_review": {
     "status": "partial_approval",
     "reviewed_source": "doc-b-benchmark",
-    "reviewed_sources": ["doc-b-benchmark", "doc-b-042-benchmark"],
-    "review_summary": "doc-b-review-summary",
+    "reviewed_sources": ["doc-b-benchmark", "doc-b-042-benchmark", "doc-b-review-summary", "doc-b-review-summary-round3"],
+    "review_summary": "doc-b-review-summary-round3",
     "approved_scope": [
       "case_009_objective_facts",
       "case_009_helping_path",
       "company_crime_exclusion",
       "case_042_objective_facts",
-      "case_042_adapted_concealment_benchmark"
+      "case_042_adapted_concealment_benchmark",
+      "case_009_benchmark_disposition"
     ],
     "open_scope": [
       "case_042_subjective_knowledge_conflict",
@@ -94,6 +95,14 @@
       "archive_entry": "演示案例说明(1).docx",
       "sha256": "6ec30f14b509cdb8acaac097ac3601b263b6dc61ff3e9bbbc56bbe4597a5956c",
       "source_version": "sha256:6ec30f14b509cdb8"
+    },
+    {
+      "id": "doc-b-review-summary-round3",
+      "role": "legal_review_summary",
+      "title": "演示案例说明(4)(1).docx",
+      "archive_entry": "演示案例说明(4)(1).docx",
+      "sha256": "b1b3c027e11f939cb6bb7541d50bfb7d6460de07a5d45fc1e0cc822c2c49a9d9",
+      "source_version": "sha256:b1b3c027e11f939c"
     }
   ],
   "actors": [
@@ -184,7 +193,7 @@
     "sentencing_reference_sources": ["cn-sentencing-guidance-2024-2"],
     "current_review_sources": ["cn-helping-opinion-2025-4-9", "cn-concealment-interpretation-2025-1-12"],
     "temporal_review_status": "partial_approval_for_case_009_and_adapted_case_042",
-    "note": "Case 009 selects the helping path. Case 042 is an explicit teaching adaptation: the cited original second instance upheld helping, while the supplied adaptation selects concealment after proceeds formation. Neither benchmark disposition is an executable sentencing rule."
+    "note": "Case 009 selects the helping path and its reviewed recommendation is detention for four months through fixed-term imprisonment for eight months plus a 3,000-10,000 yuan fine. Case 042 is an explicit teaching adaptation: the cited original second instance upheld helping, while the supplied adaptation selects concealment after proceeds formation. Both Section 6 dispositions are replayed as reviewed recommendations, not synthetic arithmetic predictions."
   },
   "analyses": {
     "compliance": {
@@ -207,23 +216,57 @@
     }
   },
   "sentencing": {
-    "calculation_status": "blocked_pending_exact_rule",
+    "calculation_status": "reviewed_disposition_replay_ready",
     "actor_baselines": [
       {
         "actor_id": "actor-b-huang",
         "amount_ids": ["amount-b-fraud-inflow", "amount-b-personal-profit", "amount-b-restitution"],
         "source_ids": ["cn-criminal-law-287-2-current", "cn-cybercrime-interpretation-2019-11-12", "cn-sentencing-guidance-2024-2"],
-        "rule_version": null,
-        "legal_review_status": "pending",
-        "benchmark_disposition": {"term_range_months": [4, 8], "term_lower_kind": "detention", "fine_range_cny": [3000, 10000], "nature": "annotation_only_not_calculated"}
+        "rule_version": "review-summary-section-6-b-009-huang-disposition-v1",
+        "legal_review_status": "approved",
+        "benchmark_disposition": {"term_range_months": [4, 8], "term_lower_kind": "detention", "term_upper_kind": "fixed_term_imprisonment", "fine_range_cny": [3000, 10000], "review_status": "confirmed_by_legal_owner", "nature": "legal_reviewed_declared_disposition_replayed"},
+        "calculation_rule": {
+          "rule_type": "reviewed_disposition",
+          "rule_version": "review-summary-section-6-b-009-huang-disposition-v1",
+          "legal_review_status": "approved",
+          "source_document_id": "doc-b-review-summary-round3",
+          "source_section": "六、各主体量刑规则、计算步骤和法源",
+          "source_pages": [18, 19],
+          "source_ids": ["cn-criminal-law-287-2-current", "cn-cybercrime-interpretation-2019-11-12", "cn-sentencing-guidance-2024-2"],
+          "base_range_months": [3, 6],
+          "adjustments": [
+            {"id": "b009-occupational-convenience", "operation": "reviewed_factor", "direction": "increase", "value": 0.2, "legal_review_status": "approved_as_explanatory_factor", "source_ids": ["cn-sentencing-guidance-2024-2"]},
+            {"id": "b009-company-account", "operation": "reviewed_factor", "direction": "increase", "value": 0.2, "legal_review_status": "approved_as_explanatory_factor", "source_ids": ["cn-sentencing-guidance-2024-2"]},
+            {"id": "b009-guilty-plea", "operation": "reviewed_factor", "direction": "decrease", "value": 0.1, "legal_review_status": "approved_as_explanatory_factor", "source_ids": ["cn-criminal-law-287-2-current"]},
+            {"id": "b009-restitution", "operation": "reviewed_factor", "direction": "decrease", "value": 0.05, "legal_review_status": "approved_as_explanatory_factor", "source_ids": ["cn-sentencing-guidance-2024-2"]},
+            {"id": "b009-voluntary-surrender", "operation": "reviewed_factor", "direction": "decrease", "value": 0.2, "legal_review_status": "approved_as_explanatory_factor", "source_ids": ["cn-sentencing-guidance-2024-2"]}
+          ],
+          "declared_disposition": {"term_range_months": [4, 8], "term_lower_kind": "detention", "term_upper_kind": "fixed_term_imprisonment", "fine_range_cny": [3000, 10000]}
+        }
       },
       {
         "actor_id": "actor-b-chen",
-        "amount_ids": ["amount-b-042-fraud-inflow", "amount-b-042-personal-profit", "amount-b-042-recovery"],
-        "source_ids": ["cn-criminal-law-312-current", "cn-concealment-interpretation-2015-2021"],
-        "rule_version": null,
-        "legal_review_status": "pending",
-        "benchmark_disposition": {"term_months": 27, "fine_cny": 10000, "nature": "adapted_annotation_only_not_actual_judgment_or_calculated_result"},
+        "amount_ids": ["amount-b-042-fraud-inflow", "amount-b-042-personal-profit"],
+        "source_ids": ["cn-criminal-law-312-current", "cn-concealment-interpretation-2015-2021", "cn-sentencing-guidance-2024-2"],
+        "rule_version": "review-summary-section-6-b-042-chen-disposition-v1",
+        "legal_review_status": "approved",
+        "benchmark_disposition": {"term_months": 27, "fine_cny": 10000, "recovery_cny": 6409, "nature": "adapted_legal_reviewed_declared_disposition_replayed_not_actual_judgment"},
+        "calculation_rule": {
+          "rule_type": "reviewed_disposition",
+          "rule_version": "review-summary-section-6-b-042-chen-disposition-v1",
+          "legal_review_status": "approved",
+          "source_document_id": "doc-b-review-summary-round3",
+          "source_section": "六、各主体量刑规则、计算步骤和法源",
+          "source_pages": [19, 20],
+          "source_ids": ["cn-criminal-law-312-current", "cn-concealment-interpretation-2015-2021", "cn-sentencing-guidance-2024-2"],
+          "base_months_approximate": 42,
+          "adjustments": [
+            {"id": "b042-cross-border-factor", "operation": "reviewed_factor", "direction": "increase", "value": 0.1, "legal_review_status": "approved_as_explanatory_factor", "source_ids": ["cn-sentencing-guidance-2024-2"]},
+            {"id": "b042-confession", "operation": "reviewed_factor", "direction": "decrease", "value": 0.1, "legal_review_status": "approved_as_explanatory_factor", "source_ids": ["cn-criminal-law-312-current"]},
+            {"id": "b042-guilty-plea", "operation": "reviewed_factor", "direction": "decrease", "value": 0.1, "legal_review_status": "approved_as_explanatory_factor", "source_ids": ["cn-criminal-law-312-current"]}
+          ],
+          "declared_disposition": {"term_months": 27, "fine_cny": 10000, "recovery_cny": 6409}
+        },
         "original_source_disposition": {"offence": "帮助信息网络犯罪活动罪", "term_months": 12, "fine_cny": 5000, "nature": "reported_original_second_instance_outcome"}
       }
     ]
@@ -236,10 +279,8 @@
     "template_legal_review_status": "source_provided_mapping_pending_approval"
   },
   "missing_items": [
-    {"id": "missing-b-02", "severity": "blocking", "description": "The case 009 sentencing text contains inconsistent headline and final ranges and is not an approved executable rule."},
     {"id": "missing-b-03", "severity": "blocking", "description": "The prosecution and sentencing-recommendation source templates are registered; final field mapping, branch selection and generated-draft approval still require the legal owner."},
     {"id": "missing-b-04", "severity": "warning", "description": "Confirm collection authorization, license, substantive adaptation and deidentification in the source ledger."},
-    {"id": "missing-b-05", "severity": "blocking", "description": "Case 042 subjective knowledge remains conflicted by the loan-processing defence and requires case-specific human review before any operational conviction result."},
-    {"id": "missing-b-06", "severity": "blocking", "description": "The case 042 concealment disposition is an explicit teaching adaptation of an original helping conviction; it is not a real judgment or approved executable sentencing rule."}
+    {"id": "missing-b-05", "severity": "warning", "description": "Case 042 retains the loan-processing defence as contrary material; the reviewed concealment disposition is replayed only as an explicit teaching adaptation and never presented as the original judgment."}
   ]
 }
