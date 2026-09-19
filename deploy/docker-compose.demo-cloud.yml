@@ -1,6 +1,6 @@
 # 云演示 override —— 与根 compose 叠加使用：
 #   docker compose --env-file .env.v03 -f docker-compose.yml -f deploy/docker-compose.demo-cloud.yml up -d
-# 场景：2C2G + 40G ECS 一日演示，公网 IP:18080 单通道访问。本地开发不要叠加本文件。
+# 本地开发不要叠加本文件。叠加后需再跑 deploy/fix_web_runtime.sh 注入最新前端 dist。
 name: lexcyber-v03
 
 services:

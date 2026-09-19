@@ -1,3 +1,7 @@
 # Shell scripts must keep LF endings — postgres initdb and container
 # entrypoints fail to exec a script whose shebang line ends in CR.
 *.sh text eol=lf
+*.md text eol=lf
+*.py text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf

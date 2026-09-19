@@ -14,7 +14,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import sys
 import time
 import urllib.error
 import urllib.parse
@@ -35,6 +34,16 @@ ANNOTATIONS = {
 }
 DATASET_CASE = {"A": "demo-case-a-helping", "B": "demo-case-b-proceeds", "C": "demo-case-c-unit-crossborder"}
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+BUNDLES = {
+    "A": ROOT / "demo_cases" / "three_case_demo" / "case-a-helping.json",
+    "B": ROOT / "demo_cases" / "three_case_demo" / "case-b-proceeds.json",
+    "C": ROOT / "demo_cases" / "three_case_demo" / "case-c-unit-crossborder.json",
+}
+DRAFT_TYPE_LABEL = {
+    "prosecution": "起诉书",
+    "non_prosecution": "不起诉决定书",
+    "sentencing_recommendation": "量刑建议书",
+}
 
 
 def req(base: str, path: str, method: str = "GET", body=None, token: str | None = None, form=None):
@@ -91,11 +100,70 @@ def load_case_ids(base: str, token: str) -> dict[str, str]:
     return out
 
 
+def draft_body(title: str, facts: list[str], dtype: str) -> str:
+    label = DRAFT_TYPE_LABEL.get(dtype, dtype)
+    return (
+        f"{label}（演示草稿）\n"
+        f"案件：{title}\n\n"
+        "本草稿按法学已核对标注整理，定位指向本次上传材料；"
+        "字段映射仍待法学会签，不作为正式法律文书。\n\n"
+        "已确认事实摘录：\n"
+        + ("\n".join(facts) if facts else "- （本案未摘录已确认事实）")
+    )
+
+
+def seed_demo_drafts(base: str, token: str, code: str, cid: str) -> None:
+    """Create or refresh readable demo drafts from the three-case bundle."""
+    bundle_path = BUNDLES.get(code)
+    title = code
+    facts: list[str] = []
+    selected: list[str] = ["prosecution"]
+    if bundle_path and bundle_path.exists():
+        bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
+        title = str(bundle.get("title") or title)
+        selected = list((bundle.get("document_fields") or {}).get("selected_types") or selected)
+        for item in bundle.get("facts") or []:
+            if item.get("verification_status") != "confirmed":
+                continue
+            value = item.get("value")
+            facts.append(f"- {item.get('type')}: {value}")
+            if len(facts) >= 6:
+                break
+    if not selected:
+        selected = ["prosecution"]
+    s, listing = req(base, f"/v1/cases/{cid}/drafts", token=token)
+    existing = {
+        str(item.get("draftType")): item
+        for item in (listing.get("items") or [])
+        if isinstance(item, dict) and item.get("draftType")
+    }
+    for dtype in selected:
+        body = draft_body(title, facts, dtype)
+        current = existing.get(dtype)
+        if current:
+            current_body = str(current.get("body") or "")
+            if "数据集：" not in current_body and "定位指向本次上传材料" in current_body:
+                print(code, "draft", dtype, ": already current", current.get("id"))
+                continue
+            s, b = req(
+                base,
+                f"/v1/cases/{cid}/drafts/{current['id']}",
+                "PUT",
+                {"body": body, "version": current.get("version")},
+                token,
+            )
+            print(code, "draft", dtype, "update:", s, b.get("id") or b.get("message"), "v" + str(b.get("version") or ""))
+            continue
+        s, b = req(base, f"/v1/cases/{cid}/drafts", "POST", {"draftType": dtype, "body": body}, token)
+        print(code, "draft", dtype, ":", s, b.get("id") or b.get("message"))
+
+
 def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--base-url", default=os.environ.get("LEXCYBER_BASE_URL", "http://127.0.0.1:18080"))
     p.add_argument("--docs-dir", default=os.environ.get("LEXCYBER_DOCS_DIR", ".tmp-legal-docs"))
     p.add_argument("--skip-sentencing", action="store_true")
+    p.add_argument("--drafts-only", action="store_true")
     args = p.parse_args()
     base, docs_dir = args.base_url.rstrip("/"), Path(args.docs_dir)
     user = os.environ.get("LEXCYBER_USERNAME", "demo_owner")
@@ -109,6 +177,10 @@ def main() -> int:
     token = body["token"]
     cases = load_case_ids(base, token)
     print("cases:", cases)
+    if args.drafts_only:
+        for code, cid in cases.items():
+            seed_demo_drafts(base, token, code, cid)
+        return 0
 
     for code, cid in cases.items():
         s, b = req(base, f"/v1/cases/{cid}/facts/confirm", "POST", {}, token)
@@ -160,6 +232,9 @@ def main() -> int:
             s, b = req(base, f"/v1/cases/{cases[code]}/documents", "POST",
                        token=token, form=(fpath.read_bytes(), fn, DOCX_MIME, "annotation"))
             print(code, fn, "upload:", s, b.get("id"))
+
+    for code, cid in cases.items():
+        seed_demo_drafts(base, token, code, cid)
 
     if not args.skip_sentencing:
         for code, cid in cases.items():

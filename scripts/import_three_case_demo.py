@@ -5,6 +5,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import sys
 import time
 import urllib.error
@@ -36,6 +37,12 @@ CHECKPOINT_SCHEMA = "lexcyber.import-checkpoint.v1"
 DOCX_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 PDF_TYPE = "application/pdf"
 TERMINAL_TASK_STATUSES = {"completed", "failed", "timed_out", "rejected"}
+DATE_PATTERN = re.compile(r"(?:\d{4}年\d{1,2}月(?:\d{1,2}日)?|\d{4}[\-/]\d{1,2}(?:[\-/]\d{1,2})?)")
+AMOUNT_PATTERN = re.compile(
+    r"(?:(?:人民币|RMB|CNY|USD|\$|¥|￥)\s*)?\d[\d,]*(?:\.\d+)?\s*(?:亿元|万元|万余元|元|dollars?)",
+    re.IGNORECASE,
+)
+EXTRACT_LIMIT = 12
 
 
 class ImportConflict(RuntimeError):
@@ -696,6 +703,102 @@ def bind_events(
     return report
 
 
+def _parse_text_and_paragraphs(content: object) -> tuple[str, list[dict[str, Any]]]:
+    if not isinstance(content, dict):
+        return "", []
+    raw_paragraphs = content.get("paragraphs") or []
+    paragraphs = [item for item in raw_paragraphs if isinstance(item, dict)]
+    text = content.get("text")
+    if not isinstance(text, str) or not text.strip():
+        text = "\n".join(str(item.get("text") or "") for item in paragraphs)
+    return text, paragraphs
+
+
+def _locator_for_value(value: str, paragraphs: list[dict[str, Any]]) -> str | None:
+    for index, paragraph in enumerate(paragraphs):
+        text = paragraph.get("text")
+        if not isinstance(text, str) or value not in text:
+            continue
+        locator = paragraph.get("locator")
+        if isinstance(locator, str) and locator:
+            return locator
+        number = paragraph.get("paragraph")
+        return f"paragraph:{number if isinstance(number, int) else index + 1}"
+    return None
+
+
+def extract_candidates_from_parse_content(content: object, *, limit: int = EXTRACT_LIMIT) -> list[dict[str, Any]]:
+    text, paragraphs = _parse_text_and_paragraphs(content)
+    if not text.strip() or limit <= 0:
+        return []
+    items: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str | None]] = set()
+    for kind, pattern in (("date", DATE_PATTERN), ("amount", AMOUNT_PATTERN)):
+        for match in pattern.finditer(text):
+            value = match.group()
+            locator = _locator_for_value(value, paragraphs)
+            key = (kind, value, locator)
+            if key in seen:
+                continue
+            seen.add(key)
+            items.append({"kind": kind, "value": value, "locator": locator})
+            if len(items) >= limit:
+                return items
+    return items
+
+
+def collect_parse_extracts(
+    base: str,
+    token: str,
+    uploads: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    collected: list[dict[str, Any]] = []
+    for upload in uploads:
+        task_id = upload.get("parseTaskId")
+        document_id = upload.get("documentId")
+        if not task_id or not document_id:
+            continue
+        status, body = request(base, "GET", f"/v1/tasks/{task_id}/result", token=token)
+        if status != 200 or not isinstance(body, dict):
+            continue
+        candidates = extract_candidates_from_parse_content(body.get("content"))
+        collected.append(
+            {
+                "documentId": document_id,
+                "parseTaskId": task_id,
+                "candidateCount": len(candidates),
+                "candidates": candidates,
+            }
+        )
+    return collected
+
+
+def extract_fact_items(extract_groups: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    for group in extract_groups or []:
+        document_id = str(group.get("documentId") or "")
+        if not document_id:
+            continue
+        for index, candidate in enumerate(group.get("candidates") or []):
+            if not isinstance(candidate, dict):
+                continue
+            value = str(candidate.get("value") or "").strip()
+            kind = str(candidate.get("kind") or "span")
+            if not value:
+                continue
+            items.append(
+                {
+                    "id": f"extracted-{document_id}-{index}",
+                    "key": f"extracted_{kind}",
+                    "value": value,
+                    "locator": candidate.get("locator"),
+                    "sourceDocumentId": document_id,
+                    "verificationStatus": "candidate",
+                }
+            )
+    return items
+
+
 def apply_facts(
     base: str,
     token: str,
@@ -707,28 +810,53 @@ def apply_facts(
     checkpoint_path: Path,
 ) -> dict[str, Any]:
     fact_view = build_t1_fact_view(bundle, case_id=case_id, document_id_map=document_id_map, status="draft")
-    expected_items = fact_view.get("items", [])
-    expected_hash = canonical_hash(expected_items)
+    reviewed_items = fact_view.get("items", [])
+    extract_items = extract_fact_items(case_state.get("extractCandidates"))
+    combined_items = list(reviewed_items) + extract_items
+    reviewed_hash = canonical_hash(reviewed_items)
+    combined_hash = canonical_hash(combined_items)
     status, body = request(base, "GET", f"/v1/cases/{case_id}/facts", token=token)
     current = require_object(status, body, 200, "get facts")
     current_items = current.get("items") or []
-    if canonical_hash(current_items) == expected_hash:
+    current_hash = canonical_hash(current_items)
+    if current_hash in {combined_hash, reviewed_hash} and current.get("status") == "confirmed":
         action = "already_current"
+        stored_hash = current_hash
+    elif current_hash == combined_hash:
+        action = "already_current"
+        stored_hash = combined_hash
     elif current.get("status") == "draft" and not current_items:
         put_status, put_body = request(
             base,
             "PUT",
             f"/v1/cases/{case_id}/facts",
             token=token,
-            json_body={"items": expected_items},
+            json_body={"items": combined_items},
         )
         require_object(put_status, put_body, 200, "put facts")
         action = "written"
+        stored_hash = combined_hash
+    elif current.get("status") == "draft" and current_hash == reviewed_hash and extract_items:
+        put_status, put_body = request(
+            base,
+            "PUT",
+            f"/v1/cases/{case_id}/facts",
+            token=token,
+            json_body={"items": combined_items},
+        )
+        require_object(put_status, put_body, 200, "put facts")
+        action = "attached_extract"
+        stored_hash = combined_hash
     else:
         raise ImportConflict(f"existing facts differ for {case_id}; import will not overwrite them")
-    case_state["facts"] = {"state": "complete", "contentHash": expected_hash, "action": action}
+    case_state["facts"] = {"state": "complete", "contentHash": stored_hash, "action": action}
     save_checkpoint(checkpoint_path, checkpoint)
-    return {"action": action, "status": current.get("status", "draft"), "itemCount": len(expected_items)}
+    return {
+        "action": action,
+        "status": current.get("status", "draft"),
+        "itemCount": len(combined_items if action != "already_current" else current_items),
+        "extractCount": len(extract_items),
+    }
 
 
 def apply_modules(
@@ -928,6 +1056,9 @@ def import_case(
         checkpoint,
         checkpoint_path,
     )
+    extracts = collect_parse_extracts(base, token, uploads)
+    case_state["extractCandidates"] = extracts
+    save_checkpoint(checkpoint_path, checkpoint)
     bindings = bind_events(
         base,
         token,
@@ -975,6 +1106,7 @@ def import_case(
         "documentId": first.get("documentId"),
         "parseTaskId": first.get("parseTaskId"),
         "uploads": uploads,
+        "extractCandidates": extracts,
         "bindings": bindings,
         "facts": facts,
         "modules": modules,

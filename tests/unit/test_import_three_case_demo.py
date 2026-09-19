@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from scripts.import_three_case_demo import (
+    extract_candidates_from_parse_content,
     find_material,
     list_case_materials,
     preflight_materials,
@@ -53,3 +54,22 @@ def test_preflight_allows_placeholder_only_when_opted_in(
     smoke.write_bytes(b"pk")
     monkeypatch.setattr("scripts.import_three_case_demo.PLACEHOLDER", smoke)
     preflight_materials(None, allow_placeholder=True)
+
+
+def test_extract_candidates_from_parse_content_maps_paragraph_locators():
+    items = extract_candidates_from_parse_content(
+        {
+            "text": "2023年5月12日转入人民币 12万元。",
+            "paragraphs": [
+                {
+                    "paragraph": 2,
+                    "text": "2023年5月12日转入人民币 12万元。",
+                    "locator": "paragraph:2",
+                }
+            ],
+        }
+    )
+    assert items == [
+        {"kind": "date", "value": "2023年5月12日", "locator": "paragraph:2"},
+        {"kind": "amount", "value": "人民币 12万元", "locator": "paragraph:2"},
+    ]

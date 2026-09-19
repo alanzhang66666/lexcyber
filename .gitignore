@@ -21,3 +21,11 @@ target/
 .pr-body-*
 技术分工*
 docs/local-*
+lexcyber-demo-images.tar
+deploy/ecs-upload.tar
+deploy/ecs-upload/*
+!deploy/ecs-upload/README.md
+!deploy/ecs-upload/.env.v03.example
+!deploy/ecs-upload/start-on-ecs.sh
+法学材料/
+pytest-cache-files-*/

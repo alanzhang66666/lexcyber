@@ -16,6 +16,8 @@ echo '/swapfile none swap sw 0 0' >> /etc/fstab
 
 不需要配镜像加速器——镜像全部走离线包。
 
+本机打好的完整上传目录：`deploy/ecs-upload/`（含镜像 tar、compose、前端 dist、三案材料、`.env.v03`）。把该目录内容放到 ECS `/opt/lexcyber` 后执行 `./start-on-ecs.sh`。
+
 ## 1. 本地打包镜像（Windows 本机执行）
 
 ```powershell
@@ -51,6 +53,8 @@ curl http://127.0.0.1:18080/healthz   # {"status":"ok",...}
 # 关键：把仓库当前 engine 代码 + demo_cases 注入容器 site-packages
 #（镜像内 pip 安装的 engine 包可能是旧版，缺 replay 分支与演示数据）
 bash deploy/fix_engine_runtime.sh
+# 前端演示页：先本地 npm --prefix web run build，再注入 web 容器（不要在 ECS 上 build）
+bash deploy/fix_web_runtime.sh
 
 # 备料 + 导入 + 恢复演示态（需 python3）
 python3 deploy/stage_materials.py --src 法学材料 --out .tmp-legal-docs
@@ -61,7 +65,8 @@ LEXCYBER_USERNAME=demo_owner LEXCYBER_PASSWORD='<新密码>' \
 ```
 
 完成后应有：3 案全真实材料（B 案含 042）、facts confirmed、模块 v2、
-6 条 pending 复核（3 定罪 + 3 量刑）。登录 `http://<ECS_IP>:18080`，账号 demo_owner。
+每案至少一份演示文书草稿、6 条 pending 复核（3 定罪 + 3 量刑）。登录 `http://<ECS_IP>:18080`，账号 demo_owner。
+首页功能卡不再显示「开发中」；量刑/阅卷页不再出现「示例占位」横幅。
 
 ## 4. 演示当天 checklist
 
@@ -70,6 +75,8 @@ LEXCYBER_USERNAME=demo_owner LEXCYBER_PASSWORD='<新密码>' \
 - [ ] B 案文档列表：009 输入 + **042输入材料新(1).docx** + 2 标注
 - [ ] 定罪页证据定位点击能跳到 042 真实段落
 - [ ] 量刑页跑 actor（已预建 waiting_review 结果可直接演示复核）
+- [ ] 首页功能卡显示「进入 →」，无「开发中」
+- [ ] 定罪 / 量刑 / 文书页能打开真实案件数据
 - [ ] 复核队列 6 条 pending
 
 ## 5. 结束回收
@@ -87,6 +94,7 @@ swapoff /swapfile && rm /swapfile   # 如需还原
 - 单账号 `trusted-header` 模型：知道密码的人看到的都是 demo_owner 视角
 - `demo_restore.py` 依赖 `.t1-three-case-import.checkpoint.json` 取 caseId 映射（同目录下自动生成）
 - **必须跑 `fix_engine_runtime.sh`**：engine/worker 可能从 `/app/engine` 或 `site-packages/engine` 解析代码（取决于启动上下文），脚本两处都注入新代码 + `demo_cases`，跳过它量刑任务会走旧路径产出 blocker 或报文件缺失
+- **必须跑 `fix_web_runtime.sh`**：web 镜像是构建时打进 nginx 的静态包；演示页改完后用本脚本 docker cp `web/dist`，避免在 ECS 上 npm build
 
 ## 已实测（本机彩排 2026-09-19）
 
