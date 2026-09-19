@@ -2,7 +2,7 @@ type Listener = (message: string) => void
 
 const listeners = new Set<Listener>()
 
-export const PLACEHOLDER_TOAST = '该能力尚未接通，已保留界面占位。'
+export const PLACEHOLDER_TOAST = '请从案件中心或功能入口进入对应模块。'
 
 export function toast(message: string) {
   listeners.forEach((listener) => listener(message))

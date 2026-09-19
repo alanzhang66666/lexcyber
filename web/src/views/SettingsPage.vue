@@ -63,7 +63,7 @@ function update<K extends keyof UiSettings>(key: K, value: UiSettings[K]) {
       </article>
       <article class="panel empty-state">
         <strong>通知与安全策略</strong>
-        <p>通知渠道、设备会话与正式身份提供方将在服务端认证接通后配置。</p>
+        <p>复核入口在顶部「复核」与功能中心。</p>
       </article>
     </section>
   </div>

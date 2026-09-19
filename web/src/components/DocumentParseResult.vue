@@ -62,10 +62,8 @@ function stringify(value: unknown) {
 
 <template>
   <div v-if="parsed" class="parse-result">
-    <div class="parse-meta">
-      <span v-if="parsed.schemaVersion" class="subtle-chip mono">{{ parsed.schemaVersion }}</span>
-      <span v-if="parsed.format" class="subtle-chip">{{ parsed.format }}</span>
-      <span v-if="parsed.documentId" class="subtle-chip mono">{{ parsed.documentId }}</span>
+    <div v-if="parsed.format" class="parse-meta">
+      <span class="subtle-chip">{{ parsed.format }}</span>
     </div>
 
     <section v-if="parsed.text" class="parse-section">

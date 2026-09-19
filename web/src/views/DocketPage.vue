@@ -5,7 +5,6 @@ import { api } from '../api'
 import type { CaseView, DocumentView } from '../api-types'
 import CasePhaseBar from '../components/CasePhaseBar.vue'
 import DocumentParseResult from '../components/DocumentParseResult.vue'
-import PlaceholderBanner from '../components/PlaceholderBanner.vue'
 import { isPlaceholderCaseId } from '../data/placeholder-cases'
 import { rememberT1Case } from '../lib/current-case'
 
@@ -94,10 +93,9 @@ watch(caseId, () => void load())
 
 <template>
   <div class="page-stack workbench-stack">
-    <PlaceholderBanner />
     <header class="workbench-header">
       <div>
-        <p class="breadcrumb">案件中心 / {{ caseItem?.title || '未接通案件' }}</p>
+        <p class="breadcrumb">案件中心 / {{ caseItem?.title || '当前案件' }}</p>
         <h1>智能阅卷</h1>
       </div>
       <CasePhaseBar current="docket" />

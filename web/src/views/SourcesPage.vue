@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import { ApiError, api } from '../api'
 import type { SourceSearchHit } from '../api-types'
-import PlaceholderBanner from '../components/PlaceholderBanner.vue'
 
+const route = useRoute()
 const query = ref('')
 const asOfDate = ref('')
 const topK = ref(5)
@@ -27,7 +28,7 @@ async function search() {
   } catch (caught) {
     hits.value = []
     if (caught instanceof ApiError && caught.status === 501) {
-      error.value = '法源检索未在服务端启用（501）。请在环境配置中打开 LEGAL_SOURCE_SEARCH_ENABLED。'
+      error.value = '法源检索尚未开放。'
     } else if (caught instanceof ApiError && caught.status === 401) {
       error.value = '请先登录后再检索法源。'
     } else {
@@ -37,16 +38,23 @@ async function search() {
     loading.value = false
   }
 }
+
+onMounted(() => {
+  const initial = route.query.q
+  if (typeof initial === 'string' && initial.trim()) {
+    query.value = initial.trim()
+    void search()
+  }
+})
 </script>
 
 <template>
   <div class="page-stack">
-    <PlaceholderBanner />
     <header class="page-heading">
       <div>
         <p class="eyebrow">法源与类案</p>
         <h1>法源与类案</h1>
-        <p>检索范围仅覆盖三案演示已核对的官方法源；超范围查询明确返回空集，不作全库检索。</p>
+        <p>检索范围仅覆盖已核对的官方法源；超范围查询明确返回空集，不作全库检索。</p>
       </div>
     </header>
     <p class="notice notice-warning" role="note">
@@ -78,7 +86,7 @@ async function search() {
     <div v-if="loading" class="panel empty-state">正在检索…</div>
     <div v-else-if="searched && !hits.length && !error" class="panel empty-state">
       <strong>无命中</strong>
-      <p>该查询超出三案已核法源范围，或关键词未命中条文。</p>
+      <p>该查询超出已核法源范围，或关键词未命中条文。</p>
     </div>
     <ul v-else-if="hits.length" class="record-list">
       <li v-for="item in hits" :key="item.sourceId + item.locator">
@@ -91,7 +99,7 @@ async function search() {
     </ul>
     <div v-else class="panel empty-state">
       <strong>输入关键词开始检索</strong>
-      <p>仅覆盖三案演示已核对的十条官方法源版本。</p>
+      <p>仅覆盖已核对的官方法源版本。</p>
     </div>
   </div>
 </template>

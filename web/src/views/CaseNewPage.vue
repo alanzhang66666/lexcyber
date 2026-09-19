@@ -44,7 +44,7 @@ async function submit() {
       <form class="form-stack" @submit.prevent="submit">
         <label>
           <span>案件名称 <b>*</b></span>
-          <input v-model="title" required placeholder="例如：林某涉嫌跨境电信网络诈骗" />
+          <input v-model="title" required placeholder="例如：跨境技术帮助案" />
         </label>
         <label>
           <span>法域</span>

@@ -108,7 +108,7 @@ onMounted(() => {
     </section>
 
     <section id="home-functions" class="home-functions">
-      <RouterLink v-for="item in features" :key="item.key" class="home-feature" :class="{ 'is-dev': item.dev }" :to="item.to">
+      <RouterLink v-for="item in features" :key="item.key" class="home-feature" :to="item.to">
         <span class="home-feature-icon" :data-icon="item.icon" aria-hidden="true">
           <svg v-if="item.icon === 'conviction'" viewBox="0 0 32 32" fill="none">
             <circle cx="8" cy="10" r="3" stroke="currentColor" stroke-width="1.6" />
@@ -133,14 +133,8 @@ onMounted(() => {
         </span>
         <h2>{{ item.title }}</h2>
         <p>{{ item.desc }}</p>
-        <span class="home-feature-enter">{{ item.dev ? '开发中' : '进入 →' }}</span>
+        <span class="home-feature-enter">进入 →</span>
       </RouterLink>
     </section>
   </div>
 </template>
-
-<style scoped>
-.home-feature.is-dev { opacity: 0.72; }
-.home-feature.is-dev .home-feature-icon { color: var(--lc-muted); }
-.home-feature.is-dev .home-feature-enter { color: var(--lc-muted); }
-</style>

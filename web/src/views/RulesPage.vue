@@ -1,41 +1,73 @@
 <script setup lang="ts">
-import PlaceholderBanner from '../components/PlaceholderBanner.vue'
-import { PLACEHOLDER_RULE_NODES } from '../data/placeholder-cases'
-import { toastPlaceholder } from '../lib/toast'
+import { onMounted, ref } from 'vue'
+import { ApiError, api } from '../api'
+import type { SourceSearchHit } from '../api-types'
+
+const hits = ref<SourceSearchHit[]>([])
+const loading = ref(false)
+const error = ref('')
+
+async function load() {
+  loading.value = true
+  error.value = ''
+  try {
+    const res = await api.searchSources({ query: '刑法', asOfDate: null, topK: 20 })
+    hits.value = res.items
+  } catch (caught) {
+    hits.value = []
+    if (caught instanceof ApiError && caught.status === 501) {
+      error.value = '法源检索尚未开放。'
+    } else {
+      error.value = caught instanceof Error ? caught.message : '规则列表读取失败。'
+    }
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(() => void load())
 </script>
 
 <template>
   <div class="page-stack">
-    <PlaceholderBanner />
     <header class="page-heading">
       <div>
         <p class="eyebrow">量刑规则</p>
         <h1>量刑规则</h1>
-        <p>规则版本、节点与调节幅度的工作台预置。未连接规则引擎，禁止将示例幅度当作正式结论。</p>
+        <p>展示已核法源与规则版本。调节幅度只作为审计说明，不在本页推算刑期。</p>
       </div>
-      <span class="subtle-chip">规则 V2026.2 · 示例</span>
+      <span class="subtle-chip">已核法源</span>
     </header>
-    <section class="work-grid">
-      <article class="panel">
-        <div class="panel-heading"><div><p class="section-index">01</p><h2>版本时间线</h2></div></div>
-        <ol class="rule-timeline">
-          <li><strong>V2026.2</strong><small>当前示例基准 · 2026-09-04</small></li>
-          <li><strong>V2025.4</strong><small>历史版本占位</small></li>
-        </ol>
-      </article>
-      <article class="panel">
-        <div class="panel-heading"><div><p class="section-index">02</p><h2>规则节点</h2></div></div>
-        <ul class="record-list">
-          <li v-for="node in PLACEHOLDER_RULE_NODES" :key="node.id">
-            <button class="source-row" type="button" @click="toastPlaceholder">
-              <div class="record-main">
-                <span>{{ node.title }}</span>
-                <small>{{ node.detail }}</small>
-              </div>
-            </button>
-          </li>
-        </ul>
-      </article>
+    <p v-if="error" class="notice notice-error" role="alert">{{ error }}</p>
+    <div v-if="loading" class="panel empty-state">正在读取已核法源…</div>
+    <section v-else class="panel">
+      <div class="panel-heading"><div><p class="section-index">01</p><h2>已核规则与法源</h2></div></div>
+      <ul v-if="hits.length" class="record-list">
+        <li v-for="item in hits" :key="item.sourceId + item.locator">
+          <div class="record-main">
+            <span>{{ item.title || item.sourceId }}</span>
+            <small>{{ item.locator }}<template v-if="item.version"> · {{ item.version }}</template></small>
+            <blockquote v-if="item.quote" class="source-quote">{{ item.quote }}</blockquote>
+          </div>
+        </li>
+      </ul>
+      <div v-else class="empty-state">
+        <strong>当前没有可展示的法源条目</strong>
+        <p>可到「法源与类案」按关键词检索。</p>
+        <RouterLink class="button button-primary" to="/sources">前往法源检索</RouterLink>
+      </div>
     </section>
   </div>
 </template>
+
+<style scoped>
+.source-quote {
+  margin: 8px 0 0;
+  padding: 8px 12px;
+  border-left: 3px solid var(--lc-line);
+  color: var(--lc-muted);
+  font-size: 13px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+</style>

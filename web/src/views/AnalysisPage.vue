@@ -4,7 +4,6 @@ import { useRoute, useRouter } from 'vue-router'
 import { ApiError, api } from '../api'
 import type { CaseView, RelationActor, SentencingResult } from '../api-types'
 import CasePhaseBar from '../components/CasePhaseBar.vue'
-import PlaceholderBanner from '../components/PlaceholderBanner.vue'
 import SentencingResultPanel from '../components/SentencingResultPanel.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { useTaskPolling } from '../composables/useTaskPolling'
@@ -80,6 +79,16 @@ async function load() {
     } catch {
       // 定罪模块结果缺失时金额口径留空，不阻塞量刑页
     }
+    try {
+      const page = await api.listReviews({ module: 'sentencing', archiveStatus: 'open', size: 100 })
+      const existing = page.items.find((item) => item.caseId === caseId.value && item.taskId)
+      if (existing?.taskId) {
+        taskId.value = existing.taskId
+        start()
+      }
+    } catch {
+      // 没有已有量刑任务时保持空态，由页面按钮发起
+    }
   } catch (caught) {
     error.value = caught instanceof Error ? caught.message : '案件读取失败。'
   } finally {
@@ -110,7 +119,7 @@ async function runSentencing() {
   humanReviewRequired.value = false
   try {
     const created = await api.createTask({
-      query: `量刑计算：${caseItem.value.title} / ${actorLabel(selectedActorId.value)}`,
+      query: `量刑重放：${caseItem.value.title} / ${actorLabel(selectedActorId.value)}`,
       caseId: caseItem.value.id,
       metadata: {
         taskType: 'sentencing.calculate',
@@ -124,9 +133,9 @@ async function runSentencing() {
     start()
   } catch (caught) {
     if (caught instanceof ApiError && caught.status === 501) {
-      createError.value = '服务端量刑开关未启用（501）。请先在环境配置中打开 SENTENCING_ENABLED。'
+      createError.value = '量刑重放尚未开放。'
     } else if (caught instanceof ApiError && caught.code === 'FACTS_NOT_CONFIRMED') {
-      createError.value = '案件事实尚未确认。请回到案件工作区确认事实后再发起量刑计算。'
+      createError.value = '案件事实尚未确认。请回到案件工作区确认事实后再重放宣告口径。'
     } else {
       createError.value = caught instanceof Error ? caught.message : '量刑任务创建失败。'
     }
@@ -150,13 +159,12 @@ watch(caseId, () => {
 
 <template>
   <div class="page-stack">
-    <PlaceholderBanner />
     <header class="page-heading">
       <div>
         <RouterLink class="back-link" :to="workspaceTo">← 返回案件工作区</RouterLink>
         <p class="eyebrow">量刑推导链</p>
         <h1>量刑分析</h1>
-        <p>{{ caseItem?.title || '未接通案件' }} · 重放法学负责人已复核的宣告口径，不输出系统自创刑期</p>
+        <p>{{ caseItem?.title || '当前案件' }} · 重放法学负责人已复核的宣告口径，不输出系统自创刑期</p>
       </div>
       <div class="heading-actions">
         <CasePhaseBar current="analysis" />
@@ -174,8 +182,8 @@ watch(caseId, () => {
     </div>
     <template v-else>
       <section class="panel">
-        <div class="panel-heading"><div><p class="section-index">01</p><h2>计算输入</h2></div></div>
-        <p class="panel-note">按行为主体分别计算。数据集案件 <span class="mono">{{ datasetCaseId || '未绑定' }}</span>；无量刑基准的主体返回阻断项。</p>
+        <div class="panel-heading"><div><p class="section-index">01</p><h2>重放输入</h2></div></div>
+        <p class="panel-note">按行为主体分别重放法学已核对的宣告口径。无已核口径的主体会列出待确认项，不编造刑期。</p>
         <div class="sentencing-form">
           <label class="actor-field">
             <span>行为主体</span>
@@ -189,36 +197,36 @@ watch(caseId, () => {
             :disabled="creating || !selectedActorId || !datasetCaseId"
             @click="runSentencing"
           >
-            {{ creating ? '创建中…' : '发起量刑计算' }}
+            {{ creating ? '创建中…' : '重放已核对宣告口径' }}
           </button>
           <StatusBadge v-if="task" :status="task.status" />
         </div>
         <p v-if="!actors.length || !datasetCaseId" class="notice notice-info" role="note">
-          该案件缺少三案数据集绑定（datasetCaseId / relations.actors）。请通过演示导入脚本灌入案件后再计算。
+          本案尚未绑定已核对主体，无法重放宣告口径。
         </p>
         <p v-if="createError" class="notice notice-error" role="alert">{{ createError }}</p>
         <p v-if="taskError" class="notice notice-error" role="alert">{{ taskError }}</p>
         <p v-if="task && !taskTerminal" class="subtle-text">任务 {{ task.id }} · {{ task.currentStage || '排队中' }}…</p>
         <p v-if="task && task.status === 'failed'" class="notice notice-error" role="alert">
-          计算失败：{{ task.error || task.errorCode || '未知错误' }}
+          重放失败：{{ task.error || task.errorCode || '未知错误' }}
         </p>
         <p v-if="task && task.status === 'waiting_review'" class="notice notice-info" role="note">
-          计算完成，结果待人工复核。<RouterLink to="/reviews">前往复核队列</RouterLink>
+          已核口径已重放，结果待人工复核。<RouterLink to="/reviews">前往复核队列</RouterLink>
         </p>
       </section>
 
       <section v-if="sentencingResult" class="panel">
-        <div class="panel-heading"><div><p class="section-index">02</p><h2>量刑计算明细</h2></div></div>
+        <div class="panel-heading"><div><p class="section-index">02</p><h2>已核对宣告口径</h2></div></div>
         <p v-if="analysisStatus === 'blocked'" class="notice notice-warning" role="note">
-          <strong>计算被阻断</strong>
+          <strong>重放被阻断</strong>
           <span>输入未满足已复核口径要求，以下为待确认项，不输出刑期。</span>
         </p>
         <SentencingResultPanel :result="sentencingResult" @locate="handleLocate" />
       </section>
-      <section v-else-if="taskLoading" class="panel empty-state">正在计算…</section>
+      <section v-else-if="taskLoading" class="panel empty-state">正在重放已核对口径…</section>
       <section v-else class="panel empty-state">
-        <strong>尚未发起计算</strong>
-        <p>选择行为主体并发起量刑计算；结果只展示服务端返回内容。</p>
+        <strong>尚未重放宣告口径</strong>
+        <p>选择行为主体后重放法学已核对的宣告口径；本页不计算刑期。</p>
       </section>
     </template>
   </div>

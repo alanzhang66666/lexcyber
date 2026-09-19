@@ -119,7 +119,7 @@ onMounted(() => void loadRecent())
           </label>
           <label class="check-row">
             <input v-model="requireReview" type="checkbox" />
-            <span><strong>进入人工复核</strong><small>演示环境将请求复核链路，完成后可在「人工复核」中决定。</small></span>
+            <span><strong>进入人工复核</strong><small>勾选后将请求复核链路，完成后可在「人工复核」中决定。</small></span>
           </label>
           <button class="text-button" type="button" @click="showAdvanced = !showAdvanced">
             {{ showAdvanced ? '收起高级选项' : '高级选项（JSON）' }}

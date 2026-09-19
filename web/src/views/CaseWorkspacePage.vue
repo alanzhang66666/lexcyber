@@ -6,8 +6,10 @@ import type { CaseView, DocumentRole, DocumentView, ParseStatus, ResultPayload, 
 import CaseFactsPanel from '../components/CaseFactsPanel.vue'
 import CaseRelationsPanel from '../components/CaseRelationsPanel.vue'
 import DocumentParseResult from '../components/DocumentParseResult.vue'
+import ExtractCandidatesPanel from '../components/ExtractCandidatesPanel.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { rememberT1Case } from '../lib/current-case'
+import { extractCandidatesFromParse, type ExtractGroup } from '../lib/extract-candidates'
 
 const route = useRoute()
 const caseId = computed(() => String(route.params.caseId))
@@ -33,6 +35,7 @@ const result = ref<ResultPayload | null>(null)
 const failure = ref<{ errorCode?: string | null; error?: string | null } | null>(null)
 const targetLocator = ref<string | null>(null)
 const locateNotice = ref('')
+const extractGroups = ref<ExtractGroup[]>([])
 
 const TERMINAL: TaskStatus[] = ['completed', 'waiting_review', 'failed', 'timed_out', 'rejected']
 let pollTimer: number | undefined
@@ -66,6 +69,7 @@ async function refreshStatuses() {
   const pending = documents.value.filter((d) => d.parseTaskId && !isTerminal(d.parseStatus))
   if (!pending.length) {
     stopPolling()
+    await loadExtracts()
     return
   }
   await Promise.all(pending.map(async (doc) => {
@@ -77,6 +81,32 @@ async function refreshStatuses() {
       /* 保留现有状态，等待下一轮 */
     }
   }))
+  if (!documents.value.some((d) => d.parseTaskId && !isTerminal(d.parseStatus))) {
+    stopPolling()
+    await loadExtracts()
+  }
+}
+
+async function loadExtracts() {
+  const completed = documents.value.filter((doc) => (
+    doc.role !== 'annotation' && doc.parseStatus === 'completed' && doc.parseTaskId
+  ))
+  if (!completed.length) {
+    extractGroups.value = []
+    return
+  }
+  const groups = await Promise.all(completed.map(async (doc) => {
+    try {
+      const payload = await api.getTaskResult(doc.parseTaskId as string)
+      const candidates = extractCandidatesFromParse(payload.content)
+      return candidates.length
+        ? { documentId: doc.id, filename: doc.filename, candidates }
+        : null
+    } catch {
+      return null
+    }
+  }))
+  extractGroups.value = groups.filter((group): group is ExtractGroup => group !== null)
 }
 
 function startPolling() {
@@ -185,17 +215,20 @@ onUnmounted(stopPolling)
 
 <template>
   <div class="page-stack">
-    <header class="page-heading">
+    <header class="page-heading workspace-heading">
       <div>
         <RouterLink class="back-link" to="/cases">← 返回案件中心</RouterLink>
         <p class="eyebrow">案件工作区</p>
         <h1>{{ caseItem?.title || '案件' }}</h1>
         <p v-if="caseItem">{{ caseItem.jurisdiction || '未填法域' }}{{ caseItem.asOfDate ? ' · ' + caseItem.asOfDate : '' }}</p>
       </div>
-      <div v-if="caseItem" class="heading-actions">
+      <nav v-if="caseItem" class="module-nav" aria-label="案件模块">
+        <RouterLink class="button button-quiet" :to="`/cases/${caseItem.id}/compliance`">合规筛查</RouterLink>
+        <RouterLink class="button button-quiet" :to="`/cases/${caseItem.id}/conviction`">定罪研判</RouterLink>
+        <RouterLink class="button button-quiet" :to="`/cases/${caseItem.id}/analysis`">量刑分析</RouterLink>
         <RouterLink class="button button-quiet" :to="`/cases/${caseItem.id}/docket`">打开阅卷</RouterLink>
         <RouterLink class="button button-quiet" :to="`/cases/${caseItem.id}/documents`">文书辅助</RouterLink>
-      </div>
+      </nav>
     </header>
 
     <div v-if="loading" class="panel empty-state" aria-live="polite">正在读取案件…</div>
@@ -240,7 +273,7 @@ onUnmounted(stopPolling)
             <div><p class="section-index">02</p><h2>材料列表</h2></div>
             <button class="button button-quiet" type="button" :disabled="docsLoading" @click="loadDocuments">刷新</button>
           </div>
-          <p class="panel-note">上传成功后自动发起解析任务，状态每 2 秒刷新；完成后可查看正文与原文定位。</p>
+          <p class="panel-note">上传成功后自动发起解析任务，状态每 2 秒刷新；解析完成后再对照抽取候选与已核对标注，并可回跳原文。</p>
           <div v-if="docsLoading" class="empty-state" aria-live="polite">正在读取材料…</div>
           <p v-else-if="docsError" class="notice notice-error" role="alert">{{ docsError }}</p>
           <div v-else-if="!documents.length" class="empty-state">
@@ -272,6 +305,8 @@ onUnmounted(stopPolling)
         </article>
       </section>
 
+      <ExtractCandidatesPanel :groups="extractGroups" @locate="handleLocate" />
+
       <CaseRelationsPanel :case="caseItem" @locate="handleLocate" />
 
       <CaseFactsPanel :case-id="caseId" @locate="handleLocate" />
@@ -279,7 +314,7 @@ onUnmounted(stopPolling)
       <section v-if="selectedDocId" class="panel result-panel">
         <div class="panel-heading">
           <div>
-            <p class="section-index">04</p>
+            <p class="section-index">05</p>
             <h2>解析详情</h2>
           </div>
           <button class="button button-quiet" type="button" @click="closeResult">关闭</button>

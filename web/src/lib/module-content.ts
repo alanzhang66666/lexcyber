@@ -7,6 +7,7 @@ import type {
   ComplianceChecklistItem,
   EvidenceRef,
   JurisdictionConnection,
+  CaseRelations,
   MissingItem,
   ModuleApplicability,
   SentencingParameter,
@@ -360,4 +361,12 @@ export const APPLICABILITY_LABEL: Record<ModuleApplicability, string> = {
   not_applicable: '不适用',
   limited_context: '有限语境',
   applicable: '适用',
+}
+
+/** 从案件 metadata.relations 读取客观关系；缺字段时返回空结构。 */
+export function caseRelationsFrom(caseItem: { metadata?: Record<string, unknown> | null } | null | undefined): CaseRelations {
+  if (!caseItem?.metadata || typeof caseItem.metadata !== 'object' || Array.isArray(caseItem.metadata)) return {}
+  const relations = caseItem.metadata.relations
+  if (!relations || typeof relations !== 'object' || Array.isArray(relations)) return {}
+  return relations as CaseRelations
 }

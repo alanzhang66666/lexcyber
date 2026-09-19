@@ -11,8 +11,6 @@ export type CoreModule = {
   icon: CoreIcon
   /** 首页功能卡用的单字图标 */
   glyph: string
-  /** 为 true 表示尚未接通后端数据，标记「开发中」 */
-  dev?: boolean
 }
 
 export const CORE_MODULES: CoreModule[] = [
@@ -23,7 +21,6 @@ export const CORE_MODULES: CoreModule[] = [
     to: '/cases/:caseId/compliance',
     icon: 'compliance',
     glyph: '筛',
-    dev: true,
   },
   {
     key: 'conviction',
@@ -32,7 +29,6 @@ export const CORE_MODULES: CoreModule[] = [
     to: '/cases/:caseId/conviction',
     icon: 'conviction',
     glyph: '判',
-    dev: true,
   },
   {
     key: 'sentencing',
@@ -41,7 +37,6 @@ export const CORE_MODULES: CoreModule[] = [
     to: '/cases/:caseId/analysis',
     icon: 'sentencing',
     glyph: '析',
-    dev: true,
   },
   {
     key: 'review',

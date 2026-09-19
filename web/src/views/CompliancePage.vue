@@ -3,7 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useCaseModule } from '../composables/useCaseModule'
 import FactCard from '../components/FactCard.vue'
-import { APPLICABILITY_LABEL, toAnalysisFacts, toComplianceChecklist } from '../lib/module-content'
+import { APPLICABILITY_LABEL, caseRelationsFrom, toAnalysisFacts, toComplianceChecklist } from '../lib/module-content'
 
 const route = useRoute()
 const router = useRouter()
@@ -19,6 +19,7 @@ const contentNote = computed(() => {
 const rawContent = computed(() => (moduleState.value ? JSON.stringify(moduleState.value.content, null, 2) : ''))
 const showRaw = ref(false)
 const workspaceTo = computed(() => (caseItem.value ? `/cases/${caseItem.value.id}` : '/cases'))
+const events = computed(() => caseRelationsFrom(caseItem.value).events ?? [])
 
 function formatTime(value?: string | null) {
   if (!value) return '—'
@@ -42,7 +43,7 @@ watch(caseId, () => void load())
         <RouterLink class="back-link" :to="workspaceTo">← 返回案件工作区</RouterLink>
         <p class="eyebrow">模块一 · 合规筛查</p>
         <h1>合规筛查</h1>
-        <p>{{ caseItem?.title || '未接通案件' }} · 整理合规事实与风险时间线</p>
+        <p>{{ caseItem?.title || '当前案件' }} · 整理合规事实与风险时间线</p>
       </div>
       <div class="heading-actions">
         <span v-if="moduleState" class="subtle-chip">{{ APPLICABILITY_LABEL[moduleState.applicability] }}</span>
@@ -52,7 +53,7 @@ watch(caseId, () => void load())
 
     <p class="notice notice-warning" role="note">
       <strong>辅助分析，不替代专业判断</strong>
-      <span>本页只展示模块返回的事实与来源，不在前端计算合规结论或风险分数。C 案用事实清单，A/B 案显示「不适用及原因」。</span>
+      <span>本页展示法学已核对标注中的合规事实与来源，定位指向本次上传材料；不在前端计算合规结论或风险分数。</span>
     </p>
 
     <div v-if="loading" class="panel empty-state" aria-live="polite">正在读取案件与模块结果…</div>
@@ -64,7 +65,7 @@ watch(caseId, () => void load())
 
     <div v-else-if="isPlaceholder" class="panel empty-state">
       <strong>请先选择真实案件</strong>
-      <p>合规筛查挂在具体案件下，示例案件不适用。请到案件中心新建或选择案件。</p>
+      <p>合规筛查挂在具体案件下。请到案件中心新建或选择案件。</p>
       <RouterLink class="button button-primary" to="/cases">前往案件中心</RouterLink>
     </div>
 
@@ -93,7 +94,7 @@ watch(caseId, () => void load())
 
       <section class="panel">
         <div class="panel-heading"><div><p class="section-index">02</p><h2>合规事实梳理</h2></div></div>
-        <p class="panel-note">按以下维度整理客观事实，作为行为归属与主观认识的审查底稿；不输出合规等级与罪责结论。</p>
+        <p class="panel-note">按以下维度整理客观事实，作为行为归属与主观认识的审查底稿；条目来自法学已核对标注，不是系统合规结论。</p>
         <p v-if="contentNote" class="notice notice-info" role="note">{{ contentNote }}</p>
         <div v-if="checklist.length" class="checklist">
           <div v-for="(c, i) in checklist" :key="c.category ?? i" class="checklist-item">
@@ -105,23 +106,24 @@ watch(caseId, () => void load())
         <div v-else-if="facts.length" class="fact-list">
           <FactCard v-for="f in facts" :key="f.id ?? f.statement" :fact="f" @locate="handleLocate" />
         </div>
-        <dl v-else class="data-list">
-          <div><dt>制度与岗位</dt><dd class="placeholder-text">制度名称/版本、岗位职责与审批要求 —— 待引擎输出</dd></div>
-          <div><dt>制度执行</dt><dd class="placeholder-text">培训、审计、业务留痕、是否绕过制度 —— 待引擎输出</dd></div>
-          <div><dt>业务审批</dt><dd class="placeholder-text">申请人/审批人/时间/结果 —— 待引擎输出</dd></div>
-          <div><dt>风险预警与处置</dt><dd class="placeholder-text">告警/投诉/举报及处置 —— 待引擎输出</dd></div>
-          <div><dt>境外关联</dt><dd class="placeholder-text">境外主体、指令、资金流向 —— 待引擎输出</dd></div>
-          <div><dt>重大反向风险线索</dt><dd class="placeholder-text">预警未整改、制度执行脱节等 —— 待引擎输出</dd></div>
-          <div><dt>正常业务解释</dt><dd class="placeholder-text">真实合同/客户/物流/服务 —— 待引擎输出</dd></div>
-        </dl>
+        <div v-else class="empty-state">
+          <strong>本案没有单独的合规清单</strong>
+          <p>{{ moduleState?.applicability === 'not_applicable' ? '模块已标明不适用。' : '已确认事实见上方面板；未登记制度/岗位等分项。' }}</p>
+        </div>
       </section>
 
       <section class="panel">
         <div class="panel-heading"><div><p class="section-index">03</p><h2>合规与风险时间线</h2></div></div>
         <p class="panel-note">按时间顺序排列合规相关事实，标注发生时间、内容、材料来源与整理维度。</p>
-        <div class="empty-state">
-          <strong>暂无时间线</strong>
-          <p>完成合规事实梳理后生成。</p>
+        <dl v-if="events.length" class="data-list">
+          <div v-for="event in events" :key="event.eventId">
+            <dt class="mono">{{ event.occurredOn || event.stage || event.eventId }}</dt>
+            <dd>{{ event.stage || '事件' }}<template v-if="event.actorId"> · {{ event.actorId }}</template><template v-if="event.locator"> · {{ event.locator }}</template></dd>
+          </div>
+        </dl>
+        <div v-else class="empty-state">
+          <strong>本案未登记合规时间线</strong>
+          <p>事件时间线可在案件工作区查看。</p>
         </div>
       </section>
 
@@ -130,7 +132,7 @@ watch(caseId, () => void load())
           <div><p class="section-index">04</p><h2>结果内容（原始）</h2></div>
           <button class="text-button" type="button" @click="showRaw = !showRaw">{{ showRaw ? '收起' : '查看' }}</button>
         </div>
-        <p class="panel-note">T3 精确 key 尚未会签，暂以原始载荷展示，便于核对字段结构。</p>
+        <p class="panel-note">模块内容按已登记字段展示，便于核对结构。</p>
         <pre v-if="showRaw" class="raw-payload">{{ rawContent }}</pre>
       </section>
 
@@ -151,7 +153,6 @@ watch(caseId, () => void load())
 </template>
 
 <style scoped>
-.placeholder-text { color: var(--lc-muted); }
 .fact-list {
   display: grid;
   gap: 10px;

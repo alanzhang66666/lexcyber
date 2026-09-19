@@ -448,7 +448,7 @@ export type SentencingResult = {
   blockers?: Blocker[]
 }
 
-/* ── 协作导入（case-import.v1；独立于 MVP 演示链路）── */
+/* ── 协作导入（case-import.v1；独立于案件工作链路）── */
 
 export type ImportBatchStatus =
   | 'uploading'

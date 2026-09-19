@@ -43,7 +43,7 @@ function accountLabel(accountId?: string) {
     <div class="panel-heading">
       <div><h2>主体关系与事件时间线</h2></div>
     </div>
-    <p class="panel-note">来自案件 metadata.relations，仅记录客观关系，不含主从犯等法律定性。</p>
+    <p class="panel-note">以下主体与事件来自法学已核对标注，定位指向本次上传材料；仅记录客观关系，不含主从犯等法律定性。</p>
 
     <div v-if="relations?.actors?.length" class="rel-group">
       <h3>行为人</h3>

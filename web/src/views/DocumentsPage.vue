@@ -156,7 +156,7 @@ onMounted(() => void loadCase())
         <RouterLink class="back-link" :to="workspaceTo">← 返回案件工作区</RouterLink>
         <p class="eyebrow">文书辅助</p>
         <h1>文书辅助</h1>
-        <p>{{ caseItem?.title || '未接通案件' }} · 文书草稿的预览、编辑、保存与版本管理</p>
+        <p>{{ caseItem?.title || '当前案件' }} · 按已核对标注整理文书草稿，字段映射仍待法学会签</p>
       </div>
     </header>
 
@@ -169,7 +169,7 @@ onMounted(() => void loadCase())
 
     <div v-else-if="isPlaceholderCaseId(caseId)" class="panel empty-state">
       <strong>请先选择真实案件</strong>
-      <p>文书草稿挂在具体案件下，示例案件不适用。</p>
+      <p>文书草稿挂在具体案件下。请到案件中心新建或选择案件。</p>
       <RouterLink class="button button-primary" to="/cases">前往案件中心</RouterLink>
     </div>
 
@@ -215,7 +215,7 @@ onMounted(() => void loadCase())
         </div>
 
         <template v-if="selectedDraft">
-          <p class="panel-note">正文格式（纯文本 / Markdown）待 T1/T3 确认，暂以纯文本展示与编辑。</p>
+          <p class="panel-note">本草稿按法学已核对标注整理，定位指向本次上传材料；字段映射仍待法学会签，不作为正式法律文书。</p>
 
           <div v-if="!editing" class="draft-preview">
             <pre class="draft-body">{{ selectedDraft.body || '（空草稿）' }}</pre>

@@ -1,6 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { api } from '../api'
 import AnalysisPage from './AnalysisPage.vue'
 
@@ -27,6 +27,9 @@ async function mountAnalysis(caseId: string) {
 }
 
 describe('AnalysisPage', () => {
+  beforeEach(() => {
+    vi.spyOn(api, 'listReviews').mockResolvedValue({ items: [], page: 0, size: 100, total: 0 })
+  })
   it('does not render placeholder sentencing ranges as results', async () => {
     const getCase = vi.spyOn(api, 'getCase')
     const wrapper = await mountAnalysis('lin-128')
@@ -47,8 +50,8 @@ describe('AnalysisPage', () => {
     })
     const wrapper = await mountAnalysis('t1-case-9')
     expect(wrapper.text()).toContain('交接样例案')
-    expect(wrapper.text()).toContain('尚未发起计算')
-    expect(wrapper.text()).toContain('缺少三案数据集绑定')
+    expect(wrapper.text()).toContain('尚未重放宣告口径')
+    expect(wrapper.text()).toContain('尚未绑定已核对主体')
     expect(wrapper.text()).not.toContain('10～14 个月')
     wrapper.unmount()
   })
@@ -119,7 +122,7 @@ describe('AnalysisPage', () => {
     })
     const wrapper = await mountAnalysis('srv-c')
     expect(wrapper.text()).toContain('甲某')
-    const runButton = wrapper.findAll('button').find((b) => b.text().includes('发起量刑计算'))
+    const runButton = wrapper.findAll('button').find((b) => b.text().includes('重放已核对宣告口径'))
     expect(runButton).toBeTruthy()
     await runButton!.trigger('click')
     await flushPromises()

@@ -5,7 +5,6 @@ import type { ResultPayload, ReviewRecord, TaskView } from '../api-types'
 import ResultContent from '../components/ResultContent.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { moduleTitle } from '../data/modules'
-import { toastPlaceholder } from '../lib/toast'
 
 const props = defineProps<{ reviewId: string }>()
 const review = ref<ReviewRecord | null>(null)
@@ -35,6 +34,19 @@ async function load() {
     if (review.value.taskId) {
       task.value = await api.getTask(review.value.taskId)
       if (task.value.result) result.value = await api.getTaskResult(task.value.id)
+    } else if (review.value.caseId) {
+      const moduleName = review.value.moduleState
+        || (review.value.module === 'compliance' || review.value.module === 'conviction' ? review.value.module : null)
+      if (moduleName === 'compliance' || moduleName === 'conviction') {
+        const state = await api.getCaseModule(review.value.caseId, moduleName)
+        result.value = {
+          resultId: review.value.id,
+          version: review.value.resultVersion,
+          type: 'case.module.content.v1',
+          contentHash: '',
+          content: state.content,
+        }
+      }
     }
   } catch (caught) {
     error.value = caught instanceof Error ? caught.message : '复核记录读取失败。'
@@ -118,10 +130,6 @@ onMounted(() => void load())
           <ResultContent :content="result.content" />
         </div>
         <div v-else class="empty-state"><strong>没有可显示的结果内容</strong><p>请核对任务状态或稍后重新读取。</p></div>
-        <div class="compare-placeholder">
-          <small>冲突对照（占位）</small>
-          <p>正式版本将在此并排展示来源冲突。当前 Stub 结果不含结构化争议项。</p>
-        </div>
       </article>
       <aside class="panel decision-panel">
         <div class="panel-heading"><div><p class="section-index">02</p><h2>复核决定</h2></div></div>
@@ -133,9 +141,8 @@ onMounted(() => void load())
         <p v-else-if="review.status === 'pending' && !result" class="notice notice-error" role="alert">结果内容尚未成功加载，当前不能提交复核决定。</p>
         <div class="checklist">
           <p><strong>审核清单</strong></p>
-          <label class="check-row"><input type="checkbox" disabled checked /><span>身份与权限核验（开发环境占位）</span></label>
-          <label class="check-row"><input type="checkbox" disabled /><span>事实与证据冲突（待接口）</span></label>
-          <label class="check-row"><input type="checkbox" disabled /><span>调节幅度与理由（待接口）</span></label>
+          <label class="check-row"><input type="checkbox" disabled checked /><span>对照当前结果版本</span></label>
+          <label class="check-row"><input type="checkbox" disabled checked /><span>决定写入复核留痕</span></label>
         </div>
         <label class="decision-comment">
           <span>复核意见 <b aria-hidden="true">*</b></span>
@@ -146,7 +153,6 @@ onMounted(() => void load())
           <button class="button button-danger" :disabled="Boolean(deciding) || !comment.trim()" type="button" @click="decide('reject')">
             {{ deciding === 'reject' ? '正在拒绝…' : '拒绝结果' }}
           </button>
-          <button class="button button-quiet" type="button" @click="toastPlaceholder">要求补充 / 重试</button>
           <button class="button button-primary" :disabled="Boolean(deciding) || !comment.trim()" type="button" @click="decide('approve')">
             {{ deciding === 'approve' ? '正在批准…' : '批准结果' }}
           </button>

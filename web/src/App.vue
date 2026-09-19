@@ -5,7 +5,7 @@ import BrandMark from './components/BrandMark.vue'
 import { CORE_MODULES, modulePath } from './data/modules'
 import { currentCaseId, resolveT1CaseId, syncCurrentCaseFromStorage } from './lib/current-case'
 import { logout, refreshSession, session } from './lib/auth'
-import { onToast, toastPlaceholder } from './lib/toast'
+import { onToast } from './lib/toast'
 import { applySettings, loadSettings } from './lib/ui-settings'
 
 const route = useRoute()
@@ -15,6 +15,7 @@ const functionsOpen = ref(false)
 const functionsTrigger = ref<HTMLButtonElement | null>(null)
 const functionsMenuStyle = ref<Record<string, string>>({})
 const toastMessage = ref('')
+const searchQuery = ref('')
 let stopToast: (() => void) | undefined
 let timer: number | undefined
 
@@ -52,6 +53,15 @@ async function toggleFunctions() {
 function toggleProfile() {
   profileOpen.value = !profileOpen.value
   functionsOpen.value = false
+}
+
+function goSearch() {
+  const q = searchQuery.value.trim()
+  if (!q) {
+    void router.push('/cases')
+    return
+  }
+  void router.push({ path: '/sources', query: { q } })
 }
 
 async function signOut() {
@@ -138,14 +148,15 @@ watch(() => route.path, () => {
         <label v-if="signedIn" class="home-search">
           <span aria-hidden="true">⌕</span>
           <input
+            v-model="searchQuery"
             type="search"
-            placeholder="搜索案件、法源、规则、报告…"
-            @keydown.enter.prevent="toastPlaceholder"
+            placeholder="搜索法源、关键词…"
+            @keydown.enter.prevent="goSearch"
           />
         </label>
         <template v-if="signedIn">
-          <button class="icon-action work-search" type="button" @click="toastPlaceholder">搜索</button>
-          <button class="icon-action work-notice" type="button" @click="toastPlaceholder">通知</button>
+          <button class="icon-action work-search" type="button" @click="goSearch">搜索</button>
+          <RouterLink class="icon-action work-notice" to="/reviews">复核</RouterLink>
           <div class="profile-menu">
             <button class="profile-link" type="button" @click="toggleProfile">
               <span>{{ avatarText }}</span>
@@ -155,10 +166,6 @@ watch(() => route.path, () => {
               <RouterLink to="/settings">用户设置</RouterLink>
               <button type="button" @click="signOut">退出登录</button>
             </div>
-          </div>
-          <div class="environment" title="当前连接本地开发服务">
-            <span aria-hidden="true"></span>
-            <div><small>运行环境</small><strong>LOCAL</strong></div>
           </div>
         </template>
         <RouterLink v-else class="home-btn home-btn-primary" to="/login">登录</RouterLink>

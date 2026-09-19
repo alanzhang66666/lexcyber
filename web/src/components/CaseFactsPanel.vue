@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { api } from '../api'
 import type { FactItem, FactView } from '../api-types'
+import { isExtractedFactKey } from '../lib/extract-candidates'
 import LocatorChip from './LocatorChip.vue'
+import VerificationBadge from './VerificationBadge.vue'
 
 const props = defineProps<{ caseId: string }>()
 const emit = defineEmits<{ locate: [documentId: string | undefined, locator: string] }>()
@@ -21,6 +23,8 @@ const confirmError = ref('')
 function formatTime(value?: string | null) {
   return value ? new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : '—'
 }
+
+const reviewedItems = computed(() => (facts.value?.items ?? []).filter((item) => !isExtractedFactKey(item.key)))
 
 async function load() {
   loading.value = true
@@ -89,11 +93,11 @@ onMounted(() => void load())
   <article class="panel">
     <div class="panel-heading">
       <div>
-        <p class="section-index">03</p>
-        <h2>事实确认</h2>
+        <p class="section-index">04</p>
+        <h2>已核对事实</h2>
       </div>
       <span class="subtle-chip" :class="{ 'chip-confirmed': facts?.status === 'confirmed' }">
-        {{ facts?.status === 'confirmed' ? '已确认' : '草稿' }}
+        {{ facts?.status === 'confirmed' ? '已核对标注' : '草稿' }}
       </span>
     </div>
 
@@ -104,20 +108,22 @@ onMounted(() => void load())
     </p>
 
     <template v-else-if="facts">
+      <p class="panel-note">下列条目为法学已核对标注，定位指向本次上传材料；不是系统自动抽取结论。</p>
       <p v-if="facts.confirmedAt" class="panel-note">已于 {{ formatTime(facts.confirmedAt) }} 确认。</p>
 
       <!-- 只读列表 -->
       <dl v-if="!editing" class="data-list">
-        <div v-for="(item, i) in facts.items" :key="item.id ?? i">
+        <div v-for="(item, i) in reviewedItems" :key="item.id ?? i">
           <dt>{{ item.key }}</dt>
           <dd>
             {{ item.value }}
+            <VerificationBadge v-if="item.verificationStatus" :status="item.verificationStatus" />
             <LocatorChip v-if="item.locator" :locator="item.locator" @locate="(l) => emit('locate', item.sourceDocumentId ?? undefined, l)" />
           </dd>
         </div>
-        <div v-if="!facts.items.length" class="empty-state">
-          <strong>暂无事实</strong>
-          <p>解析或人工录入后，可在此校对并确认。</p>
+        <div v-if="!reviewedItems.length" class="empty-state">
+          <strong>暂无已核对事实</strong>
+          <p>解析完成后由法学标注写入；也可在此人工录入后确认。</p>
         </div>
       </dl>
 
@@ -172,6 +178,11 @@ onMounted(() => void load())
   grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.4fr) minmax(0, 0.9fr) auto;
   gap: 8px;
   align-items: center;
+}
+@media (max-width: 1023px) {
+  .fact-row {
+    grid-template-columns: 1fr;
+  }
 }
 .fact-row input {
   width: 100%;
