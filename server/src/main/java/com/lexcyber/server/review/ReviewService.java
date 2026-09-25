@@ -3,6 +3,10 @@ package com.lexcyber.server.review;
 import com.lexcyber.server.api.ApiException;
 import com.lexcyber.server.domain.CaseService;
 import com.lexcyber.server.domain.DocumentPolicies;
+import com.lexcyber.server.domain.DraftApprovalService;
+import com.lexcyber.server.domain.IdempotencyService;
+import com.lexcyber.server.domain.IdentityService;
+import com.lexcyber.server.domain.ModuleConfirmationService;
 import com.lexcyber.server.domain.ModulePolicies;
 import java.nio.charset.StandardCharsets;
 import java.sql.ResultSet;
@@ -18,41 +22,42 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+/**
+ * /v1 复核端点适配层：权威绑定为 artifact_version_id（INV-REVIEW-REF-001）。
+ * taskId/draftId/moduleState 旧请求字段在 open 时解析为具体 artifact_version；
+ * ReviewTargetView 字段（draftId/moduleState/returnTarget…）由 stream scope_key 反算，不持久化（INV-REVIEW-003）。
+ */
 @Service
 public class ReviewService {
     private static final String OWNED_FROM = """
             FROM app.review_records r
-            LEFT JOIN app.tasks t ON t.id = r.task_id
-            LEFT JOIN app.case_drafts d ON d.id = r.draft_id
-            JOIN app.cases c ON c.owner_account_id = ?
-              AND c.id = COALESCE(NULLIF(t.case_id, ''), d.case_id, r.case_id)
-            """;
-    private static final String MODULE_SQL = """
-            COALESCE(NULLIF(t.metadata_json->>'module', ''),
-              r.module_state,
-              CASE WHEN r.draft_id IS NOT NULL THEN 'draft' END,
-              CASE t.metadata_json->>'taskType'
-                WHEN 'document.parse' THEN 'parse'
-                WHEN 'sentencing.calculate' THEN 'sentencing'
-                WHEN 'compliance.analyze' THEN 'compliance'
-                WHEN 'conviction.analyze' THEN 'conviction'
-                ELSE CASE WHEN t.id IS NOT NULL THEN 'task' END
-              END)
+            JOIN app.artifact_version v ON v.artifact_version_id = r.artifact_version_id
+            JOIN app.artifact_stream s ON s.artifact_stream_id = v.artifact_stream_id
+            JOIN app.cases c ON c.owner_account_id = ? AND c.id = r.case_id
             """;
     private static final String OWNED_SELECT = """
-            SELECT r.id, r.task_id, COALESCE(NULLIF(t.case_id, ''), d.case_id, r.case_id) AS case_id,
-                   r.result_version, r.status, r.decision,
-                   r.actor, r.authenticated, r.comment, r.decided_at, r.created_at,
-                   r.draft_id, r.draft_version, r.module_state, r.module_version,
-                   r.archive_status, r.return_target,
-                   """ + MODULE_SQL + " AS module " + OWNED_FROM;
+            SELECT r.review_id AS id, r.artifact_version_id, r.case_id,
+                   v.version AS result_version, r.status, r.decision,
+                   r.actor_id, r.comment, r.decided_at, r.created_at,
+                   s.kind AS module, s.scope_key
+            """ + OWNED_FROM;
 
     private final JdbcTemplate jdbc;
     private final CaseService cases;
+    private final IdentityService ids;
+    private final IdempotencyService idempotency;
+    private final ModuleConfirmationService moduleConfirmation;
+    private final DraftApprovalService draftApproval;
 
-    public ReviewService(JdbcTemplate jdbc, CaseService cases) {
+    public ReviewService(JdbcTemplate jdbc, CaseService cases, IdempotencyService idempotency,
+                         ModuleConfirmationService moduleConfirmation,
+                         DraftApprovalService draftApproval) {
         this.jdbc = jdbc;
         this.cases = cases;
+        this.ids = new IdentityService(jdbc);
+        this.idempotency = idempotency;
+        this.moduleConfirmation = moduleConfirmation;
+        this.draftApproval = draftApproval;
     }
 
     @Transactional(readOnly = true)
@@ -65,6 +70,7 @@ public class ReviewService {
         return list(ownerAccountId, status, module, null, page, size);
     }
 
+    /** archiveStatus 参数已弃用（归档改案件级）：忽略并在控制器层加 Deprecation 头。 */
     @Transactional(readOnly = true)
     public Map<String, Object> list(UUID ownerAccountId, String status, String module, String archiveStatus,
                                     int page, int size) {
@@ -74,10 +80,6 @@ public class ReviewService {
         }
         boolean filterStatus = status != null && !status.isBlank();
         boolean filterModule = module != null && !module.isBlank();
-        boolean filterArchive = archiveStatus != null && !archiveStatus.isBlank();
-        if (filterArchive && !"open".equals(archiveStatus) && !"archived".equals(archiveStatus)) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", "archiveStatus must be open or archived");
-        }
         List<Object> params = new ArrayList<>();
         params.add(ownerAccountId);
         StringBuilder where = new StringBuilder();
@@ -86,20 +88,15 @@ public class ReviewService {
             params.add(status);
         }
         if (filterModule) {
-            where.append(where.isEmpty() ? " WHERE " : " AND ").append(MODULE_SQL).append(" = ?");
+            where.append(where.isEmpty() ? " WHERE " : " AND ").append("s.kind = ?");
             params.add(module);
-        }
-        if (filterArchive) {
-            where.append(where.isEmpty() ? " WHERE " : " AND ").append("r.archive_status = ?");
-            params.add(archiveStatus);
         }
         String filterClause = where.toString();
         params.add(size);
         params.add(page * size);
         List<Map<String, Object>> items = jdbc.query(
                 OWNED_SELECT + filterClause + " ORDER BY r.created_at DESC LIMIT ? OFFSET ?",
-                this::map,
-                params.toArray());
+                this::map, params.toArray());
         List<Object> countParams = new ArrayList<>();
         countParams.add(ownerAccountId);
         if (filterStatus) {
@@ -108,13 +105,9 @@ public class ReviewService {
         if (filterModule) {
             countParams.add(module);
         }
-        if (filterArchive) {
-            countParams.add(archiveStatus);
-        }
         Long total = jdbc.queryForObject(
                 "SELECT COUNT(*) " + OWNED_FROM + filterClause,
-                Long.class,
-                countParams.toArray());
+                Long.class, countParams.toArray());
         return Map.of("items", items, "page", page, "size", size, "total", total == null ? 0L : total);
     }
 
@@ -130,186 +123,160 @@ public class ReviewService {
 
     @Transactional
     public Map<String, Object> open(UUID ownerAccountId, String caseId, ReviewOpen request, String idempotencyKey) {
-        cases.lockOwned(ownerAccountId, caseId);
+        caseId = cases.lockOwned(ownerAccountId, caseId).id();
         String module = ModulePolicies.requireReviewModule(request.module());
         UUID taskId = request.taskId();
         String draftId = blankToNull(request.draftId());
+        if (draftId != null) {
+            draftId = ids.draftId(draftId);
+        }
         String moduleState = blankToNull(request.moduleState());
         if (taskId == null && draftId == null && moduleState == null) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_REQUEST",
                     "review needs taskId, draftId, or moduleState");
         }
         String key = normalizeIdempotencyKey(idempotencyKey);
-        String requestHash = key == null ? null : reviewRequestHash(request);
         if (key != null) {
-            Map<String, Object> replay = claimReviewIdempotency(ownerAccountId, caseId, key, requestHash);
-            if (replay != null) return replay;
-        }
-
-        Integer draftVersion = request.draftVersion();
-        Integer moduleVersion = request.moduleVersion();
-        Integer resultVersion = request.resultVersion();
-
-        if (draftId != null) {
-            List<Integer> versions = jdbc.query(
-                    "SELECT version FROM app.case_drafts WHERE id = ? AND case_id = ?",
-                    (rs, ignored) -> rs.getInt(1), draftId, caseId);
-            if (versions.isEmpty()) {
-                throw new ApiException(HttpStatus.NOT_FOUND, "DRAFT_NOT_FOUND", "草稿不存在或不可访问");
-            }
-            int current = versions.get(0);
-            if (draftVersion == null) {
-                draftVersion = current;
-            } else if (draftVersion != current) {
-                throw new ApiException(HttpStatus.CONFLICT, "DRAFT_VERSION_CONFLICT", "草稿版本已变更");
-            }
-            if (resultVersion == null) {
-                resultVersion = draftVersion;
+            IdempotencyService.Claim claim = idempotency.claim(
+                    ownerAccountId, key, reviewRequestHash(request));
+            if (claim.replay()) {
+                return requireOwned(ownerAccountId, claim.resourceId());
             }
         }
 
-        if (moduleState != null) {
-            moduleState = ModulePolicies.requireModule(moduleState);
-            List<Integer> versions = jdbc.query(
-                    "SELECT version FROM app.case_module_states WHERE case_id = ? AND module = ?",
-                    (rs, ignored) -> rs.getInt(1), caseId, moduleState);
-            if (versions.isEmpty()) {
-                throw new ApiException(HttpStatus.NOT_FOUND, "MODULE_NOT_FOUND", "模块空壳不存在");
-            }
-            int current = versions.get(0);
-            if (moduleVersion == null) {
-                moduleVersion = current;
-            } else if (moduleVersion != current) {
-                throw new ApiException(HttpStatus.CONFLICT, "MODULE_VERSION_CONFLICT", "模块版本已变更");
-            }
-            if (resultVersion == null) {
-                resultVersion = Math.max(moduleVersion, 1);
-            }
-        }
-
-        if (taskId != null) {
-            List<Map<String, Object>> tasks = jdbc.query("""
-                    SELECT case_id, (
-                      SELECT COALESCE(MAX(version), 0) FROM app.result_versions rv WHERE rv.task_id = t.id
-                    ) AS result_version
-                    FROM app.tasks t WHERE t.id = ?
-                    """, (rs, ignored) -> {
-                Map<String, Object> row = new LinkedHashMap<>();
-                row.put("caseId", rs.getString("case_id"));
-                row.put("resultVersion", rs.getInt("result_version"));
-                return row;
-            }, taskId);
-            if (tasks.isEmpty()) {
-                throw new ApiException(HttpStatus.NOT_FOUND, "TASK_NOT_FOUND", "任务不存在或不可访问");
-            }
-            String taskCaseId = String.valueOf(tasks.get(0).get("caseId"));
-            if (taskCaseId.isBlank() || !caseId.equals(taskCaseId)) {
-                throw new ApiException(HttpStatus.NOT_FOUND, "TASK_NOT_FOUND", "任务不存在或不可访问");
-            }
-            int current = (Integer) tasks.get(0).get("resultVersion");
-            if (current < 1) {
-                throw new ApiException(HttpStatus.CONFLICT, "RESULT_VERSION_CONFLICT", "任务尚无结果版本");
-            }
-            if (resultVersion == null) {
-                resultVersion = current;
-            } else if (resultVersion != current) {
-                throw new ApiException(HttpStatus.CONFLICT, "RESULT_VERSION_CONFLICT", "结果版本已变更");
-            }
-        }
-
-        if (resultVersion == null || resultVersion < 1) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", "resultVersion is required");
-        }
-
+        UUID artifactVersionId = resolveArtifact(caseId, request, taskId, draftId, moduleState);
         UUID reviewId = UUID.randomUUID();
         jdbc.update("""
-                INSERT INTO app.review_records(
-                    id, task_id, result_version, status, decision, case_id, draft_id, draft_version,
-                    module_state, module_version, archive_status, return_target)
-                VALUES (?, ?, ?, 'pending', 'none', ?, ?, ?, ?, ?, 'open', ?)
-                """, reviewId, taskId, resultVersion, caseId, draftId, draftVersion,
-                moduleState, moduleVersion, blankToNull(request.returnTarget()));
+                INSERT INTO app.review_records(review_id, artifact_version_id, case_id, status, actor_id)
+                VALUES (?, ?, ?::uuid, 'pending', ?)
+                """, reviewId, artifactVersionId, caseId, ownerAccountId);
         jdbc.update("""
                 INSERT INTO app.business_audit(actor, action, resource_type, resource_id, payload_json)
-                VALUES (?, 'review.open', 'review', ?, jsonb_build_object('caseId', ?, 'module', ?, 'resultVersion', ?))
-                """, "account:" + ownerAccountId, reviewId.toString(), caseId, module, resultVersion);
+                VALUES (?, 'review.open', 'review', ?, jsonb_build_object('caseId', ?, 'module', ?))
+                """, "account:" + ownerAccountId, reviewId.toString(), caseId, module);
         if (key != null) {
-            jdbc.update("""
-                    UPDATE app.review_open_idempotency SET review_id = ?
-                    WHERE account_id = ? AND case_id = ? AND idempotency_key = ? AND request_hash = ?
-                    """, reviewId, ownerAccountId, caseId, key, requestHash);
+            idempotency.record(ownerAccountId, key, "review", reviewId, 201);
         }
         return requireOwned(ownerAccountId, reviewId);
     }
 
+    /** 把 /v1 的三类目标解析为具体 artifact_version_id。 */
+    private UUID resolveArtifact(String caseId, ReviewOpen request,
+                                 UUID taskId, String draftId, String moduleState) {
+        if (taskId != null) {
+            List<Map<String, Object>> versions = jdbc.queryForList("""
+                    SELECT v.artifact_version_id, v.version
+                    FROM app.artifact_version v
+                    JOIN app.tasks t ON t.execution_id = v.execution_id
+                    JOIN app.artifact_stream s ON s.artifact_stream_id = v.artifact_stream_id
+                    WHERE t.id = ? AND s.case_id = ?::uuid
+                    ORDER BY v.version DESC
+                    """, taskId, caseId);
+            if (versions.isEmpty()) {
+                throw new ApiException(HttpStatus.CONFLICT, "RESULT_VERSION_CONFLICT", "任务尚无已发布结果");
+            }
+            Integer wanted = request.resultVersion();
+            for (Map<String, Object> row : versions) {
+                if (wanted == null || wanted.equals(((Number) row.get("version")).intValue())) {
+                    return (UUID) row.get("artifact_version_id");
+                }
+            }
+            throw new ApiException(HttpStatus.CONFLICT, "RESULT_VERSION_CONFLICT", "结果版本已变更");
+        }
+        if (draftId != null) {
+            return resolveStreamVersion(caseId, "draft", "draft:" + draftId,
+                    request.draftVersion(), "DRAFT_NOT_FOUND", "DRAFT_VERSION_CONFLICT");
+        }
+        String module = ModulePolicies.requireModule(moduleState);
+        return resolveStreamVersion(caseId, module, "module:" + module,
+                request.moduleVersion(), "MODULE_NOT_FOUND", "MODULE_VERSION_CONFLICT");
+    }
+
+    private UUID resolveStreamVersion(String caseId, String kind, String scopeKey, Integer wanted,
+                                      String notFoundCode, String conflictCode) {
+        List<Map<String, Object>> versions = jdbc.queryForList("""
+                SELECT v.artifact_version_id, v.version, v.artifact_version_id = s.latest_version_id AS is_latest
+                FROM app.artifact_stream s
+                JOIN app.artifact_version v ON v.artifact_stream_id = s.artifact_stream_id
+                WHERE s.case_id = ?::uuid AND s.kind = ? AND s.scope_key = ?
+                ORDER BY v.version DESC
+                """, caseId, kind, scopeKey);
+        if (versions.isEmpty()) {
+            throw new ApiException(HttpStatus.NOT_FOUND, notFoundCode, "目标不存在或尚无工件版本");
+        }
+        for (Map<String, Object> row : versions) {
+            if (wanted == null || wanted.equals(((Number) row.get("version")).intValue())) {
+                return (UUID) row.get("artifact_version_id");
+            }
+        }
+        throw new ApiException(HttpStatus.CONFLICT, conflictCode, "版本已变更");
+    }
+
+    /** /v1 的 archive 端点已移除：归档改在案件级（POST /v2/cases/{id}/archives）。 */
     @Transactional
     public Map<String, Object> archive(UUID ownerAccountId, UUID reviewId) {
-        requireOwned(ownerAccountId, reviewId);
-        int changed = jdbc.update("""
-                UPDATE app.review_records SET archive_status = 'archived'
-                WHERE id = ?
-                """, reviewId);
-        if (changed == 0) {
-            throw new ApiException(HttpStatus.NOT_FOUND, "REVIEW_NOT_FOUND", "复核记录不存在或不可访问");
-        }
-        return requireOwned(ownerAccountId, reviewId);
+        throw new ApiException(HttpStatus.GONE, "REVIEW_ARCHIVE_REMOVED",
+                "复核归档已移除；归档为案件级操作，请使用 POST /v2/cases/{caseId}/archives");
     }
 
     @Transactional
     public Map<String, Object> decide(UUID ownerAccountId, UUID reviewId, String decision, int resultVersion,
                                       String actor, String comment) {
         Map<String, Object> current = requireOwned(ownerAccountId, reviewId);
-        requireLiveTarget(current);
+        String caseId = (String) current.get("caseId");
+        cases.lockOwned(ownerAccountId, caseId);
         String nextStatus = "approve".equals(decision) ? "approved" : "rejected";
-        List<UUID> tasks = jdbc.query("""
-                UPDATE app.review_records SET status=?, decision=?, actor=?, authenticated=true, comment=?, decided_at=now()
-                WHERE id=? AND result_version=? AND status='pending'
-                RETURNING task_id
-                """, (rs, ignored) -> rs.getObject("task_id", UUID.class), nextStatus, decision, actor, comment, reviewId, resultVersion);
-        if (tasks.isEmpty()) {
-            requireOwned(ownerAccountId, reviewId);
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "review is already decided or has a different result version");
+        UUID artifactVersionId = (UUID) current.get("artifactVersionId");
+        // 锁序 stream → review（与 publish 的 stream→review 同序防互等死锁）：
+        // SHARE 期间 stream.latest 不会变，下面的 live 检查在该锁内稳定成立。
+        List<Map<String, Object>> streamLock = jdbc.queryForList("""
+                SELECT s.artifact_stream_id FROM app.artifact_stream s
+                JOIN app.artifact_version v ON v.artifact_stream_id = s.artifact_stream_id
+                WHERE v.artifact_version_id = ? FOR SHARE OF s
+                """, artifactVersionId);
+        if (streamLock.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "artifact version not found");
         }
-        UUID taskId = tasks.get(0);
+        // 复核只针对仍存活（latest）的版本做决定；被新版本替代的复核已由发布路径置 superseded
+        Long live = jdbc.queryForObject("""
+                SELECT COUNT(*) FROM app.artifact_version v
+                JOIN app.artifact_stream s ON s.artifact_stream_id = v.artifact_stream_id
+                WHERE v.artifact_version_id = ? AND s.latest_version_id = v.artifact_version_id
+                """, Long.class, artifactVersionId);
+        if (live == null || live == 0L) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "review is already decided or has a different result version");
+        }
+        List<UUID> decided = jdbc.query("""
+                UPDATE app.review_records
+                SET status = ?, decision = ?, actor_id = ?, comment = ?, decided_at = now()
+                WHERE review_id = ? AND status = 'pending'
+                RETURNING review_id
+                """, (rs, ignored) -> rs.getObject(1, UUID.class),
+                nextStatus, decision, ownerAccountId, comment, reviewId);
+        if (decided.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "review is already decided or has a different result version");
+        }
         jdbc.update("INSERT INTO app.business_audit(actor, action, resource_type, resource_id, payload_json) VALUES (?, ?, 'review', ?, ?::jsonb)",
                 actor, decision, reviewId.toString(), "{\"resultVersion\":" + resultVersion + "}");
-        if (taskId != null) {
-            Map<String, Object> task = jdbc.queryForMap("SELECT request_id, execution_id FROM app.tasks WHERE id=?", taskId);
-            UUID requestId = (UUID) task.get("request_id");
-            UUID executionId = (UUID) task.get("execution_id");
-            jdbc.update("UPDATE app.tasks SET status=?, current_stage='human_review_decision', updated_at=now() WHERE id=? AND status='waiting_review'",
-                    nextStatus.equals("approved") ? "completed" : "rejected", taskId);
-            jdbc.update("""
-                    INSERT INTO app.business_audit(actor, action, resource_type, resource_id, payload_json)
-                    VALUES (?, ?, 'review', ?, jsonb_build_object('taskId', ?::text, 'requestId', ?::text,
-                                                                   'executionId', ?::text, 'resultVersion', ?))
-                    """, actor, decision, reviewId.toString(), taskId.toString(), requestId.toString(), executionId.toString(), resultVersion);
+        if ("approved".equals(nextStatus)) {
+            String module = (String) current.get("module");
+            if ("draft".equals(module)) {
+                UUID draftId = parseScopeId((String) current.get("scopeKey"), "draft:");
+                draftApproval.approve(caseId, draftId, ownerAccountId);
+            } else if (ModulePolicies.MODULES.contains(module)) {
+                moduleConfirmation.confirm(caseId, module, ownerAccountId);
+            }
         }
         return requireOwned(ownerAccountId, reviewId);
     }
 
-    private Map<String, Object> claimReviewIdempotency(UUID ownerAccountId, String caseId,
-                                                        String key, String requestHash) {
-        jdbc.update("""
-                INSERT INTO app.review_open_idempotency(
-                    account_id, case_id, idempotency_key, request_hash, review_id)
-                VALUES (?, ?, ?, ?, NULL)
-                ON CONFLICT (account_id, case_id, idempotency_key) DO NOTHING
-                """, ownerAccountId, caseId, key, requestHash);
-        Map<String, Object> row = jdbc.queryForMap("""
-                SELECT request_hash, review_id
-                FROM app.review_open_idempotency
-                WHERE account_id = ? AND case_id = ? AND idempotency_key = ?
-                FOR UPDATE
-                """, ownerAccountId, caseId, key);
-        if (!requestHash.equals(String.valueOf(row.get("request_hash")))) {
-            throw new ApiException(HttpStatus.CONFLICT, "IDEMPOTENCY_CONFLICT",
-                    "相同幂等键已用于不同复核内容");
+    private static UUID parseScopeId(String scopeKey, String prefix) {
+        if (scopeKey != null && scopeKey.startsWith(prefix)) {
+            return UUID.fromString(scopeKey.substring(prefix.length()));
         }
-        Object reviewId = row.get("review_id");
-        if (reviewId == null) return null;
-        UUID resolved = reviewId instanceof UUID uuid ? uuid : UUID.fromString(String.valueOf(reviewId));
-        return requireOwned(ownerAccountId, resolved);
+        throw new IllegalStateException("unexpected scope_key: " + scopeKey);
     }
 
     private static String reviewRequestHash(ReviewOpen request) {
@@ -339,33 +306,9 @@ public class ReviewService {
         return key;
     }
 
-    private void requireLiveTarget(Map<String, Object> current) {
-        String draftId = (String) current.get("draftId");
-        Integer draftVersion = (Integer) current.get("draftVersion");
-        if (draftId != null) {
-            List<Integer> versions = jdbc.query(
-                    "SELECT version FROM app.case_drafts WHERE id = ?",
-                    (rs, ignored) -> rs.getInt(1), draftId);
-            if (versions.isEmpty() || draftVersion == null || draftVersion != versions.get(0)) {
-                throw new ResponseStatusException(HttpStatus.CONFLICT, "review is already decided or has a different result version");
-            }
-        }
-        String moduleState = (String) current.get("moduleState");
-        Integer moduleVersion = (Integer) current.get("moduleVersion");
-        String caseId = (String) current.get("caseId");
-        if (moduleState != null) {
-            List<Integer> versions = jdbc.query(
-                    "SELECT version FROM app.case_module_states WHERE case_id = ? AND module = ?",
-                    (rs, ignored) -> rs.getInt(1), caseId, moduleState);
-            if (versions.isEmpty() || moduleVersion == null || moduleVersion != versions.get(0)) {
-                throw new ResponseStatusException(HttpStatus.CONFLICT, "review is already decided or has a different result version");
-            }
-        }
-    }
-
     private Map<String, Object> requireOwned(UUID ownerAccountId, UUID reviewId) {
         requireOwner(ownerAccountId);
-        List<Map<String, Object>> rows = jdbc.query(OWNED_SELECT + " WHERE r.id = ?", this::map, ownerAccountId, reviewId);
+        List<Map<String, Object>> rows = jdbc.query(OWNED_SELECT + " WHERE r.review_id = ?", this::map, ownerAccountId, reviewId);
         if (rows.isEmpty()) {
             throw new ApiException(HttpStatus.NOT_FOUND, "REVIEW_NOT_FOUND", "复核记录不存在或不可访问");
         }
@@ -380,29 +323,61 @@ public class ReviewService {
 
     private Map<String, Object> map(ResultSet rs, int ignored) throws SQLException {
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("id", rs.getObject("id", UUID.class));
-        result.put("taskId", rs.getObject("task_id", UUID.class));
+        UUID artifactVersionId = rs.getObject("artifact_version_id", UUID.class);
         String caseId = rs.getString("case_id");
-        result.put("caseId", caseId == null || caseId.isBlank() ? null : caseId);
+        String module = rs.getString("module");
+        String scopeKey = rs.getString("scope_key");
+        result.put("id", rs.getObject("id", UUID.class));
+        result.put("artifactVersionId", artifactVersionId);
+        result.put("taskId", taskFor(artifactVersionId));
+        result.put("caseId", caseId);
         result.put("resultVersion", rs.getInt("result_version"));
         result.put("status", rs.getString("status"));
         result.put("decision", rs.getString("decision"));
-        result.put("actor", rs.getString("actor"));
-        result.put("authenticated", rs.getBoolean("authenticated"));
+        result.put("actor", actorName(rs.getObject("actor_id", UUID.class)));
+        result.put("authenticated", rs.getObject("actor_id") != null);
         result.put("comment", rs.getString("comment"));
         result.put("decidedAt", rs.getObject("decided_at"));
         result.put("createdAt", rs.getObject("created_at"));
-        result.put("module", rs.getString("module"));
-        result.put("draftId", rs.getString("draft_id"));
-        Integer draftVersion = (Integer) rs.getObject("draft_version");
-        result.put("draftVersion", draftVersion);
-        result.put("moduleState", rs.getString("module_state"));
-        Integer moduleVersion = (Integer) rs.getObject("module_version");
-        result.put("moduleVersion", moduleVersion);
-        String archive = rs.getString("archive_status");
-        result.put("archiveStatus", archive == null || archive.isBlank() ? "open" : archive);
-        result.put("returnTarget", rs.getString("return_target"));
+        result.put("module", module);
+        result.put("archiveStatus", "open");
+        // scope 反算展示字段（不持久化，INV-REVIEW-003）
+        if (scopeKey != null && scopeKey.startsWith("draft:")) {
+            result.put("draftId", scopeKey.substring("draft:".length()));
+            result.put("draftVersion", rs.getInt("result_version"));
+            result.put("returnTarget", "/cases/" + caseId + "/drafts");
+        } else {
+            result.put("draftId", null);
+            result.put("draftVersion", null);
+            result.put("returnTarget", "/cases/" + caseId);
+        }
+        if (scopeKey != null && scopeKey.startsWith("module:")) {
+            result.put("moduleState", scopeKey.substring("module:".length()));
+            result.put("moduleVersion", rs.getInt("result_version"));
+        } else {
+            result.put("moduleState", null);
+            result.put("moduleVersion", null);
+        }
         return result;
+    }
+
+    private UUID taskFor(UUID artifactVersionId) {
+        List<UUID> tasks = jdbc.query("""
+                SELECT t.id FROM app.tasks t
+                JOIN app.artifact_version v ON v.execution_id = t.execution_id
+                WHERE v.artifact_version_id = ?
+                """, (rs, ignored) -> rs.getObject(1, UUID.class), artifactVersionId);
+        return tasks.isEmpty() ? null : tasks.get(0);
+    }
+
+    private String actorName(UUID actorId) {
+        if (actorId == null) {
+            return null;
+        }
+        List<String> names = jdbc.query(
+                "SELECT username FROM app.accounts WHERE id = ?",
+                (rs, ignored) -> rs.getString(1), actorId);
+        return names.isEmpty() ? null : names.get(0);
     }
 
     private static String blankToNull(String value) {

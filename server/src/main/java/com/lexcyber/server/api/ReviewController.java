@@ -36,14 +36,23 @@ public class ReviewController {
     }
 
     @GetMapping
-    public Map<String, Object> list(@RequestParam(required = false) String status,
-                                    @RequestParam(required = false) String module,
-                                    @RequestParam(required = false) String archiveStatus,
-                                    @RequestParam(defaultValue = "0") int page,
-                                    @RequestParam(defaultValue = "20") int size,
-                                    @RequestHeader(value = "Authorization", required = false) String authorization) {
+    public org.springframework.http.ResponseEntity<Map<String, Object>> list(
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String module,
+            @RequestParam(required = false) String archiveStatus,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestHeader(value = "Authorization", required = false) String authorization) {
         AuthAccount account = auth.require(authorization);
-        return reviews.list(account.id(), status, module, archiveStatus, page, size);
+        // archiveStatus 参数已弃用：归档为案件级操作（/v2/cases/{id}/archives），此参数被忽略
+        Map<String, Object> body = reviews.list(account.id(), status, module, archiveStatus, page, size);
+        org.springframework.http.ResponseEntity.BodyBuilder builder =
+                org.springframework.http.ResponseEntity.ok();
+        if (archiveStatus != null && !archiveStatus.isBlank()) {
+            builder.header("Deprecation", "true")
+                   .header("Link", "</v2/cases/{caseId}/archives>; rel=\"successor-version\"");
+        }
+        return builder.body(body);
     }
 
     @GetMapping("/{reviewId}")

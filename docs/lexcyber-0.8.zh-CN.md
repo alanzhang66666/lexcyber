@@ -3,6 +3,8 @@
 [English](lexcyber-0.8.en.md) · [README](../README.md)
 
 **版本：** 0.8
+**契约版本：** 0.8.0
+**现状日期：** 2026-09-19
 **定位：** 可审计的任务执行与案件材料工作台。辅助研判，不替代司法裁量；不作出量刑、责任或犯罪结论。
 
 打开 `http://127.0.0.1:18080`。健康检查：`GET /healthz` 应为 `version: 0.8.0`（需重建 Java / Engine 镜像）。
@@ -101,7 +103,7 @@ flowchart LR
   Facts --> Fly
   Tasks --> Fly
   Reviews --> Fly
-  Sources -->|"501 until T3"| EngineApi2
+  Sources -->|"501，待会签"| EngineApi2
 ```
 
 | 模块 | 类 | 公开路径 |
@@ -114,6 +116,10 @@ flowchart LR
 | 复核 | `ReviewService` | `/v1/reviews`（Bearer + 属主案件；见 [t1-api-01-increment.md](t1-api-01-increment.md)） |
 | 检索门 | `SourceSearchController` / `EngineSourceClient` | `POST /v1/sources/search` → 现 501 |
 | 引擎桥 | `EngineDispatcher`、回调 `EngineResultCallbackController` | 内部 HTTP + `X-Service-Token` |
+
+T3 检索、量刑适配器与 `demo_cases/three_case_demo` 已存在于 Engine，并由 `engine/Dockerfile` 的 `COPY demo_cases` 纳入镜像。公开检索、量刑、`compliance.analyze`、`conviction.analyze` 四处入口在会签完成前继续保持 501；其中量刑还要求 Java 与 Engine 两侧开关同时开启，默认开关保持关闭。
+
+当前公开门闩：检索（`POST /v1/sources/search`）返回 `501 SOURCE_SEARCH_UNAVAILABLE`；量刑任务创建（`sentencing.calculate`）返回 `501 SENTENCING_UNAVAILABLE`；`compliance.analyze` 返回 `501 COMPLIANCE_UNAVAILABLE`；`conviction.analyze` 返回 `501 CONVICTION_UNAVAILABLE`。这些返回码在会签完成前保持不变。
 
 `document.parse` / `model.probe` 必须 Bearer。上传写 MinIO 后建解析任务，覆盖客户端 `storageKey`。
 
@@ -134,8 +140,8 @@ flowchart TB
     Parse["document_parse"]
     Probe["model_probe"]
     Skills["skill_runtime_PDF_DOCX"]
-    SrcAd["adapters.sources_501"]
-    SenAd["adapters.sentencing_501"]
+    SrcAd["T3_sources_adapter"]
+    SenAd["T3_sentencing_adapter"]
     Gw["ModelGateway"]
     Obj["object_store_MinIO"]
   end
@@ -163,8 +169,8 @@ flowchart TB
 | `engine/worker.py` + `workflow.py` | 租约、checkpoint、stub / 领域任务 |
 | `document_parse.py` | 从 MinIO 回读，产出 `document.parse.v1` |
 | `model_probe.py` | 只经 `ModelGateway` 调外部模型 |
-| `adapters/sources.py` | `SOURCE_SEARCH_UNAVAILABLE` |
-| `adapters/sentencing.py` | `SENTENCING_UNAVAILABLE` |
+| `adapters/sources.py` | T3 检索适配器；公开门闩关闭时返回 `SOURCE_SEARCH_UNAVAILABLE` |
+| `adapters/sentencing.py` | T3 量刑适配器；公开门闩关闭时返回 `SENTENCING_UNAVAILABLE` |
 | `engine/migrations` | Flyway `engine` schema |
 ---
 
@@ -198,9 +204,9 @@ flowchart LR
 
 | 轨道 | 0.8 状态 |
 | --- | --- |
-| T1 | **已合入。** 案件/材料/自动解析、facts、保留任务鉴权、`storageKey` 绑定、真实 `model.probe` |
-| T2 | **主路径已合入。** 四入口、列表/新建/上传/工作区解析/facts。阅卷/量刑正式页显示「未接通」 |
-| T3 | **未做。** 无 `datasets/`；检索与量刑 adapter 返回 501 |
+| T1 | **已合入 main。** 案件/材料/自动解析、facts、保留任务鉴权、`storageKey` 绑定、真实 `model.probe` |
+| T2 | **已合入本地 main。** 案件中心列表/新建/上传/工作区解析/facts，以及阅卷、量刑、法源正式页与复核归档已接通；合规/定罪页展示 module content，定罪页展示管辖连接点、基准位置和缺失事项 |
+| T3 | **内部能力已落地。** T3 检索/量刑适配器与 `demo_cases/three_case_demo` 已在 Engine 与镜像中；公开检索、量刑、合规与定罪分析入口仍按会签门闩返回 501 |
 
 公开契约：[`contracts/public-api.yaml`](../contracts/public-api.yaml)（`info.version: 0.8.0`）。内部：[`contracts/internal-engine-api.yaml`](../contracts/internal-engine-api.yaml)。
 
@@ -281,4 +287,4 @@ python scripts/t1_local_closeout.py
 3. 未经法学确认的量刑比例当正式规则
 4. 正式页用占位「林某」冒充真实解析或刑期
 
-检索边界仍待 T3 会签：[`t1-retrieval-boundary.md`](t1-retrieval-boundary.md)。
+检索公开口仍待法学会签：[`t1-retrieval-boundary.md`](t1-retrieval-boundary.md)。

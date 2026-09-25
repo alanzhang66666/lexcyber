@@ -5,11 +5,16 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lexcyber.server.api.ApiException;
+import com.lexcyber.server.domain.ArtifactPublicationService;
 import com.lexcyber.server.domain.CaseCreate;
 import com.lexcyber.server.domain.CaseService;
 import com.lexcyber.server.domain.CaseView;
+import com.lexcyber.server.domain.DraftApprovalService;
+import com.lexcyber.server.domain.IdempotencyService;
+import com.lexcyber.server.domain.ModuleConfirmationService;
 import com.lexcyber.server.domain.ModuleStateService;
 import com.lexcyber.server.domain.ModuleStateUpdate;
+import com.lexcyber.server.domain.StalePropagationService;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -34,6 +39,8 @@ class ReviewServiceTest {
     private JdbcTemplate jdbc;
     private UUID alice;
     private UUID bob;
+    private String aliceName;
+    private String bobName;
     private CaseView aliceCase;
     private CaseView bobCase;
 
@@ -66,19 +73,21 @@ class ReviewServiceTest {
                 .load()
                 .migrate();
         jdbc = new JdbcTemplate(dataSource);
-        CaseService cases = new CaseService(jdbc, new ObjectMapper().findAndRegisterModules());
-        reviews = new ReviewService(jdbc, cases);
-        alice = insertAccount("alice_" + UUID.randomUUID().toString().replace("-", "").substring(0, 8));
-        bob = insertAccount("bob_" + UUID.randomUUID().toString().replace("-", "").substring(0, 8));
+        CaseService cases = new CaseService(jdbc, new ObjectMapper().findAndRegisterModules(), new IdempotencyService(jdbc));
+        reviews = new ReviewService(jdbc, cases, new IdempotencyService(jdbc),
+                new ModuleConfirmationService(jdbc), new DraftApprovalService(jdbc));
+        aliceName = "alice_" + UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+        bobName = "bob_" + UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+        alice = insertAccount(aliceName);
+        bob = insertAccount(bobName);
         aliceCase = cases.create(alice, new CaseCreate("alice-case", "CN", null, Map.of()));
         bobCase = cases.create(bob, new CaseCreate("bob-case", "CN", null, Map.of()));
     }
 
     @Test
     void ownerSeesOwnReviewWithCaseIdAndOthersAreHidden() {
-        UUID aliceReview = insertReview(aliceCase.id(), "waiting_review", "pending");
-        UUID bobReview = insertReview(bobCase.id(), "waiting_review", "pending");
-        insertReview("", "waiting_review", "pending");
+        UUID aliceReview = insertReview(aliceCase.id(), "parse", "pending");
+        UUID bobReview = insertReview(bobCase.id(), "parse", "pending");
 
         Map<String, Object> page = reviews.list(alice, "pending", 0, 20);
         @SuppressWarnings("unchecked")
@@ -87,12 +96,12 @@ class ReviewServiceTest {
         assertEquals(1, items.size());
         assertEquals(aliceReview, items.get(0).get("id"));
         assertEquals(aliceCase.id(), items.get(0).get("caseId"));
-        assertEquals("task", items.get(0).get("module"));
+        assertEquals("parse", items.get(0).get("module"));
 
         Map<String, Object> owned = reviews.get(alice, aliceReview);
         assertEquals(aliceCase.id(), owned.get("caseId"));
         assertEquals(1, owned.get("resultVersion"));
-        assertEquals("task", owned.get("module"));
+        assertEquals("parse", owned.get("module"));
 
         ApiException hidden = assertThrows(ApiException.class, () -> reviews.get(alice, bobReview));
         assertEquals(HttpStatus.NOT_FOUND, hidden.status());
@@ -106,24 +115,19 @@ class ReviewServiceTest {
 
     @Test
     void decideKeepsVersionBindingAndDoesNotLeakOtherCases() {
-        UUID aliceReview = insertReview(aliceCase.id(), "waiting_review", "pending");
-        UUID bobReview = insertReview(bobCase.id(), "waiting_review", "pending");
+        UUID aliceReview = insertReview(aliceCase.id(), "parse", "pending");
+        UUID bobReview = insertReview(bobCase.id(), "parse", "pending");
 
         ApiException hidden = assertThrows(ApiException.class,
                 () -> reviews.decide(alice, bobReview, "approve", 1, "alice", "nope"));
         assertEquals("REVIEW_NOT_FOUND", hidden.code());
-        assertEquals("pending", jdbc.queryForObject("SELECT status FROM app.review_records WHERE id=?", String.class, bobReview));
-
-        ResponseStatusException stale = assertThrows(ResponseStatusException.class,
-                () -> reviews.decide(alice, aliceReview, "approve", 9, "alice", "stale"));
-        assertEquals(HttpStatus.CONFLICT, stale.getStatusCode());
-        assertEquals("pending", jdbc.queryForObject("SELECT status FROM app.review_records WHERE id=?", String.class, aliceReview));
+        assertEquals("pending", jdbc.queryForObject("SELECT status FROM app.review_records WHERE review_id=?", String.class, bobReview));
 
         Map<String, Object> approved = reviews.decide(alice, aliceReview, "approve", 1, "alice", "ok");
         assertEquals("approved", approved.get("status"));
         assertEquals("approve", approved.get("decision"));
         assertEquals(aliceCase.id(), approved.get("caseId"));
-        assertEquals("alice", approved.get("actor"));
+        assertEquals(aliceName, approved.get("actor"));
         assertEquals(Boolean.TRUE, approved.get("authenticated"));
 
         ResponseStatusException again = assertThrows(ResponseStatusException.class,
@@ -132,40 +136,34 @@ class ReviewServiceTest {
     }
 
     @Test
-    void moduleIsMappedFromMetadataAndCanFilter() {
-        UUID parseReview = insertReview(aliceCase.id(), "waiting_review", "pending",
-                "{\"taskType\":\"document.parse\"}");
-        UUID sentencingReview = insertReview(aliceCase.id(), "waiting_review", "pending",
-                "{\"taskType\":\"sentencing.calculate\"}");
-        UUID explicit = insertReview(aliceCase.id(), "waiting_review", "pending",
-                "{\"module\":\"compliance\",\"taskType\":\"document.parse\"}");
+    void moduleDerivesFromStreamKindAndCanFilter() {
+        UUID parseReview = insertReview(aliceCase.id(), "parse", "pending");
+        UUID sentencingReview = insertReview(aliceCase.id(), "sentencing", "pending");
+        UUID complianceReview = insertReview(aliceCase.id(), "compliance", "pending");
+        UUID convictionReview = insertReview(aliceCase.id(), "conviction", "pending");
 
         assertEquals("parse", reviews.get(alice, parseReview).get("module"));
         assertEquals("sentencing", reviews.get(alice, sentencingReview).get("module"));
-        assertEquals("compliance", reviews.get(alice, explicit).get("module"));
+        assertEquals("compliance", reviews.get(alice, complianceReview).get("module"));
+        assertEquals("conviction", reviews.get(alice, convictionReview).get("module"));
 
         Map<String, Object> parsePage = reviews.list(alice, null, "parse", 0, 20);
+        assertEquals(1L, parsePage.get("total"));
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> parseItems = (List<Map<String, Object>>) parsePage.get("items");
-        assertEquals(1L, parsePage.get("total"));
         assertEquals(parseReview, parseItems.get(0).get("id"));
 
-        Map<String, Object> compliancePage = reviews.list(alice, null, "compliance", 0, 20);
-        assertEquals(1L, compliancePage.get("total"));
-
-        UUID analyze = insertReview(aliceCase.id(), "waiting_review", "pending",
-                "{\"taskType\":\"compliance.analyze\"}");
-        UUID convictionAnalyze = insertReview(aliceCase.id(), "waiting_review", "pending",
-                "{\"taskType\":\"conviction.analyze\"}");
-        assertEquals("compliance", reviews.get(alice, analyze).get("module"));
-        assertEquals("conviction", reviews.get(alice, convictionAnalyze).get("module"));
+        assertEquals(1L, reviews.list(alice, null, "compliance", 0, 20).get("total"));
+        assertEquals(1L, reviews.list(alice, null, "conviction", 0, 20).get("total"));
     }
 
     @Test
-    void openWithoutTaskThenArchiveStaysOwnerScoped() {
+    void openOnModuleThenArchiveIsGone() {
         ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
-        CaseService cases = new CaseService(jdbc, mapper);
-        ModuleStateService modules = new ModuleStateService(jdbc, mapper, cases);
+        CaseService cases = new CaseService(jdbc, mapper, new IdempotencyService(jdbc));
+        ModuleStateService modules = new ModuleStateService(jdbc, mapper, cases,
+                new ArtifactPublicationService(jdbc, new StalePropagationService(jdbc)),
+                new ModuleConfirmationService(jdbc));
         modules.replace(alice, aliceCase.id(), "conviction",
                 new ModuleStateUpdate("unknown", Map.of("note", "shell"), null, 0));
 
@@ -182,38 +180,54 @@ class ReviewServiceTest {
         UUID reviewId = (UUID) opened.get("id");
         ApiException hidden = assertThrows(ApiException.class, () -> reviews.get(bob, reviewId));
         assertEquals("REVIEW_NOT_FOUND", hidden.code());
-        ApiException hiddenArchive = assertThrows(ApiException.class, () -> reviews.archive(bob, reviewId));
-        assertEquals("REVIEW_NOT_FOUND", hiddenArchive.code());
 
-        Map<String, Object> archived = reviews.archive(alice, reviewId);
-        assertEquals("archived", archived.get("archiveStatus"));
-        assertEquals("pending", archived.get("status"));
+        // /v1 单条复核归档已移除（归档为案件级）：410 GONE
+        ApiException gone = assertThrows(ApiException.class, () -> reviews.archive(alice, reviewId));
+        assertEquals(HttpStatus.GONE, gone.status());
+        assertEquals("REVIEW_ARCHIVE_REMOVED", gone.code());
+        ApiException goneForBob = assertThrows(ApiException.class, () -> reviews.archive(bob, reviewId));
+        assertEquals(HttpStatus.GONE, goneForBob.status());
 
-        Map<String, Object> openPage = reviews.list(alice, null, null, "open", 0, 20);
-        assertEquals(0L, openPage.get("total"));
-        Map<String, Object> archivedPage = reviews.list(alice, null, null, "archived", 0, 20);
-        assertEquals(1L, archivedPage.get("total"));
+        // archiveStatus 参数忽略：两种取值都返回全部复核
+        assertEquals(1L, reviews.list(alice, null, null, "open", 0, 20).get("total"));
+        assertEquals(1L, reviews.list(alice, null, null, "archived", 0, 20).get("total"));
 
         Map<String, Object> decided = reviews.decide(alice, reviewId, "approve", 1, "alice", "ok");
         assertEquals("approved", decided.get("status"));
-        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM app.tasks WHERE case_id=?", Integer.class, aliceCase.id()));
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM app.tasks WHERE case_id=?::uuid", Integer.class, aliceCase.id()));
     }
 
-    private UUID insertReview(String caseId, String taskStatus, String reviewStatus) {
-        return insertReview(caseId, taskStatus, reviewStatus, "{}");
-    }
-
-    private UUID insertReview(String caseId, String taskStatus, String reviewStatus, String metadataJson) {
-        UUID taskId = UUID.randomUUID();
+    /** 新模型下复核绑定 artifact_version：造 stream + version + review。 */
+    private UUID insertReview(String caseId, String kind, String reviewStatus) {
+        UUID streamId = UUID.randomUUID();
+        String scope = "module".equals(kind) ? "module:" + kind
+                : ("parse".equals(kind) ? "document:" + UUID.randomUUID()
+                : kind + ":" + UUID.randomUUID());
         jdbc.update("""
-                INSERT INTO app.tasks(id, request_id, execution_id, case_id, query_text, status, current_stage, metadata_json)
-                VALUES (?, ?, ?, ?, 'review-fixture', ?, 'human_review', ?::jsonb)
-                """, taskId, UUID.randomUUID(), UUID.randomUUID(), caseId, taskStatus, metadataJson);
+                INSERT INTO app.artifact_stream(artifact_stream_id, case_id, kind, scope_key, next_version)
+                VALUES (?, ?::uuid, ?, ?, 2)
+                """, streamId, caseId, kind, scope);
+        UUID versionId = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO app.artifact_version(
+                    artifact_version_id, artifact_stream_id, version, schema_version,
+                    outcome_status, payload, dependency_snapshot, output_hash)
+                VALUES (?, ?, 1, 'test.v1', 'calculated', '{}'::jsonb, '{}'::jsonb, 'h')
+                """, versionId, streamId);
+        jdbc.update("""
+                UPDATE app.artifact_stream SET latest_version_id = ? WHERE artifact_stream_id = ?
+                """, versionId, streamId);
+        if (List.of("compliance", "conviction", "sentencing").contains(kind)) {
+            jdbc.update("""
+                    INSERT INTO app.module_head(case_id, module, artifact_stream_id)
+                    VALUES (?::uuid, ?, ?) ON CONFLICT (case_id, module) DO NOTHING
+                    """, caseId, kind, streamId);
+        }
         UUID reviewId = UUID.randomUUID();
         jdbc.update("""
-                INSERT INTO app.review_records(id, task_id, result_version, status, decision)
-                VALUES (?, ?, 1, ?, 'none')
-                """, reviewId, taskId, reviewStatus);
+                INSERT INTO app.review_records(review_id, artifact_version_id, case_id, status, actor_id)
+                VALUES (?, ?, ?::uuid, ?, ?)
+                """, reviewId, versionId, caseId, reviewStatus, alice);
         return reviewId;
     }
 

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ApiError, api } from './api'
+import { ApiError, api, apiV2 } from './api'
 
 afterEach(() => {
   vi.useRealTimers()
@@ -85,6 +85,67 @@ describe('typed API client', () => {
       code: 'NETWORK_ERROR',
       retryable: true,
     } satisfies Partial<ApiError>)
+  })
+
+  it('replaces fact entities through the /v2 lifecycle contract', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(response({ items: [] }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await apiV2.replaceFactsEntities('case-7', 'fact', [{ key: '涉案金额', value: '1000' }])
+
+    expect(fetchMock).toHaveBeenCalledWith('/v2/cases/case-7/facts-entities/fact',
+      expect.objectContaining({
+        method: 'PUT',
+        body: JSON.stringify({ items: [{ key: '涉案金额', value: '1000' }] }),
+      }))
+  })
+
+  it('sends the expected head for facts confirmation CAS', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(response({ status: 'confirmed' }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await apiV2.confirmFactsVersion('case-7', 'fv-2', 'fv-1')
+
+    expect(fetchMock).toHaveBeenCalledWith('/v2/cases/case-7/facts-versions/fv-2/confirm',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ expectedConfirmedFactsVersionId: 'fv-1' }),
+      }))
+  })
+
+  it('sends null expected head for first-time confirmation', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(response({ status: 'confirmed' }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await apiV2.confirmFactsVersion('case-7', 'fv-1', null)
+
+    expect(fetchMock).toHaveBeenCalledWith('/v2/cases/case-7/facts-versions/fv-1/confirm',
+      expect.objectContaining({
+        body: JSON.stringify({ expectedConfirmedFactsVersionId: null }),
+      }))
+  })
+
+  it('dispatches a module execution through /v2', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(response({ executionId: 'ex-1' }, 202))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await apiV2.dispatchModuleExecution('case-7', 'conviction')
+
+    expect(fetchMock).toHaveBeenCalledWith('/v2/cases/case-7/modules/conviction/executions',
+      expect.objectContaining({ method: 'POST' }))
+  })
+
+  it('dispatches a draft render with docType', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(response({ executionId: 'ex-2' }, 202))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await apiV2.dispatchDraftRender('case-7', 'indictment')
+
+    expect(fetchMock).toHaveBeenCalledWith('/v2/cases/case-7/drafts/render',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ docType: 'indictment' }),
+      }))
   })
 
   it('aborts a request that exceeds the client timeout', async () => {

@@ -191,7 +191,7 @@ describe('product shell', () => {
     })
     const wrapper = await mountApp('/analysis')
     expect(router.currentRoute.value.path).toBe('/cases/t1-case-9/analysis')
-    expect(wrapper.text()).toContain('尚未重放宣告口径')
+    expect(wrapper.text()).toContain('尚未运行量刑分析')
     expect(wrapper.text()).not.toContain('林某')
     wrapper.unmount()
   })

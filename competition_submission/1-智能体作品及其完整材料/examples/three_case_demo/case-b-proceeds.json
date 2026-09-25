@@ -1,0 +1,292 @@
+{
+  "schema_version": "lexcyber.case-bundle.v1",
+  "case_id": "demo-case-b-proceeds",
+  "case_code": "B",
+  "title": "案例009帮助行为与案例042资金处置界分对照案",
+  "case_question": "帮助发生时点、犯罪所得形成时点、帮信与掩隐界分及员工行为能否归属于单位",
+  "jurisdiction": "CN",
+  "conduct_period": {"start": "2024-05-08", "end": "2024-06-15", "precision": "day"},
+  "analysis_as_of_date": "2026-09-18",
+  "source_case_numbers": [
+    "（2025）闽0111刑初34号",
+    "（2025）闽01刑终688号",
+    "（2024）鲁0902刑初242号",
+    "（2024）鲁09刑终262号"
+  ],
+  "provenance": {
+    "source_archive": "演示案例B及项目根目录042补充材料",
+    "collection_method": "user-provided local DOCX and DOC files; legacy DOC files were converted to content-equivalent DOCX copies for the T1 upload contract",
+    "transformation": "mapped revised synthetic case 009 and adapted case 042 paragraphs to stable ids without factual supplementation; original and adapted case 042 outcomes remain explicitly separated",
+    "license_or_authorization": "pending owner confirmation",
+    "substantive_adaptation": "case 009 is a synthetic teaching case; case 042 explicitly changes the cited original second-instance helping conviction into a concealment-path teaching benchmark",
+    "deidentification": "sources use company labels and pseudonyms"
+  },
+  "legal_review": {
+    "status": "partial_approval",
+    "reviewed_source": "doc-b-benchmark",
+    "reviewed_sources": ["doc-b-benchmark", "doc-b-042-benchmark", "doc-b-review-summary", "doc-b-review-summary-round3"],
+    "review_summary": "doc-b-review-summary-round3",
+    "approved_scope": [
+      "case_009_objective_facts",
+      "case_009_helping_path",
+      "company_crime_exclusion",
+      "case_042_objective_facts",
+      "case_042_adapted_concealment_benchmark",
+      "case_009_benchmark_disposition"
+    ],
+    "open_scope": [
+      "case_042_subjective_knowledge_conflict",
+      "case_042_adapted_disposition_not_executable_rule",
+      "sentencing_calculation_rule",
+      "document_template_field_mapping_approval"
+    ]
+  },
+  "documents": [
+    {
+      "id": "doc-b-input",
+      "role": "case_material",
+      "title": "合成案例009（改）-输入材料.docx",
+      "archive_entry": "演示案例B/合成案例009（改）-输入材料.docx",
+      "sha256": "81ef217806b2bb909ee954326f5a626b3a9c41721d83e106c2b1cea8e748109d",
+      "source_version": "sha256:81ef217806b2bb90"
+    },
+    {
+      "id": "doc-b-benchmark",
+      "role": "benchmark_annotation",
+      "title": "合成案例009（改）-法学标注.docx",
+      "archive_entry": "演示案例B/合成案例009（改）-法学标注.docx",
+      "sha256": "7b2f3c4027386359344085780e8c4950b1465a174075d73b1c1537173f78a767",
+      "source_version": "sha256:7b2f3c4027386359"
+    },
+    {
+      "id": "doc-b-042-input",
+      "role": "case_material",
+      "title": "042输入材料新(1).docx",
+      "archive_entry": "042输入材料新(1).docx",
+      "sha256": "b6ff8eae38c5e069db1d542e4d4d20df74f3d8b257f82010c8124d3e7c66b1e9",
+      "source_version": "sha256:b6ff8eae38c5e069",
+      "original_archive_entry": "042输入材料新.doc",
+      "original_sha256": "62522e247f7fcb4bf52be463c8498c1a30e86fad71d55cfc6ce235540748e507",
+      "conversion": {
+        "method": "Microsoft Word SaveAs2 DOCX",
+        "content_text_sha256": "ab7a9a6c0421b9df269eaa3a8d2e1a6d9ea717ad420d827dd0ff51e307c1e4ef",
+        "content_text_normalization": "python-docx nonempty paragraphs joined by LF",
+        "content_match": true,
+        "content_match_basis": "Word COM Content.Text identical between source .doc and converted .docx (999 chars); all 7 evidence paragraph locators verified against converted text",
+        "converted_by": "local reconversion 2026-09-19; byte-differs from previously declared legal-team conversion (unavailable), source .doc also byte-differs from previously declared original_sha256"
+      }
+    },
+    {
+      "id": "doc-b-042-benchmark",
+      "role": "benchmark_annotation",
+      "title": "042法学标注新(1).docx",
+      "archive_entry": "042法学标注新(1).docx",
+      "sha256": "9c65301ecc5bd63e931f6663a0d2de6983797cbfe7f77754a2988b308d7f55bb",
+      "source_version": "sha256:9c65301ecc5bd63e",
+      "original_archive_entry": "042法学标注新.doc",
+      "original_sha256": "34590d7f2f85d9f43c0d308fdf5e716f276a67f6c9e9193fa1c432a5f430c212",
+      "conversion": {
+        "method": "Microsoft Word SaveAs2 DOCX",
+        "content_text_sha256": "a12c21ea88f39f98ec473377ca63237c4a141dc261969ed7e8506066ab3c7b58",
+        "content_text_normalization": "python-docx nonempty paragraphs joined by LF",
+        "content_match": true,
+        "content_match_basis": "Word COM Content.Text identical between source .doc and converted .docx (1519 chars)",
+        "converted_by": "local reconversion 2026-09-19; byte-differs from previously declared legal-team conversion (unavailable), source .doc also byte-differs from previously declared original_sha256"
+      }
+    },
+    {
+      "id": "doc-b-review-summary",
+      "role": "legal_review_summary",
+      "title": "演示案例说明(1).docx",
+      "archive_entry": "演示案例说明(1).docx",
+      "sha256": "6ec30f14b509cdb8acaac097ac3601b263b6dc61ff3e9bbbc56bbe4597a5956c",
+      "source_version": "sha256:6ec30f14b509cdb8"
+    },
+    {
+      "id": "doc-b-review-summary-round3",
+      "role": "legal_review_summary",
+      "title": "演示案例说明(4)(1).docx",
+      "archive_entry": "演示案例说明(4)(1).docx",
+      "sha256": "b1b3c027e11f939cb6bb7541d50bfb7d6460de07a5d45fc1e0cc822c2c49a9d9",
+      "source_version": "sha256:b1b3c027e11f939c"
+    }
+  ],
+  "actors": [
+    {"id": "actor-b-company", "type": "organization", "name": "甲支付科技公司", "role": "account_owner_in_case_009"},
+    {"id": "actor-b-huang", "type": "person", "name": "黄某", "role": "employee_and_account_operator_in_case_009"},
+    {"id": "actor-b-upstream", "type": "group", "name": "梁某等上游人员", "role": "upstream_fraud_actors_in_case_009"},
+    {"id": "actor-b-chen", "type": "person", "name": "陈某", "role": "cardholder_and_face_transfer_operator_in_adapted_case_042"},
+    {"id": "actor-b-042-upstream", "type": "group", "name": "境外诈骗团伙上线", "role": "upstream_fraud_actors_in_adapted_case_042"}
+  ],
+  "accounts": [
+    {"id": "account-b-company-bank", "controller_ids": ["actor-b-company", "actor-b-huang"], "type": "company_bank_account", "jurisdiction": "CN"},
+    {"id": "account-b-042-chen-bank", "controller_ids": ["actor-b-chen"], "type": "personal_bank_account", "jurisdiction": "CN"}
+  ],
+  "relationships": [
+    {"from_id": "actor-b-huang", "to_id": "actor-b-company", "type": "employment_and_unauthorized_account_operation"},
+    {"from_id": "actor-b-huang", "to_id": "actor-b-upstream", "type": "communication_and_fund_operation"},
+    {"from_id": "actor-b-chen", "to_id": "actor-b-042-upstream", "type": "remote_instruction_and_face_transfer_operation"}
+  ],
+  "evidence": [
+    {"id": "ev-b-01", "type": "communication", "label": "上线明确告知使用账户接收网上诈骗资金", "document_id": "doc-b-input", "locator": {"paragraph": 4}},
+    {"id": "ev-b-02", "type": "account_authority", "label": "黄某未经批准提供公司两个结算账户", "document_id": "doc-b-input", "locator": {"paragraph": 4}},
+    {"id": "ev-b-03", "type": "upstream_timeline", "label": "5月11日上游诈骗尚未既遂而黄某已提供账户", "document_id": "doc-b-input", "locator": {"paragraph": 5}},
+    {"id": "ev-b-04", "type": "bank_flow", "label": "账户流入42万元，其中涉诈20万元、正常结算22万元", "document_id": "doc-b-input", "locator": {"paragraph": 5}},
+    {"id": "ev-b-05", "type": "conduct", "label": "黄某进行账户操作、取现和资金转交", "document_id": "doc-b-input", "locator": {"paragraph": 5}},
+    {"id": "ev-b-06", "type": "profit_record", "label": "黄某获得4200元报酬", "document_id": "doc-b-input", "locator": {"paragraph": 5}},
+    {"id": "ev-b-07", "type": "accounting_record", "label": "42万元未形成公司营业收入且公司未收取手续费", "document_id": "doc-b-input", "locator": {"paragraph": 6}},
+    {"id": "ev-b-08", "type": "post_conduct", "label": "公司发现异常后暂停权限并报警，黄某投案退缴", "document_id": "doc-b-input", "locator": {"paragraph": 7}},
+    {"id": "ev-b-09", "type": "negative_fact", "label": "黄某未参与具体诈骗实行且无事先通谋", "document_id": "doc-b-input", "locator": {"paragraph": 7}},
+    {"id": "ev-b-10", "type": "organizational_attribution", "label": "公司管理层不知情、未授权且未获利", "document_id": "doc-b-input", "locator": {"paragraph": 8}},
+    {"id": "ev-b-042-01", "type": "account_control", "label": "陈某以办理贷款为由将银行卡和手机交给他人使用", "document_id": "doc-b-042-input", "locator": {"paragraph": 6}},
+    {"id": "ev-b-042-02", "type": "bank_flow_and_conduct", "label": "银行卡进账1334950元、涉诈542139元，陈某完成41笔刷脸转账并获利6409元", "document_id": "doc-b-042-input", "locator": {"paragraph": 7}},
+    {"id": "ev-b-042-03", "type": "cross_border_flow", "label": "境外上线遥控，资金经跨境支付通道归集境外并在边境城市取现", "document_id": "doc-b-042-input", "locator": {"paragraph": 8}},
+    {"id": "ev-b-042-04", "type": "upstream_timeline", "label": "资金进入陈某账户时上游诈骗已经既遂，刷脸转账发生在犯罪所得形成之后", "document_id": "doc-b-042-input", "locator": {"paragraph": 9}},
+    {"id": "ev-b-042-05", "type": "contrary_statement", "label": "陈某称其认为对方在办理贷款，不知道资金系诈骗所得", "document_id": "doc-b-042-input", "locator": {"paragraph": 10}},
+    {"id": "ev-b-042-06", "type": "post_conduct", "label": "陈某经电话通知到案并如实供述", "document_id": "doc-b-042-input", "locator": {"paragraph": 11}},
+    {"id": "ev-b-042-07", "type": "adapted_benchmark_disposition", "label": "改编材料设定帮信一年罚金5000元与掩隐二年三个月罚金10000元的对照结果", "document_id": "doc-b-042-input", "locator": {"paragraph": 12}}
+  ],
+  "facts": [
+    {"id": "fact-b-help-before-completion", "type": "offence_stage", "actor_id": "actor-b-huang", "value": "黄某提供账户时上游诈骗仍处于实行阶段且尚未既遂", "stage": "upstream_offence_execution", "verification_status": "confirmed", "evidence_ids": ["ev-b-03"]},
+    {"id": "fact-b-huang-knowledge", "type": "subjective_knowledge", "actor_id": "actor-b-huang", "value": "明知对方利用网络实施诈骗并要求接收、转移相关资金", "stage": "before_help", "verification_status": "confirmed", "evidence_ids": ["ev-b-01", "ev-b-03"]},
+    {"id": "fact-b-huang-conduct", "type": "conduct", "actor_id": "actor-b-huang", "value": "未经公司授权提供企业账户并进行取现、转交", "stage": "continued_help", "verification_status": "confirmed", "evidence_ids": ["ev-b-02", "ev-b-05"]},
+    {"id": "fact-b-proceeds-formation", "type": "proceeds_character", "actor_id": "actor-b-upstream", "value": "20万元涉诈资金于5月12日和16日陆续进入公司账户时形成", "stage": "funds_arrival", "verification_status": "confirmed", "evidence_ids": ["ev-b-03", "ev-b-04"]},
+    {"id": "fact-b-participation-limit", "type": "participation_scope", "actor_id": "actor-b-huang", "value": "未参与诈骗对象、话术、资金分配，也未与上游形成事先通谋或稳定合作", "stage": "whole_chain", "verification_status": "confirmed", "evidence_ids": ["ev-b-09"]},
+    {"id": "fact-b-company-no-attribution", "type": "organizational_attribution", "actor_id": "actor-b-company", "value": "公司不知情、未授权、未取得相关收益，员工明知不归属于公司", "stage": "whole_chain", "verification_status": "confirmed", "evidence_ids": ["ev-b-07", "ev-b-10"]},
+    {"id": "fact-b-surrender", "type": "post_conduct", "actor_id": "actor-b-huang", "value": "主动投案、如实供述并退缴4200元", "stage": "post_conduct", "verification_status": "confirmed", "evidence_ids": ["ev-b-08"]},
+    {"id": "fact-b-042-provide-instruments", "type": "conduct", "actor_id": "actor-b-chen", "value": "陈某将银行卡和手机交给他人使用", "stage": "before_funds_arrival", "verification_status": "confirmed", "evidence_ids": ["ev-b-042-01"]},
+    {"id": "fact-b-042-face-transfers", "type": "conduct", "actor_id": "actor-b-chen", "value": "陈某在31分钟内按上线指示完成41笔刷脸转账，累计转出1334950元", "stage": "after_funds_arrival", "verification_status": "confirmed", "evidence_ids": ["ev-b-042-02"]},
+    {"id": "fact-b-042-proceeds-formed", "type": "proceeds_character", "actor_id": "actor-b-042-upstream", "value": "上游诈骗资金进入陈某账户时诈骗已经既遂，陈某随后协助转移已形成的犯罪所得", "stage": "funds_arrival_before_transfer", "verification_status": "confirmed", "evidence_ids": ["ev-b-042-02", "ev-b-042-04"]},
+    {"id": "fact-b-042-crossborder", "type": "cross_border_connection", "actor_id": "actor-b-042-upstream", "value": "境外上线遥控刷脸转账，资金经跨境支付通道归集境外", "stage": "fund_transfer", "verification_status": "confirmed", "evidence_ids": ["ev-b-042-03"]},
+    {"id": "fact-b-042-knowledge", "type": "subjective_knowledge", "actor_id": "actor-b-chen", "value": "材料以异常交易、境外通讯和刷脸操作支持犯罪关联明知，但陈某提出办理贷款的相反辩解", "stage": "whole_chain", "verification_status": "conflicted", "evidence_ids": ["ev-b-042-01", "ev-b-042-02", "ev-b-042-03", "ev-b-042-05"]},
+    {"id": "fact-b-042-surrender", "type": "post_conduct", "actor_id": "actor-b-chen", "value": "经电话通知到案并如实供述", "stage": "post_conduct", "verification_status": "confirmed", "evidence_ids": ["ev-b-042-06"]}
+  ],
+  "events": [
+    {"id": "event-b-01", "date": "2024-05-08", "stage": "upstream_offence_started", "description": "案例009上游电信网络诈骗开始", "actor_id": "actor-b-upstream", "fact_ids": []},
+    {"id": "event-b-02", "date": "2024-05-11", "stage": "help_before_completion", "description": "案例009中黄某明知风险后提供公司账户，此时上游尚未既遂", "actor_id": "actor-b-huang", "fact_ids": ["fact-b-help-before-completion", "fact-b-huang-knowledge", "fact-b-huang-conduct"]},
+    {"id": "event-b-03", "date": "2024-05-12/2024-05-16", "stage": "funds_arrival_and_operation", "description": "案例009的42万元进入账户，黄某操作、取现并转交部分资金", "actor_id": "actor-b-huang", "fact_ids": ["fact-b-huang-conduct", "fact-b-proceeds-formation"]},
+    {"id": "event-b-04", "date": "2024-05-18", "stage": "company_detection", "description": "案例009公司发现越权操作，暂停权限并报警", "actor_id": "actor-b-company", "fact_ids": ["fact-b-company-no-attribution"]},
+    {"id": "event-b-05", "date": "2024-05-22/2024-05-23", "stage": "surrender_and_restitution", "description": "案例009中黄某投案并退缴全部4200元违法所得", "actor_id": "actor-b-huang", "fact_ids": ["fact-b-surrender"]},
+    {"id": "event-b-042-01", "date": "2024-06-15", "stage": "instrument_provision", "description": "案例042中陈某以办理贷款为由交付银行卡和手机", "actor_id": "actor-b-chen", "fact_ids": ["fact-b-042-provide-instruments"]},
+    {"id": "event-b-042-02", "date": "2024-06-15", "stage": "proceeds_arrival_and_face_transfers", "description": "犯罪所得形成后，陈某按境外上线指示完成41笔刷脸转账", "actor_id": "actor-b-chen", "fact_ids": ["fact-b-042-face-transfers", "fact-b-042-proceeds-formed", "fact-b-042-crossborder", "fact-b-042-knowledge"]},
+    {"id": "event-b-042-03", "date": "2024-07-16", "stage": "telephone_notice_and_arrival", "description": "案例042中陈某经电话通知到案并如实供述", "actor_id": "actor-b-chen", "fact_ids": ["fact-b-042-surrender"]}
+  ],
+  "amounts": [
+    {"id": "amount-b-total-inflow", "kind": "account_total_flow", "label": "案例009账户总流入", "value": 420000, "currency": "CNY", "verification_status": "confirmed", "evidence_ids": ["ev-b-04"]},
+    {"id": "amount-b-fraud-inflow", "kind": "fraud_related_inflow", "label": "案例009查明涉诈资金", "value": 200000, "currency": "CNY", "verification_status": "confirmed", "evidence_ids": ["ev-b-04"]},
+    {"id": "amount-b-normal-settlement", "kind": "non_crime_flow", "label": "案例009正常商户结算资金", "value": 220000, "currency": "CNY", "verification_status": "confirmed", "evidence_ids": ["ev-b-04", "ev-b-07"]},
+    {"id": "amount-b-personal-profit", "kind": "personal_profit", "label": "案例009黄某个人报酬", "value": 4200, "currency": "CNY", "verification_status": "confirmed", "evidence_ids": ["ev-b-06"]},
+    {"id": "amount-b-restitution", "kind": "restitution", "label": "案例009黄某退缴违法所得", "value": 4200, "currency": "CNY", "verification_status": "confirmed", "evidence_ids": ["ev-b-08"]},
+    {"id": "amount-b-042-total-inflow", "kind": "account_total_flow", "label": "案例042银行卡当日进账", "value": 1334950, "currency": "CNY", "verification_status": "confirmed", "evidence_ids": ["ev-b-042-02"]},
+    {"id": "amount-b-042-fraud-inflow", "kind": "fraud_related_inflow", "label": "案例042涉诈资金", "value": 542139, "currency": "CNY", "verification_status": "confirmed", "evidence_ids": ["ev-b-042-02"]},
+    {"id": "amount-b-042-personal-profit", "kind": "personal_profit", "label": "案例042陈某获利", "value": 6409, "currency": "CNY", "verification_status": "confirmed", "evidence_ids": ["ev-b-042-02"]},
+    {"id": "amount-b-042-recovery", "kind": "recovered_illegal_gain", "label": "案例042改编基准追缴违法所得", "value": 6409, "currency": "CNY", "verification_status": "baseline_asserted", "evidence_ids": ["ev-b-042-07"]}
+  ],
+  "legal_source_ids": [
+    "cn-criminal-law-287-2-current",
+    "cn-criminal-law-312-current",
+    "cn-criminal-law-266-current",
+    "cn-cybercrime-interpretation-2019-11-12",
+    "cn-concealment-interpretation-2015-2021",
+    "cn-concealment-interpretation-2025-1-12",
+    "cn-sentencing-guidance-2024-2",
+    "cn-helping-opinion-2025-4-9"
+  ],
+  "source_version_binding": {
+    "case_009_conduct_time_sources": ["cn-criminal-law-287-2-current", "cn-cybercrime-interpretation-2019-11-12"],
+    "case_042_conduct_time_sources": ["cn-criminal-law-312-current", "cn-concealment-interpretation-2015-2021"],
+    "comparison_sources": ["cn-criminal-law-287-2-current", "cn-criminal-law-312-current", "cn-concealment-interpretation-2015-2021"],
+    "sentencing_reference_sources": ["cn-sentencing-guidance-2024-2"],
+    "current_review_sources": ["cn-helping-opinion-2025-4-9", "cn-concealment-interpretation-2025-1-12"],
+    "temporal_review_status": "partial_approval_for_case_009_and_adapted_case_042",
+    "note": "Case 009 selects the helping path and its reviewed recommendation is detention for four months through fixed-term imprisonment for eight months plus a 3,000-10,000 yuan fine. Case 042 is an explicit teaching adaptation: the cited original second instance upheld helping, while the supplied adaptation selects concealment after proceeds formation. Both Section 6 dispositions are replayed as reviewed recommendations, not synthetic arithmetic predictions."
+  },
+  "analyses": {
+    "compliance": {
+      "applicability": "limited_context",
+      "result_status": "confirmed_facts_only",
+      "legal_review_status": "approved_for_case_009_only",
+      "facts": ["fact-b-company-no-attribution"],
+      "note": "Case 009 company controls and lack of attribution are factual inputs. Adapted case 042 has no unit subject. No compliance score is produced."
+    },
+    "conviction": {
+      "legal_review_status": "partial_approval",
+      "candidate_paths": [
+        {"id": "path-b-huang-helping", "actor_id": "actor-b-huang", "label": "帮助信息网络犯罪活动罪", "baseline_position": "selected_for_case_009", "supporting_evidence_ids": ["ev-b-01", "ev-b-02", "ev-b-03", "ev-b-04", "ev-b-05"], "contrary_evidence_ids": ["ev-b-09"], "legal_source_ids": ["cn-criminal-law-287-2-current", "cn-cybercrime-interpretation-2019-11-12"]},
+        {"id": "path-b-huang-concealment", "actor_id": "actor-b-huang", "label": "掩饰、隐瞒犯罪所得、犯罪所得收益罪", "baseline_position": "excluded_for_case_009", "supporting_evidence_ids": ["ev-b-04", "ev-b-05"], "contrary_evidence_ids": ["ev-b-03", "ev-b-09"], "legal_source_ids": ["cn-criminal-law-312-current", "cn-concealment-interpretation-2015-2021"]},
+        {"id": "path-b-huang-fraud-accomplice", "actor_id": "actor-b-huang", "label": "诈骗罪共同犯罪", "baseline_position": "excluded_for_case_009", "supporting_evidence_ids": ["ev-b-01"], "contrary_evidence_ids": ["ev-b-09"], "legal_source_ids": ["cn-criminal-law-266-current"]},
+        {"id": "path-b-company-unit-helping", "actor_id": "actor-b-company", "label": "单位帮助信息网络犯罪活动罪", "baseline_position": "excluded_for_case_009", "supporting_evidence_ids": [], "contrary_evidence_ids": ["ev-b-07", "ev-b-10"], "legal_source_ids": ["cn-criminal-law-287-2-current"]},
+        {"id": "path-b-chen-concealment", "actor_id": "actor-b-chen", "label": "掩饰、隐瞒犯罪所得、犯罪所得收益罪", "baseline_position": "adapted_benchmark_selected_not_actual_judgment", "supporting_evidence_ids": ["ev-b-042-02", "ev-b-042-03", "ev-b-042-04"], "contrary_evidence_ids": ["ev-b-042-05"], "legal_source_ids": ["cn-criminal-law-312-current", "cn-concealment-interpretation-2015-2021"]},
+        {"id": "path-b-chen-helping", "actor_id": "actor-b-chen", "label": "帮助信息网络犯罪活动罪", "baseline_position": "original_source_outcome_not_selected_in_adaptation", "supporting_evidence_ids": ["ev-b-042-01", "ev-b-042-02"], "contrary_evidence_ids": ["ev-b-042-04"], "legal_source_ids": ["cn-criminal-law-287-2-current", "cn-cybercrime-interpretation-2019-11-12"]}
+      ]
+    }
+  },
+  "sentencing": {
+    "calculation_status": "reviewed_disposition_replay_ready",
+    "actor_baselines": [
+      {
+        "actor_id": "actor-b-huang",
+        "amount_ids": ["amount-b-fraud-inflow", "amount-b-personal-profit", "amount-b-restitution"],
+        "source_ids": ["cn-criminal-law-287-2-current", "cn-cybercrime-interpretation-2019-11-12", "cn-sentencing-guidance-2024-2"],
+        "rule_version": "review-summary-section-6-b-009-huang-disposition-v1",
+        "legal_review_status": "approved",
+        "benchmark_disposition": {"term_range_months": [4, 8], "term_lower_kind": "detention", "term_upper_kind": "fixed_term_imprisonment", "fine_range_cny": [3000, 10000], "review_status": "confirmed_by_legal_owner", "nature": "legal_reviewed_declared_disposition_replayed"},
+        "calculation_rule": {
+          "rule_type": "reviewed_disposition",
+          "rule_version": "review-summary-section-6-b-009-huang-disposition-v1",
+          "legal_review_status": "approved",
+          "source_document_id": "doc-b-review-summary-round3",
+          "source_section": "六、各主体量刑规则、计算步骤和法源",
+          "source_pages": [18, 19],
+          "source_ids": ["cn-criminal-law-287-2-current", "cn-cybercrime-interpretation-2019-11-12", "cn-sentencing-guidance-2024-2"],
+          "base_range_months": [3, 6],
+          "adjustments": [
+            {"id": "b009-occupational-convenience", "operation": "reviewed_factor", "direction": "increase", "value": 0.2, "legal_review_status": "approved_as_explanatory_factor", "source_ids": ["cn-sentencing-guidance-2024-2"]},
+            {"id": "b009-company-account", "operation": "reviewed_factor", "direction": "increase", "value": 0.2, "legal_review_status": "approved_as_explanatory_factor", "source_ids": ["cn-sentencing-guidance-2024-2"]},
+            {"id": "b009-guilty-plea", "operation": "reviewed_factor", "direction": "decrease", "value": 0.1, "legal_review_status": "approved_as_explanatory_factor", "source_ids": ["cn-criminal-law-287-2-current"]},
+            {"id": "b009-restitution", "operation": "reviewed_factor", "direction": "decrease", "value": 0.05, "legal_review_status": "approved_as_explanatory_factor", "source_ids": ["cn-sentencing-guidance-2024-2"]},
+            {"id": "b009-voluntary-surrender", "operation": "reviewed_factor", "direction": "decrease", "value": 0.2, "legal_review_status": "approved_as_explanatory_factor", "source_ids": ["cn-sentencing-guidance-2024-2"]}
+          ],
+          "declared_disposition": {"term_range_months": [4, 8], "term_lower_kind": "detention", "term_upper_kind": "fixed_term_imprisonment", "fine_range_cny": [3000, 10000]}
+        }
+      },
+      {
+        "actor_id": "actor-b-chen",
+        "amount_ids": ["amount-b-042-fraud-inflow", "amount-b-042-personal-profit"],
+        "source_ids": ["cn-criminal-law-312-current", "cn-concealment-interpretation-2015-2021", "cn-sentencing-guidance-2024-2"],
+        "rule_version": "review-summary-section-6-b-042-chen-disposition-v1",
+        "legal_review_status": "approved",
+        "benchmark_disposition": {"term_months": 27, "fine_cny": 10000, "recovery_cny": 6409, "nature": "adapted_legal_reviewed_declared_disposition_replayed_not_actual_judgment"},
+        "calculation_rule": {
+          "rule_type": "reviewed_disposition",
+          "rule_version": "review-summary-section-6-b-042-chen-disposition-v1",
+          "legal_review_status": "approved",
+          "source_document_id": "doc-b-review-summary-round3",
+          "source_section": "六、各主体量刑规则、计算步骤和法源",
+          "source_pages": [19, 20],
+          "source_ids": ["cn-criminal-law-312-current", "cn-concealment-interpretation-2015-2021", "cn-sentencing-guidance-2024-2"],
+          "base_months_approximate": 42,
+          "adjustments": [
+            {"id": "b042-cross-border-factor", "operation": "reviewed_factor", "direction": "increase", "value": 0.1, "legal_review_status": "approved_as_explanatory_factor", "source_ids": ["cn-sentencing-guidance-2024-2"]},
+            {"id": "b042-confession", "operation": "reviewed_factor", "direction": "decrease", "value": 0.1, "legal_review_status": "approved_as_explanatory_factor", "source_ids": ["cn-criminal-law-312-current"]},
+            {"id": "b042-guilty-plea", "operation": "reviewed_factor", "direction": "decrease", "value": 0.1, "legal_review_status": "approved_as_explanatory_factor", "source_ids": ["cn-criminal-law-312-current"]}
+          ],
+          "declared_disposition": {"term_months": 27, "fine_cny": 10000, "recovery_cny": 6409}
+        },
+        "original_source_disposition": {"offence": "帮助信息网络犯罪活动罪", "term_months": 12, "fine_cny": 5000, "nature": "reported_original_second_instance_outcome"}
+      }
+    ]
+  },
+  "document_fields": {
+    "required": ["case_name", "actor_name", "fund_timeline", "confirmed_amounts", "evidence_citations", "candidate_path", "legal_source_versions", "sentencing_review_status"],
+    "selected_types": ["prosecution", "sentencing_recommendation"],
+    "template_ids": ["cn-prosecution-template-v1", "cn-sentencing-recommendation-template-v1"],
+    "template_structure_status": "source_registered",
+    "template_legal_review_status": "source_provided_mapping_pending_approval"
+  },
+  "missing_items": [
+    {"id": "missing-b-03", "severity": "blocking", "description": "The prosecution and sentencing-recommendation source templates are registered; final field mapping, branch selection and generated-draft approval still require the legal owner."},
+    {"id": "missing-b-04", "severity": "warning", "description": "Confirm collection authorization, license, substantive adaptation and deidentification in the source ledger."},
+    {"id": "missing-b-05", "severity": "warning", "description": "Case 042 retains the loan-processing defence as contrary material; the reviewed concealment disposition is replayed only as an explicit teaching adaptation and never presented as the original judgment."}
+  ]
+}

@@ -2,6 +2,11 @@
 
 Product notes with architecture diagrams: [中文 0.8](docs/lexcyber-0.8.zh-CN.md) · [English 0.8](docs/lexcyber-0.8.en.md).
 
+**Target architecture**: `LexCyber-system-architecture-v1.3-postgresql-physical-model.md` (normative). Decisions resolving internal ambiguities: `docs/adr/ADR-0001`–`0006`. Delivery status: `docs/architecture-roadmap.md`.
+
+**契约版本：** 0.8.0
+**现状日期：** 2026-09-19
+
 LexCyber is a general-purpose, auditable task-execution platform. It provides a
 stable Java public API, a Python execution Engine, durable PostgreSQL state,
 Redis work queues, MinIO object storage, a default Stub workflow, and a small
@@ -13,15 +18,17 @@ crime, or other legal conclusions.
 `.env.v03`). **T1 backend contracts are on `main`**: owner-scoped cases and
 documents with upload-time auto-parse, facts, reserved-task auth, owned
 `storageKey` bind, `model.probe`, opaque drafts, and case-level compliance /
-conviction shells. T3 Engine adapters for search and sentencing are on `main`
-but Compose flags stay off, so those public APIs still return `501`.
-`compliance.analyze` / `conviction.analyze` stay `501` as well. Opening only
-the Java sentencing flag creates a task that then `failed` on the Engine side.
+conviction shells. T3 Engine adapters for search and sentencing are on `main`,
+but the Compose flags stay off. Public source search, sentencing,
+`compliance.analyze`, and `conviction.analyze` therefore remain `501` by
+default with codes `SOURCE_SEARCH_UNAVAILABLE`, `SENTENCING_UNAVAILABLE`,
+`COMPLIANCE_UNAVAILABLE`, and `CONVICTION_UNAVAILABLE`. Opening only the Java
+sentencing flag creates a task that then `failed` on the Engine side.
 T2 frontend case-center (list/create/workspace/facts) is on `main`. The formal
-module pages are wired on `feat/case-import` (local branch): docket reads
-documents + `document.parse.v1` results, analysis runs `sentencing.calculate`
-when the flags are enabled, sources searches the Engine adapter, and review
-detail can archive decided records. With `SENTENCING_ENABLED` /
+module pages are merged into local `main`: docket reads documents +
+`document.parse.v1` results, analysis runs `sentencing.calculate` when the
+flags are enabled, sources searches the Engine adapter, and review detail can
+archive decided records. With `SENTENCING_ENABLED` /
 `LEGAL_SOURCE_SEARCH_ENABLED` on and the three-case demo imported, the
 case-center → conviction → sentencing → review/archive flow runs end to end.
 Compose defaults still keep both flags off.
@@ -74,9 +81,11 @@ Three-case field increment and owner-scoped reviews: [`docs/t1-api-01-increment.
 | `model.probe` | Authenticated task; Engine calls ModelGateway. A real provider + key in Compose `.env.v03` is required for a non-stub result. |
 
 The Vue case-center list, create, workspace, upload, parse polling, and facts
-confirm are wired to these APIs. Docket and analysis do not render placeholder
-林某 excerpts as the open case; they show 未接通 until formal T2 extraction
-and sentencing are connected.
+confirm are wired to these APIs. The formal docket, sentencing-analysis,
+source-law, and review pages are also on local `main`: docket reads uploaded
+document parse results, while source and sentencing calls preserve the 501
+gate when their capability flags are off. No placeholder 林某 excerpts are
+used as open-case evidence.
 
 T2/T3 should poll `parseTaskId` after upload and read body text from
 `/v1/tasks/{id}/result` only. Do not create a second parse task and do not

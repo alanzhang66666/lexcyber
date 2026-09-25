@@ -1,0 +1,171 @@
+{
+  "schema_version": "lexcyber.document-template-registry.v1",
+  "registry_id": "lexcyber-cn-procuratorate-templates-2026-09-17",
+  "legal_review_status": "source_templates_provided_mapping_pending_approval",
+  "placeholder_mode": "literal_fullwidth_brackets",
+  "generation_policy": {
+    "confirmed_values_only": true,
+    "unresolved_placeholder_blocks_approval": true,
+    "conditional_branch_selection_required": true,
+    "human_review_required": true,
+    "note": "Template text and annotations are source material, not executable instructions. A generated draft must retain source traceability and cannot be approved while required fields or conditional choices are unresolved."
+  },
+  "templates": [
+    {
+      "id": "cn-prosecution-template-v1",
+      "document_type": "prosecution",
+      "title": "起诉书",
+      "source_archive": "法律文书模板/起诉书.docx",
+      "sha256": "1dac63b65fe4efcca54ec5caf1efad657dec2a5c88cad1f508b7c30c2ebd644f",
+      "source_version": "sha256:1dac63b65fe4efcc",
+      "format": "docx",
+      "page_count": 2,
+      "word_structure": {
+        "tables": 0,
+        "content_controls": 0,
+        "fields": 0,
+        "placeholder_mode": "literal_fullwidth_brackets"
+      },
+      "required_sections": [
+        "issuing_procuratorate_and_document_number",
+        "defendant_identity",
+        "procedural_history",
+        "confirmed_criminal_facts",
+        "classified_evidence_list",
+        "legal_characterization_and_circumstances",
+        "prosecution_request",
+        "court_and_signature",
+        "attachments"
+      ],
+      "required_fields": [
+        "procuratorate_name",
+        "document_number",
+        "defendant_identity",
+        "investigation_authority",
+        "suspected_offence",
+        "transfer_date",
+        "confirmed_facts",
+        "evidence_citations",
+        "candidate_path",
+        "legal_source_versions",
+        "court_name",
+        "prosecutor_name",
+        "issue_date",
+        "custody_or_bail_location",
+        "case_file_count"
+      ],
+      "optional_fields": [
+        "defense_counsel",
+        "supplementary_investigation_history",
+        "extension_history",
+        "guilty_plea_leniency",
+        "prosecutor_assistant",
+        "protected_person_list",
+        "property_status",
+        "incidental_civil_action"
+      ],
+      "mapping_status": "structure_extracted_pending_legal_owner_approval"
+    },
+    {
+      "id": "cn-sentencing-recommendation-template-v1",
+      "document_type": "sentencing_recommendation",
+      "title": "量刑建议书",
+      "source_archive": "法律文书模板/量刑建议书.docx",
+      "sha256": "87c583302aaf4bee979657ff08d6dcd8a0d043606d8d1fb4bb90dbc027f0b662",
+      "source_version": "sha256:87c583302aaf4bee",
+      "format": "docx",
+      "page_count": 2,
+      "word_structure": {
+        "tables": 0,
+        "content_controls": 0,
+        "fields": 0,
+        "placeholder_mode": "literal_fullwidth_brackets"
+      },
+      "required_sections": [
+        "issuing_procuratorate_and_document_number",
+        "defendant_and_offence",
+        "statutory_penalty_range",
+        "sentencing_circumstances",
+        "sentencing_recommendation",
+        "court_and_signature"
+      ],
+      "required_fields": [
+        "procuratorate_name",
+        "document_number",
+        "actor_name",
+        "candidate_path",
+        "legal_source_versions",
+        "statutory_penalty_range",
+        "sentencing_circumstances",
+        "sentencing_review_status",
+        "main_penalty_recommendation",
+        "court_name",
+        "prosecutor_name",
+        "issue_date"
+      ],
+      "optional_fields": [
+        "guilty_plea_stage_and_leniency_scale",
+        "execution_method",
+        "additional_penalty_or_fine",
+        "exemption_recommendation"
+      ],
+      "branch_rules": [
+        "main_penalty_recommendation is required unless exemption_recommendation is selected",
+        "execution_method and additional penalty are omitted when legally inapplicable",
+        "one recommendation is produced per defendant"
+      ],
+      "mapping_status": "structure_extracted_pending_legal_owner_approval"
+    },
+    {
+      "id": "cn-non-prosecution-template-v1",
+      "document_type": "non_prosecution",
+      "title": "不起诉决定书",
+      "source_archive": "法律文书模板/不起诉决定书.docx",
+      "sha256": "b33d32013cc8d8359a3cb940a12ad022351711608cdc97751eb0608f75b0268c",
+      "source_version": "sha256:b33d32013cc8d835",
+      "format": "docx",
+      "page_count": 2,
+      "word_structure": {
+        "tables": 0,
+        "content_controls": 0,
+        "fields": 0,
+        "placeholder_mode": "literal_fullwidth_brackets"
+      },
+      "required_sections": [
+        "issuing_procuratorate_and_document_number",
+        "subject_identity",
+        "procedural_history",
+        "reviewed_facts_and_evidence",
+        "non_prosecution_decision_branch",
+        "appeal_and_remedy_notice",
+        "signature_and_distribution"
+      ],
+      "required_fields": [
+        "procuratorate_name",
+        "document_number",
+        "subject_identity",
+        "investigation_authority",
+        "suspected_offence",
+        "transfer_date",
+        "confirmed_facts",
+        "evidence_citations",
+        "non_prosecution_type",
+        "decision_reasons",
+        "legal_source_versions",
+        "issue_date"
+      ],
+      "optional_fields": [
+        "defense_counsel",
+        "supplementary_investigation_history",
+        "victim_remedy_recipient",
+        "conditional_non_prosecution_probation_history"
+      ],
+      "branch_rules": [
+        "exactly one of relative, absolute, doubtful, or conditional-probation-expiry non-prosecution must be selected",
+        "conditional-probation-expiry branch applies only to eligible minor cases",
+        "person and organization identity paragraphs are mutually exclusive"
+      ],
+      "mapping_status": "structure_extracted_pending_legal_owner_approval"
+    }
+  ]
+}

@@ -183,8 +183,8 @@ public class ImportStore {
                 SELECT ?, ?, b.id, i.id, ?, ?, ?, ?, ?, ?, c.id, d.id, ?, ?, ?, ?, ?::jsonb
                 FROM app.import_batches b
                 JOIN app.import_items i ON i.batch_id = b.id AND i.id = ?
-                JOIN app.cases c ON c.id = ? AND c.owner_account_id = ?
-                LEFT JOIN app.documents d ON d.id = ? AND d.case_id = c.id
+                JOIN app.cases c ON c.id = ?::uuid AND c.owner_account_id = ?
+                LEFT JOIN app.documents d ON d.id = ?::uuid AND d.case_id = c.id
                 WHERE b.id = ? AND b.owner_account_id = ?
                   AND (?::text IS NULL OR d.id IS NOT NULL)
                 ON CONFLICT (owner_account_id, producer_id, dataset_id,
@@ -446,7 +446,7 @@ public class ImportStore {
         requireOwnedBatch(ownerAccountId, batchId);
         int changed = jdbc.update("""
                 UPDATE app.import_items
-                SET status = ?, diff_json = ?::jsonb, case_id = ?,
+                SET status = ?, diff_json = ?::jsonb, case_id = ?::uuid,
                     completed_at = CASE WHEN ? IN ('no_op', 'conflict', 'invalid', 'failed') THEN now() ELSE NULL END,
                     updated_at = now()
                 WHERE id = ? AND batch_id = ? AND owner_account_id = ?
@@ -472,7 +472,7 @@ public class ImportStore {
         requireOwnedBatch(ownerAccountId, batchId);
         int changed = jdbc.update("""
                 UPDATE app.import_items i
-                SET status = ?, case_id = ?, error_json = ?::jsonb,
+                SET status = ?, case_id = ?::uuid, error_json = ?::jsonb,
                     started_at = CASE WHEN ? = 'applying' THEN COALESCE(started_at, now()) ELSE started_at END,
                     completed_at = CASE WHEN ? IN ('applied', 'failed', 'conflict', 'invalid', 'no_op') THEN now() ELSE NULL END,
                     updated_at = now()

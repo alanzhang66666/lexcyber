@@ -22,5 +22,8 @@ public record ResultEnvelope(
         @JsonProperty("error_message") String errorMessage,
         boolean retryable,
         @JsonProperty("result_ref")
-        Map<String, Object> resultRef) {
+        Map<String, Object> resultRef,
+        @JsonProperty("fencing_token") Long fencingToken,
+        @JsonProperty("completion_identity") String completionIdentity,
+        @JsonProperty("output_envelope") Map<String, Object> outputEnvelope) {
 }

@@ -1,0 +1,1382 @@
+openapi: 3.1.0
+info:
+  title: LexCyber Public API
+  version: 0.8.0
+  description: Public contract owned by the Java application service.
+servers:
+  - url: /v1
+tags:
+  - name: auth
+  - name: tasks
+  - name: cases
+  - name: imports
+  - name: reviews
+  - name: sources
+paths:
+  /auth/register:
+    post:
+      tags: [auth]
+      summary: Register an account and open a session
+      operationId: registerAccount
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AuthRegister' }
+      responses:
+        '201':
+          description: Account created and session issued.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionView' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: Authenticate and open a session
+      operationId: loginAccount
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AuthLogin' }
+      responses:
+        '200':
+          description: Session issued.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionView' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: Revoke the current session token
+      operationId: logoutAccount
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Session revoked, or already absent.
+  /auth/session:
+    get:
+      tags: [auth]
+      summary: Read the current session
+      operationId: getSession
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Current account for a valid session.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionView' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /imports:
+    post:
+      tags: [imports]
+      summary: Upload an immutable case-import.v1 ZIP package
+      operationId: createImport
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary, description: ZIP transport profile, maximum 50 MB. }
+      responses:
+        '201': { description: Raw package retained; validation has not run., content: { application/json: { schema: { $ref: '#/components/schemas/ImportBatch' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+    get:
+      tags: [imports]
+      summary: List import batches owned by the current account
+      operationId: listImports
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200': { description: Import batches., content: { application/json: { schema: { $ref: '#/components/schemas/PageImportBatch' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /imports/{importId}:
+    get:
+      tags: [imports]
+      summary: Read one owned import batch
+      operationId: getImport
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ImportId'
+      responses:
+        '200': { description: Import batch., content: { application/json: { schema: { $ref: '#/components/schemas/ImportBatch' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /imports/{importId}/items:
+    get:
+      tags: [imports]
+      summary: Read staged items, diffs, errors and durable steps
+      operationId: listImportItems
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ImportId'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200': { description: Staged import items., content: { application/json: { schema: { $ref: '#/components/schemas/PageImportItem' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /imports/{importId}/validate:
+    post:
+      tags: [imports]
+      summary: Validate the retained package and prepare create/no-op/conflict diffs
+      operationId: validateImport
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ImportId'
+      responses:
+        '200': { description: Validation completed or recorded as validation_failed., content: { application/json: { schema: { $ref: '#/components/schemas/ImportBatch' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+  /imports/{importId}/approve:
+    post:
+      tags: [imports]
+      summary: Approve a conflict-free prepared diff for application
+      operationId: approveImport
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ImportId'
+      responses:
+        '200': { description: Import approved by the current account., content: { application/json: { schema: { $ref: '#/components/schemas/ImportBatch' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /imports/{importId}/apply:
+    post:
+      tags: [imports]
+      summary: Apply approved create/no-op items through durable idempotent steps
+      operationId: applyImport
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ImportId'
+      responses:
+        '200': { description: 'Apply completed, partially completed, or failed with item details.', content: { application/json: { schema: { $ref: '#/components/schemas/ImportBatch' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /imports/{importId}/retry:
+    post:
+      tags: [imports]
+      summary: Retry validation failures or failed apply steps without replaying completed resources
+      operationId: retryImport
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ImportId'
+      responses:
+        '200': { description: Retry completed with the current batch state., content: { application/json: { schema: { $ref: '#/components/schemas/ImportBatch' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /cases:
+    post:
+      tags: [cases]
+      summary: Create a case
+      operationId: createCase
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CaseCreate' }
+      responses:
+        '201':
+          description: Case created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CaseView' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+    get:
+      tags: [cases]
+      summary: List cases owned by the current account
+      operationId: listCases
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Page of cases.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PageCase' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /cases/{caseId}:
+    get:
+      tags: [cases]
+      summary: Read one owned case
+      operationId: getCase
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CaseId'
+      responses:
+        '200':
+          description: Case record.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CaseView' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /cases/{caseId}/metadata/relations/events/{eventId}/document:
+    patch:
+      tags: [cases]
+      summary: Bind an existing relation event to an uploaded document in the same owned case
+      operationId: bindCaseEventDocument
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CaseId'
+        - name: eventId
+          in: path
+          required: true
+          schema: { type: string, minLength: 1 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CaseEventDocumentUpdate' }
+      responses:
+        '200':
+          description: Updated case; unrelated metadata is preserved. Repeating the same binding is safe.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CaseView' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /cases/{caseId}/facts:
+    get:
+      tags: [cases]
+      summary: Read the case facts envelope
+      operationId: getCaseFacts
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CaseId'
+      responses:
+        '200':
+          description: Facts envelope. Missing rows return an empty draft.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FactView' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [cases]
+      summary: Replace draft facts
+      operationId: putCaseFacts
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CaseId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FactUpdate' }
+      responses:
+        '200':
+          description: Draft facts replaced.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FactView' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /cases/{caseId}/facts/confirm:
+    post:
+      tags: [cases]
+      summary: Lock the current draft facts
+      operationId: confirmCaseFacts
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CaseId'
+      responses:
+        '200':
+          description: Facts confirmed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FactView' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /cases/{caseId}/compliance:
+    get:
+      tags: [cases]
+      summary: Read the opaque compliance shell
+      operationId: getCaseCompliance
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CaseId'
+      responses:
+        '200':
+          description: Compliance envelope. Missing rows return an empty draft with version 0.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ModuleStateView' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [cases]
+      summary: Replace the opaque compliance shell when the version matches
+      operationId: putCaseCompliance
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CaseId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ModuleStateUpdate' }
+      responses:
+        '200':
+          description: Draft shell replaced. Content is stored as an opaque object.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ModuleStateView' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /cases/{caseId}/compliance/confirm:
+    post:
+      tags: [cases]
+      summary: Lock the current compliance shell
+      operationId: confirmCaseCompliance
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CaseId'
+      responses:
+        '200':
+          description: Compliance shell confirmed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ModuleStateView' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /cases/{caseId}/conviction:
+    get:
+      tags: [cases]
+      summary: Read the opaque conviction shell
+      operationId: getCaseConviction
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CaseId'
+      responses:
+        '200':
+          description: Conviction envelope. Missing rows return an empty draft with version 0.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ModuleStateView' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [cases]
+      summary: Replace the opaque conviction shell when the version matches
+      operationId: putCaseConviction
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CaseId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ModuleStateUpdate' }
+      responses:
+        '200':
+          description: Draft shell replaced. Content is stored as an opaque object.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ModuleStateView' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /cases/{caseId}/conviction/confirm:
+    post:
+      tags: [cases]
+      summary: Lock the current conviction shell
+      operationId: confirmCaseConviction
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CaseId'
+      responses:
+        '200':
+          description: Conviction shell confirmed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ModuleStateView' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /cases/{caseId}/reviews:
+    post:
+      tags: [reviews]
+      summary: Open a human review on a draft, module shell, or existing task
+      operationId: openCaseReview
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CaseId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReviewOpen' }
+      responses:
+        '201':
+          description: Review opened. No engine dispatch when taskId is omitted.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReviewRecord' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /cases/{caseId}/drafts:
+    post:
+      tags: [cases]
+      summary: Create an opaque case draft
+      operationId: createCaseDraft
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CaseId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DraftCreate' }
+      responses:
+        '201':
+          description: Draft created. Body is stored as an opaque string.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DraftView' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    get:
+      tags: [cases]
+      summary: List opaque drafts for an owned case
+      operationId: listCaseDrafts
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CaseId'
+      responses:
+        '200':
+          description: Drafts for the owned case.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DraftList' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /cases/{caseId}/drafts/{draftId}:
+    get:
+      tags: [cases]
+      summary: Read one owned-case draft
+      operationId: getCaseDraft
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CaseId'
+        - $ref: '#/components/parameters/DraftId'
+      responses:
+        '200':
+          description: Draft record.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DraftView' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [cases]
+      summary: Replace draft body when the version matches
+      operationId: putCaseDraft
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CaseId'
+        - $ref: '#/components/parameters/DraftId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DraftUpdate' }
+      responses:
+        '200':
+          description: Draft replaced; version is incremented. Prior review of the old version does not move.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DraftView' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /cases/{caseId}/documents:
+    post:
+      tags: [cases]
+      summary: Upload a case document and create a parse task
+      operationId: uploadCaseDocument
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CaseId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, role]
+              properties:
+                file: { type: string, format: binary }
+                role: { type: string, enum: [input, annotation] }
+      responses:
+        '201':
+          description: Document stored and parse task queued.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DocumentView' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '415': { $ref: '#/components/responses/UnsupportedMediaType' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+    get:
+      tags: [cases]
+      summary: List documents for an owned case
+      operationId: listCaseDocuments
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CaseId'
+        - { name: role, in: query, schema: { type: string, enum: [input, annotation] } }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Size'
+      responses:
+        '200':
+          description: Page of documents.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PageDocument' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /documents/{documentId}:
+    get:
+      tags: [cases]
+      summary: Read document metadata and parse status
+      operationId: getDocument
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '200':
+          description: Document metadata. Body text is read from the parse task result.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DocumentView' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /tasks:
+    post:
+      tags: [tasks]
+      summary: Create an asynchronous task
+      operationId: createTask
+      security:
+        - {}
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TaskCreate' }
+      responses:
+        '202':
+          description: Task accepted; execution is delegated to the engine.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskView' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '501': { $ref: '#/components/responses/NotImplemented' }
+  /tasks/{taskId}:
+    get:
+      tags: [tasks]
+      summary: Read the current public task state
+      operationId: getTask
+      security:
+        - {}
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+      responses:
+        '200':
+          description: Current task state. Case-scoped tasks require the owner bearer token.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskView' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /tasks/{taskId}/retry:
+    post:
+      tags: [tasks]
+      summary: Create a new execution while retaining history
+      operationId: retryTask
+      security:
+        - {}
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+      responses:
+        '202':
+          description: Retry accepted. Task id and requestId stay the same; executionId is new.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TaskView' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /tasks/{taskId}/result:
+    get:
+      tags: [tasks]
+      summary: Read the current result content
+      operationId: getTaskResult
+      security:
+        - {}
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+      responses:
+        '200':
+          description: Current result content and immutable result metadata.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ResultPayload' }
+  /tasks/{taskId}/trace:
+    get:
+      summary: Read redacted execution trace for an owned task
+      parameters:
+        - { $ref: '#/components/parameters/TaskId' }
+      responses:
+        '200':
+          description: Execution trace
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [taskId, executionId, events]
+                properties:
+                  taskId: { type: string, format: uuid }
+                  executionId: { type: string, format: uuid }
+                  events: { type: array, items: { type: object, additionalProperties: true } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /reviews:
+    get:
+      tags: [reviews]
+      summary: List human review requests for cases owned by the current account
+      operationId: listReviews
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: status, in: query, schema: { type: string } }
+        - { name: module, in: query, schema: { type: string }, description: "Filter by derived review module (parse, sentencing, compliance, conviction, draft, task, or an explicit metadata.module)." }
+        - { name: archiveStatus, in: query, schema: { type: string, enum: [open, archived] } }
+        - { name: page, in: query, schema: { type: integer, minimum: 0, default: 0 } }
+        - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses:
+        '200':
+          description: Page of review requests whose task.case_id belongs to an owned case. Caseless reviews are omitted.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PageReview' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /reviews/{reviewId}:
+    get:
+      tags: [reviews]
+      summary: Read one owned-case human review request
+      operationId: getReview
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: reviewId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Review record, content: { application/json: { schema: { $ref: '#/components/schemas/ReviewRecord' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /reviews/{reviewId}/approve:
+    post:
+      tags: [reviews]
+      summary: Approve the current immutable result version
+      operationId: approveReview
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: reviewId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReviewDecision' }
+      responses:
+        '200':
+          description: Review decision recorded.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReviewRecord' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /reviews/{reviewId}/reject:
+    post:
+      tags: [reviews]
+      summary: Reject the current result version
+      operationId: rejectReview
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: reviewId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReviewDecision' }
+      responses:
+        '200':
+          description: Review decision recorded.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReviewRecord' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /reviews/{reviewId}/archive:
+    post:
+      tags: [reviews]
+      summary: Archive a review without changing its decision
+      operationId: archiveReview
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: reviewId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Review archived.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReviewRecord' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /sources/search:
+    post:
+      tags: [sources]
+      summary: Search legal sources
+      operationId: searchSources
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SourceSearchRequest' }
+      responses:
+        '200':
+          description: Matching legal sources.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SourceSearchResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '501': { $ref: '#/components/responses/NotImplemented' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+  /settings/model-access:
+    get:
+      tags: [settings]
+      summary: Read the effective model access configuration without key material
+      operationId: getModelAccessConfig
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Effective configuration with a write-only API key indicator.
+          content: { application/json: { schema: { $ref: '#/components/schemas/ModelAccessConfigView' } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    put:
+      tags: [settings]
+      summary: Replace the model access configuration
+      operationId: putModelAccessConfig
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/ModelAccessConfigUpdate' } } }
+      responses:
+        '200':
+          description: Configuration stored; the response never echoes the API key.
+          content: { application/json: { schema: { $ref: '#/components/schemas/ModelAccessConfigView' } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+components:
+  parameters:
+    ImportId:
+      name: importId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    TaskId:
+      name: taskId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    CaseId:
+      name: caseId
+      in: path
+      required: true
+      schema: { type: string }
+    DocumentId:
+      name: documentId
+      in: path
+      required: true
+      schema: { type: string }
+    DraftId:
+      name: draftId
+      in: path
+      required: true
+      schema: { type: string }
+    Page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 0, default: 0 }
+    Size:
+      name: size
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: >
+        Stable retry key for case creation, document upload, and case review creation.
+        Reusing a key with different request content returns 409 IDEMPOTENCY_CONFLICT.
+      schema: { type: string, minLength: 1, maxLength: 128 }
+  responses:
+    BadRequest:
+      description: Request validation failed.
+      content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } }
+    NotFound:
+      description: Resource not found or not accessible to the current account.
+      content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } }
+    Conflict:
+      description: Resource version or state conflict.
+      content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } }
+    Unauthorized:
+      description: Authentication is missing or invalid.
+      content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } }
+    UnsupportedMediaType:
+      description: Uploaded file type is not supported.
+      content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } }
+    PayloadTooLarge:
+      description: Uploaded package exceeds the 50 MB API transport profile.
+      content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } }
+    ServiceUnavailable:
+      description: Object storage or a dependent service is unavailable.
+      content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } }
+    NotImplemented:
+      description: The capability is reserved but not wired yet. Codes include SOURCE_SEARCH_UNAVAILABLE, SENTENCING_UNAVAILABLE, COMPLIANCE_UNAVAILABLE, and CONVICTION_UNAVAILABLE.
+      content: { application/json: { schema: { $ref: '#/components/schemas/ApiError' } } }
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    ImportBatch:
+      type: object
+      required: [id, status, originalFilename, contentType, sizeBytes, rawSha256, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        status:
+          type: string
+          enum: [uploading, uploaded, validating, validation_failed, diff_ready, review_required, approved, applying, partially_completed, completed, failed]
+        schemaVersion: { type: string }
+        packageId: { type: string }
+        producerId: { type: string }
+        datasetId: { type: string }
+        revision: { type: string }
+        packageDigest: { type: string, pattern: '^[0-9a-f]{64}$' }
+        originalFilename: { type: string }
+        contentType: { type: string }
+        sizeBytes: { type: integer, format: int64 }
+        rawSha256: { type: string, pattern: '^[0-9a-f]{64}$' }
+        error: { type: object, additionalProperties: true }
+        approvedAt: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        startedAt: { type: string, format: date-time }
+        completedAt: { type: string, format: date-time }
+    ImportStep:
+      type: object
+      required: [stepKey, attempt, status]
+      properties:
+        stepKey: { type: string }
+        attempt: { type: integer, minimum: 0 }
+        status: { type: string, enum: [pending, running, completed, failed, skipped] }
+        error: { type: object, additionalProperties: true }
+        startedAt: { type: string, format: date-time }
+        finishedAt: { type: string, format: date-time }
+    ImportItem:
+      type: object
+      required: [id, ordinal, itemId, externalCaseId, status, payloadPath, payloadSha256, steps, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        ordinal: { type: integer, minimum: 0 }
+        itemId: { type: string }
+        externalCaseId: { type: string }
+        status:
+          type: string
+          enum: [pending, validating, invalid, diff_ready, review_required, approved, applying, applied, no_op, conflict, failed]
+        caseId: { type: string }
+        payloadPath: { type: string }
+        payloadSha256: { type: string, pattern: '^[0-9a-f]{64}$' }
+        diff:
+          type: object
+          additionalProperties: true
+          properties:
+            action: { type: string, enum: [create, no_op, conflict] }
+        error: { type: object, additionalProperties: true }
+        steps: { type: array, items: { $ref: '#/components/schemas/ImportStep' } }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        completedAt: { type: string, format: date-time }
+    PageImportBatch:
+      type: object
+      required: [items, page, size, total]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/ImportBatch' } }
+        page: { type: integer }
+        size: { type: integer }
+        total: { type: integer, format: int64 }
+    PageImportItem:
+      type: object
+      required: [items, page, size, total]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/ImportItem' } }
+        page: { type: integer }
+        size: { type: integer }
+        total: { type: integer, format: int64 }
+    AuthRegister:
+      type: object
+      required: [username, password]
+      properties:
+        username: { type: string, pattern: '^[A-Za-z0-9_]{3,32}$' }
+        password: { type: string, minLength: 8, maxLength: 128 }
+        displayName: { type: string, maxLength: 32 }
+    AuthLogin:
+      type: object
+      required: [username, password]
+      properties:
+        username: { type: string, maxLength: 32 }
+        password: { type: string, minLength: 8, maxLength: 128 }
+    SessionView:
+      type: object
+      required: [username, displayName]
+      properties:
+        token: { type: string, description: Present on register and login; omitted from session reads. }
+        username: { type: string }
+        displayName: { type: string }
+        expiresAt: { type: string, format: date-time }
+    CaseCreate:
+      type: object
+      required: [title]
+      properties:
+        title: { type: string, minLength: 1, maxLength: 200 }
+        jurisdiction: { type: string, maxLength: 32 }
+        asOfDate: { type: string, format: date }
+        metadata:
+          type: object
+          additionalProperties: true
+          description: >
+            Opaque case bag. Three-case actor/organization/account/event relations
+            go in metadata.relations; amount kinds in metadata.amounts; jurisdiction
+            connection points in metadata.relations.jurisdictionConnections
+            (see docs/t1-api-01-increment.md). No graph tables this round.
+    CaseView:
+      type: object
+      required: [id, title, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        jurisdiction: { type: string }
+        asOfDate: { type: string, format: date }
+        metadata:
+          type: object
+          additionalProperties: true
+          description: Echo of CaseCreate.metadata, including optional relations.
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    CaseEventDocumentUpdate:
+      type: object
+      required: [documentId]
+      properties:
+        documentId:
+          type: string
+          minLength: 1
+          description: Use DocumentView.id returned by POST /cases/{caseId}/documents.
+        locator:
+          type: string
+          minLength: 1
+          description: Optional source locator; omitted values preserve the existing locator.
+    PageCase:
+      type: object
+      required: [items, page, size, total]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/CaseView' } }
+        page: { type: integer }
+        size: { type: integer }
+        total: { type: integer, format: int64 }
+    DocumentView:
+      type: object
+      required: [id, caseId, filename, contentType, size, role, parseStatus, createdAt]
+      properties:
+        id: { type: string }
+        caseId: { type: string }
+        filename: { type: string }
+        contentType: { type: string }
+        size: { type: integer, format: int64 }
+        role: { type: string, enum: [input, annotation] }
+        parseStatus: { type: string, enum: [not_started, queued, running, completed, waiting_review, failed, timed_out, rejected] }
+        parseTaskId:
+          type: string
+          format: uuid
+          description: Auto-created document.parse task. Poll this id; do not create another parse task.
+        createdAt: { type: string, format: date-time }
+    PageDocument:
+      type: object
+      required: [items, page, size, total]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/DocumentView' } }
+        page: { type: integer }
+        size: { type: integer }
+        total: { type: integer, format: int64 }
+    TaskType:
+      type: string
+      enum: [document.parse, model.probe, case.assist.analyze, sentencing.calculate, compliance.analyze, conviction.analyze]
+      description: >
+        case.assist.analyze runs the bundled material-to-review workflow and always opens a human gate.
+        compliance.analyze and conviction.analyze stay 501 COMPLIANCE_UNAVAILABLE /
+        CONVICTION_UNAVAILABLE. sentencing.calculate stays 501 SENTENCING_UNAVAILABLE
+        while SENTENCING_ENABLED is false.
+    TaskCreate:
+      type: object
+      required: [query]
+      properties:
+        query: { type: string, minLength: 1, maxLength: 20000 }
+        caseId: { type: string }
+        sessionId: { type: string }
+        metadata:
+          type: object
+          additionalProperties: true
+          properties:
+            taskType: { $ref: '#/components/schemas/TaskType' }
+    FactItem:
+      type: object
+      required: [key, value]
+      properties:
+        id: { type: string, description: Stable factId. Server assigns a UUID when omitted. }
+        key:
+          type: string
+          description: >
+            Fact type, or amount kind when the item is projected from bundle amounts
+            (account_total_flow, fraud_related_inflow, payment_settlement, crime_amount,
+            criminal_proceeds, personal_participation, personal_profit, restitution,
+            non_crime_flow, unclassified_amount).
+        value: { type: string }
+        locator: { type: string }
+        sourceDocumentId: { type: string }
+        verificationStatus:
+          type: string
+          enum: [candidate, baseline_asserted, confirmed, rejected, conflicted]
+        sourceVersion: { type: string }
+    FactUpdate:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/FactItem' } }
+    FactView:
+      type: object
+      required: [caseId, schemaVersion, status, items, updatedAt]
+      properties:
+        caseId: { type: string }
+        schemaVersion: { type: string, enum: [case.facts.v1] }
+        status: { type: string, enum: [draft, confirmed] }
+        items: { type: array, items: { $ref: '#/components/schemas/FactItem' } }
+        updatedAt: { type: string, format: date-time }
+        confirmedAt: { type: string, format: date-time }
+    DraftCreate:
+      type: object
+      required: [draftType]
+      properties:
+        draftType: { type: string, minLength: 1, maxLength: 64 }
+        body: { type: string, description: Opaque draft text. Not validated as law or rendered as Word/PDF. }
+        templateVersion: { type: string }
+        sourceVersion: { type: string }
+    DraftUpdate:
+      type: object
+      required: [body, version]
+      properties:
+        body: { type: string, description: Opaque draft text. }
+        version: { type: integer, minimum: 1, description: Must match the current DraftView.version. }
+        templateVersion: { type: string }
+        sourceVersion: { type: string }
+    DraftView:
+      type: object
+      required: [id, caseId, draftType, body, version, updatedAt]
+      properties:
+        id: { type: string }
+        caseId: { type: string }
+        draftType: { type: string }
+        body: { type: string }
+        version: { type: integer, minimum: 1 }
+        updatedBy: { type: string, format: uuid }
+        updatedAt: { type: string, format: date-time }
+        templateVersion: { type: string }
+        sourceVersion: { type: string }
+    DraftList:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/DraftView' } }
+    ModuleStateUpdate:
+      type: object
+      required: [content, version]
+      properties:
+        applicability: { type: string, enum: [unknown, not_applicable, limited_context, applicable] }
+        content:
+          type: object
+          additionalProperties: true
+          description: >
+            Opaque object, not validated as law. Import projection uses
+            schemaVersion case.module.content.v1 with candidatePaths, facts,
+            checklist, amounts, missingItems, jurisdictionConnections, and
+            sourceVersionBinding. Snake_case aliases are also written for T2.
+        sourceVersion: { type: string }
+        version: { type: integer, minimum: 0, description: Must match the current ModuleStateView.version. Empty shells are 0. }
+    ModuleStateView:
+      type: object
+      required: [caseId, module, schemaVersion, applicability, status, version, content, factsStale, updatedAt]
+      properties:
+        caseId: { type: string }
+        module: { type: string, enum: [compliance, conviction] }
+        schemaVersion: { type: string, enum: [case.module.v1] }
+        applicability: { type: string, enum: [unknown, not_applicable, limited_context, applicable] }
+        status: { type: string, enum: [draft, confirmed] }
+        version: { type: integer, minimum: 0 }
+        content:
+          type: object
+          additionalProperties: true
+          description: Echo of ModuleStateUpdate.content; frozen import shape is case.module.content.v1.
+        sourceVersion: { type: string }
+        factsUpdatedAt: { type: string, format: date-time }
+        factsStale: { type: boolean }
+        updatedBy: { type: string, format: uuid }
+        updatedAt: { type: string, format: date-time }
+        confirmedAt: { type: string, format: date-time }
+    SourceSearchRequest:
+      type: object
+      required: [query]
+      properties:
+        query: { type: string, minLength: 1, maxLength: 4000 }
+        jurisdiction: { type: string, maxLength: 32 }
+        asOfDate: { type: string, format: date }
+        topK: { type: integer, minimum: 1, maximum: 50, default: 5 }
+    SourceSearchHit:
+      type: object
+      required: [sourceId, locator]
+      properties:
+        sourceId: { type: string }
+        locator: { type: string }
+        title: { type: string }
+        quote: { type: string }
+        version: { type: string }
+        jurisdiction: { type: string }
+    SourceSearchResponse:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/SourceSearchHit' } }
+    ModelAccessConfigView:
+      type: object
+      required: [provider, modelName, apiBaseUrl, timeoutSeconds, apiKeyConfigured, apiKeyMask, source]
+      properties:
+        provider: { type: string, enum: [stub, openai] }
+        modelName: { type: string }
+        apiBaseUrl: { type: string }
+        timeoutSeconds: { type: number, exclusiveMinimum: 0, maximum: 600 }
+        apiKeyConfigured: { type: boolean }
+        apiKeyMask: { type: string, const: '********' }
+        source: { type: string, enum: [environment, stored] }
+        updatedBy: { type: string, nullable: true }
+        updatedAt: { type: string, format: date-time, nullable: true }
+    ModelAccessConfigUpdate:
+      type: object
+      required: [provider, modelName, apiBaseUrl, timeoutSeconds]
+      additionalProperties: false
+      properties:
+        provider: { type: string, enum: [stub, openai] }
+        modelName: { type: string, minLength: 1, maxLength: 200 }
+        apiBaseUrl: { type: string, pattern: '^https?://', maxLength: 500 }
+        apiKey: { type: string, writeOnly: true, maxLength: 500, description: Omit to keep the stored key; send an empty string to clear it. }
+        timeoutSeconds: { type: number, exclusiveMinimum: 0, maximum: 600 }
+    TaskView:
+      type: object
+      required: [id, requestId, status, executionId, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        requestId: { type: string, format: uuid }
+        executionId: { type: string, format: uuid }
+        caseId: { type: string }
+        status: { type: string, enum: [queued, running, completed, waiting_review, failed, timed_out, rejected] }
+        currentStage: { type: string }
+        result: { $ref: '#/components/schemas/ResultRef' }
+        errorCode: { type: string }
+        error: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    ResultRef:
+      type: object
+      required: [resultId, version, type]
+      properties:
+        resultId: { type: string, format: uuid }
+        version: { type: integer, minimum: 1 }
+        type: { type: string }
+        contentHash: { type: string }
+        sourceRefs:
+          type: array
+          items: { $ref: '#/components/schemas/SourceRef' }
+    ResultPayload:
+      type: object
+      required: [resultId, version, type, contentHash, content]
+      properties:
+        resultId: { type: string, format: uuid }
+        version: { type: integer, minimum: 1 }
+        type: { type: string }
+        contentHash: { type: string }
+        content: {}
+    SourceRef:
+      type: object
+      required: [sourceId, locator]
+      properties:
+        sourceId: { type: string }
+        locator: { type: string, description: Page/paragraph/anchor locator in the source document. }
+        jurisdiction: { type: string }
+        version: { type: string }
+        effectiveFrom: { type: string, format: date }
+        effectiveTo: { type: string, format: date }
+    ReviewRecord:
+      type: object
+      required: [id, resultVersion, status, decision]
+      properties:
+        id: { type: string, format: uuid }
+        taskId: { type: string, format: uuid }
+        caseId:
+          type: string
+          description: Owner case from the task, draft, or stored case_id on a module/draft review.
+        module:
+          type: string
+          description: >
+            Derived from tasks.metadata_json.module, module_state, a bound draft,
+            or taskType (document.parse→parse, case.assist.analyze→assist,
+            sentencing.calculate→sentencing, compliance.analyze→compliance,
+            conviction.analyze→conviction, else task).
+        resultVersion: { type: integer, minimum: 1 }
+        status: { type: string, enum: [pending, approved, rejected, superseded] }
+        decision: { type: string, enum: [approve, reject, retry, none] }
+        actor: { type: string }
+        comment: { type: string }
+        authenticated: { type: boolean }
+        decidedAt: { type: string, format: date-time }
+        draftId: { type: string }
+        draftVersion: { type: integer }
+        moduleState: { type: string, enum: [compliance, conviction] }
+        moduleVersion: { type: integer }
+        archiveStatus: { type: string, enum: [open, archived] }
+        returnTarget: { type: string }
+    ReviewOpen:
+      type: object
+      required: [module]
+      properties:
+        module: { type: string }
+        draftId: { type: string }
+        draftVersion: { type: integer }
+        moduleState: { type: string, enum: [compliance, conviction] }
+        moduleVersion: { type: integer }
+        resultVersion: { type: integer, minimum: 1 }
+        taskId: { type: string, format: uuid }
+        returnTarget: { type: string }
+    PageReview:
+      type: object
+      required: [items, page, size, total]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/ReviewRecord' } }
+        page: { type: integer }
+        size: { type: integer }
+        total: { type: integer, format: int64 }
+    ReviewDecision:
+      type: object
+      required: [resultVersion]
+      properties:
+        comment: { type: string, maxLength: 5000 }
+        resultVersion: { type: integer, minimum: 1 }
+    ApiError:
+      type: object
+      required: [code, message, traceId, retryable]
+      properties:
+        code: { type: string }
+        message: { type: string }
+        traceId: { type: string }
+        retryable: { type: boolean }

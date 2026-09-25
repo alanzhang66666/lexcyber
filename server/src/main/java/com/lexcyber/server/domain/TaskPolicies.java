@@ -12,8 +12,10 @@ public final class TaskPolicies {
     public static final String SENTENCING_CALCULATE = "sentencing.calculate";
     public static final String COMPLIANCE_ANALYZE = "compliance.analyze";
     public static final String CONVICTION_ANALYZE = "conviction.analyze";
+    public static final String DRAFT_RENDER = "draft.render";
     private static final Set<String> KNOWN = Set.of(
-            DOCUMENT_PARSE, MODEL_PROBE, SENTENCING_CALCULATE, COMPLIANCE_ANALYZE, CONVICTION_ANALYZE);
+            DOCUMENT_PARSE, MODEL_PROBE, SENTENCING_CALCULATE, COMPLIANCE_ANALYZE,
+            CONVICTION_ANALYZE, DRAFT_RENDER);
 
     private TaskPolicies() {
     }
@@ -24,6 +26,14 @@ public final class TaskPolicies {
         if (value == null) return null;
         String type = String.valueOf(value).trim();
         return type.isBlank() ? null : type;
+    }
+
+    /** 仅校验 taskType 已知，不做可用性门闩（/v2 内部派发用，能力门闩前置）。 */
+    public static void requireKnown(Map<String, Object> metadata) {
+        String type = taskType(metadata);
+        if (type != null && !KNOWN.contains(type)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_TASK_TYPE", "unsupported taskType");
+        }
     }
 
     public static void requireSupported(Map<String, Object> metadata, boolean sentencingEnabled) {
@@ -40,6 +50,9 @@ public final class TaskPolicies {
         }
         if (CONVICTION_ANALYZE.equals(type)) {
             throw new ApiException(HttpStatus.NOT_IMPLEMENTED, "CONVICTION_UNAVAILABLE", "定罪分析尚未接通");
+        }
+        if (DRAFT_RENDER.equals(type)) {
+            throw new ApiException(HttpStatus.NOT_IMPLEMENTED, "DRAFT_RENDER_UNAVAILABLE", "文书渲染尚未接通");
         }
     }
 

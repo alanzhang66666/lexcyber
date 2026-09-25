@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { api } from '../api'
-import type { FactItem, FactView } from '../api-types'
+import { apiV2 } from '../api'
+import type { FactItem } from '../api-types'
 import { isExtractedFactKey } from '../lib/extract-candidates'
 import LocatorChip from './LocatorChip.vue'
 import VerificationBadge from './VerificationBadge.vue'
@@ -9,9 +9,15 @@ import VerificationBadge from './VerificationBadge.vue'
 const props = defineProps<{ caseId: string }>()
 const emit = defineEmits<{ locate: [documentId: string | undefined, locator: string] }>()
 
+type FactsPanelView = {
+  items: FactItem[]
+  status: 'draft' | 'confirmed'
+  confirmedAt?: string | null
+}
+
 const loading = ref(true)
 const error = ref('')
-const facts = ref<FactView | null>(null)
+const facts = ref<FactsPanelView | null>(null)
 
 const editing = ref(false)
 const draft = ref<FactItem[]>([])
@@ -30,7 +36,17 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    facts.value = await api.getCaseFacts(props.caseId)
+    const [entities, head] = await Promise.all([
+      apiV2.getFactsEntities(props.caseId),
+      apiV2.getFactsHead(props.caseId),
+    ])
+    const items = (entities.items ?? []) as FactItem[]
+    const confirmedId = (head.confirmedFactsVersionId ?? null) as string | null
+    facts.value = {
+      items,
+      status: confirmedId ? 'confirmed' : 'draft',
+      confirmedAt: (head.updatedAt ?? null) as string | null,
+    }
   } catch (caught) {
     error.value = caught instanceof Error ? caught.message : '事实读取失败。'
   } finally {
@@ -65,7 +81,8 @@ async function save() {
     const items = draft.value
       .map((item) => ({ ...item, key: item.key.trim(), value: item.value.trim(), locator: item.locator?.trim() || null }))
       .filter((item) => item.key && item.value)
-    facts.value = await api.putCaseFacts(props.caseId, { items })
+    await apiV2.replaceFactsEntities(props.caseId, 'fact', items)
+    await load()
     editing.value = false
   } catch (caught) {
     saveError.value = caught instanceof Error ? caught.message : '事实保存失败。'
@@ -78,7 +95,13 @@ async function confirm() {
   confirming.value = true
   confirmError.value = ''
   try {
-    facts.value = await api.confirmCaseFacts(props.caseId)
+    // /v2 语义：固化工作副本为新 FactsVersion，再按预期 head CAS 确认
+    const head = await apiV2.getFactsHead(props.caseId)
+    const expected = (head.confirmedFactsVersionId ?? null) as string | null
+    const created = await apiV2.createFactsVersion(props.caseId)
+    const versionId = String(created.factsVersionId ?? created.facts_version_id ?? '')
+    await apiV2.confirmFactsVersion(props.caseId, versionId, expected)
+    await load()
   } catch (caught) {
     confirmError.value = caught instanceof Error ? caught.message : '事实确认失败。'
   } finally {

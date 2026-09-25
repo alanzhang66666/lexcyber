@@ -63,9 +63,11 @@ class ModuleStateServiceTest {
                 .migrate();
         JdbcTemplate jdbc = new JdbcTemplate(dataSource);
         ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
-        cases = new CaseService(jdbc, mapper);
-        facts = new FactService(jdbc, mapper, cases);
-        modules = new ModuleStateService(jdbc, mapper, cases);
+        cases = new CaseService(jdbc, mapper, new IdempotencyService(jdbc));
+        facts = new FactService(jdbc, cases, new FactsBaselineService(jdbc, new StalePropagationService(jdbc)));
+        modules = new ModuleStateService(jdbc, mapper, cases,
+                new ArtifactPublicationService(jdbc, new StalePropagationService(jdbc)),
+                new ModuleConfirmationService(jdbc));
         alice = insertAccount(jdbc, "alice_" + UUID.randomUUID().toString().replace("-", "").substring(0, 8));
         bob = insertAccount(jdbc, "bob_" + UUID.randomUUID().toString().replace("-", "").substring(0, 8));
         aliceCase = cases.create(alice, new CaseCreate("alice-modules", "CN", null, Map.of()));

@@ -1,5 +1,6 @@
 package com.lexcyber.server.domain;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -69,11 +70,12 @@ class CaseDocumentServiceTest {
                 .migrate();
         jdbc = new JdbcTemplate(dataSource);
         ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
-        cases = new CaseService(jdbc, mapper);
+        cases = new CaseService(jdbc, mapper, new IdempotencyService(jdbc));
         TaskService tasks = new TaskService(jdbc, mapper);
         storage = new InMemoryObjectStorage();
-        documents = new DocumentService(jdbc, cases, tasks, storage);
-        facts = new FactService(jdbc, mapper, cases);
+        documents = new DocumentService(jdbc, cases, tasks, storage, new IdempotencyService(jdbc));
+        facts = new FactService(jdbc, cases,
+                new FactsBaselineService(jdbc, new StalePropagationService(jdbc)));
         alice = insertAccount("alice_" + UUID.randomUUID().toString().replace("-", "").substring(0, 8));
         bob = insertAccount("bob_" + UUID.randomUUID().toString().replace("-", "").substring(0, 8));
     }
@@ -82,7 +84,7 @@ class CaseDocumentServiceTest {
     void createListGetAndUploadPersistAcrossReload() {
         CaseView created = cases.create(alice, new CaseCreate("测试案例 001", "CN", LocalDate.parse("2026-09-06"),
                 Map.of("datasetCaseId", "001", "isDevelopmentSample", true)));
-        assertTrue(created.id().startsWith("case-"));
+        assertDoesNotThrow(() -> UUID.fromString(created.id()));
         assertEquals("CN", created.jurisdiction());
         assertEquals(LocalDate.parse("2026-09-06"), created.asOfDate());
 

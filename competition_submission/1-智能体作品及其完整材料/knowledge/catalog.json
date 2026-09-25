@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "knowledge.catalog.v1",
+  "datasetId": "lexcyber-competition-legal-demo",
+  "revision": "2026-09-19-r1",
+  "jurisdiction": "CN",
+  "sourceFile": "sources/legal_sources.json",
+  "retrieval": {
+    "method": "deterministic-keyword-and-bm25-compatible",
+    "defaultTopK": 5,
+    "maxTopK": 20,
+    "unknownQueryPolicy": "block-and-human-review"
+  }
+}

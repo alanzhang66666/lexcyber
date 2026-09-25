@@ -109,8 +109,10 @@ def test_worker_maps_parse_failure_error_code(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr("engine.worker.mark_running", lambda execution_id, owner, stage="running": recorded.update(stage=stage) or True)
     monkeypatch.setattr("engine.worker.build_runner", lambda: type("R", (), {"run": staticmethod(lambda payload: (_ for _ in ()).throw(DocumentParseError("无法解析该文件")))})())
 
-    def complete(execution_id, status, stage, result=None, error_code=None, error_message=None, retryable=False):
+    def complete(execution_id, status, stage, fencing_token, result=None, error_code=None,
+                 error_message=None, retryable=False, owner="", human_review_required=False):
         recorded.update(status=status, complete_stage=stage, error_code=error_code)
+        return True
 
     monkeypatch.setattr("engine.worker.complete_execution", complete)
     monkeypatch.setattr("engine.worker._notify_application", lambda execution_id: None)
@@ -130,13 +132,15 @@ def test_worker_maps_parse_timeout_error_code(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr("engine.worker.mark_running", lambda execution_id, owner, stage="running": True)
     monkeypatch.setattr("engine.worker.build_runner", lambda: type("R", (), {"run": staticmethod(lambda payload: (_ for _ in ()).throw(SkillTimeoutError("timed out")))})())
 
-    def complete(execution_id, status, stage, result=None, error_code=None, error_message=None, retryable=False):
+    def complete(execution_id, status, stage, fencing_token, result=None, error_code=None,
+                 error_message=None, retryable=False, owner="", human_review_required=False):
         recorded.update(status=status, error_code=error_code, stage=stage)
+        return True
 
     monkeypatch.setattr("engine.worker.complete_execution", complete)
     monkeypatch.setattr("engine.worker._notify_application", lambda execution_id: None)
 
     with pytest.raises(SkillTimeoutError):
         run_execution({"execution_id": str(uuid4()), "metadata": {"taskType": "document.parse"}})
-    assert recorded["status"] == "timed_out"
+    assert recorded["status"] == "failed"
     assert recorded["error_code"] == "DOCUMENT_PARSE_TIMEOUT"

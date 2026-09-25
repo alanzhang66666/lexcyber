@@ -17,5 +17,7 @@ public record ExecutionRequest(
         @JsonProperty("session_id") String sessionId,
         Map<String, Object> metadata,
         @JsonProperty("input_hash") String inputHash,
-        @JsonProperty("contract_version") String contractVersion) {
+        @JsonProperty("contract_version") String contractVersion,
+        @JsonProperty("artifact_stream_id") UUID artifactStreamId,
+        @JsonProperty("input_snapshot_ref") String inputSnapshotRef) {
 }

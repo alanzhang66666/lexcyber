@@ -1,0 +1,138 @@
+{
+  "schema_version": "rule-corpus.v1",
+  "note": "法学底稿：pending 注册，须经 signoff 批准后才参与产出（INV-RULE-002）。source_refs 按 source_key@source_version 引用已登记法源。",
+  "rules": [
+    {
+      "rule_id": "rule-conviction-assist-287-2-elements",
+      "rule_version": "1.0.0",
+      "family": "conviction",
+      "predicate": {"all": [
+        {"path": "facts.knowledge_of_crime.value", "op": "in",
+         "value": ["explicit", "presumed"]},
+        {"path": "facts.help_type.value", "op": "in",
+         "value": ["internet_access", "server_hosting", "network_storage",
+                    "communication_transmission", "payment_settlement",
+                    "advertising_promotion", "technical_support"]},
+        {"path": "facts.upstream_crime_established.value", "op": "eq", "value": true}
+      ]},
+      "outcome": {"charge_candidate": "assisting_information_network_crime",
+                  "article": "刑法第287条之二",
+                  "elements_met": ["knowledge", "assistance", "upstream_crime"],
+                  "note": "构成要件命中不等于定罪结论；情节严重门槛与排除事由另行评估"},
+      "source_refs": ["cn-criminal-law-287-2-current"],
+      "coverage": {"covers": ["crime.assist_ict"]},
+      "required_evidence_kinds": ["chat_record", "transaction_flow", "service_log"]
+    },
+    {
+      "rule_id": "rule-conviction-assist-severity-2019-threshold",
+      "rule_version": "1.0.1",
+      "family": "conviction",
+      "predicate": {"any": [
+        {"path": "amounts.payment_settlement_amount.confirmedSum", "op": "gte", "value": 200000},
+        {"all": [
+          {"path": "facts.assisted_targets.value", "op": "gte", "value": 3},
+          {"path": "amounts.payment_settlement_amount.confirmedSum", "op": "gte", "value": 300000}]},
+        {"path": "amounts.illegal_gain.confirmedSum", "op": "gte", "value": 10000}
+      ]},
+      "outcome": {"severity_threshold": "met",
+                  "note": "2019解释20万支付结算线 与 2025意见三账户30万流入线 是择一路径，不叠加；金额口径统一用 payment_settlement_amount（ADR-0003 封闭集）"},
+      "source_refs": ["cn-cybercrime-interpretation-2019-11-12", "cn-helping-opinion-2025-4-9"],
+      "coverage": {"covers": ["crime.assist_ict.severity"]},
+      "required_evidence_kinds": ["transaction_flow"]
+    },
+    {
+      "rule_id": "rule-distinction-concealment-after-upstream",
+      "rule_version": "1.0.0",
+      "family": "distinction",
+      "predicate": {"all": [
+        {"path": "facts.upstream_crime_completed.value", "op": "eq", "value": true},
+        {"path": "facts.contact_timing.value", "op": "eq", "value": "after_upstream"}
+      ]},
+      "outcome": {"distinction": "concealment_over_assist",
+                  "note": "上游犯罪既遂后介入转移赃款 → 掩隐方向；但仍须排除事前通谋"},
+      "source_refs": ["cn-criminal-law-312-current", "cn-concealment-interpretation-2025-1-12"],
+      "coverage": {"covers": ["distinction.concealment_vs_assist"]},
+      "required_evidence_kinds": ["transaction_flow", "timeline"]
+    },
+    {
+      "rule_id": "rule-distinction-fraud-accomplice-prior-collusion",
+      "rule_version": "1.0.0",
+      "family": "distinction",
+      "predicate": {"all": [
+        {"path": "facts.prior_collusion.value", "op": "eq", "value": true},
+        {"path": "facts.contact_timing.value", "op": "eq", "value": "before_upstream"}
+      ]},
+      "outcome": {"distinction": "fraud_accomplice_risk",
+                  "note": "事前通谋 + 提供支持 → 存在诈骗共犯评价风险，须人工研判分工深度"},
+      "source_refs": ["cn-criminal-law-266-current", "cn-telefraud-opinion-2016-common-crime"],
+      "coverage": {"covers": ["distinction.fraud_accomplice_vs_assist"]},
+      "required_evidence_kinds": ["chat_record", "timeline"]
+    },
+    {
+      "rule_id": "rule-compliance-logs-retention-6m",
+      "rule_version": "1.0.0",
+      "family": "compliance",
+      "predicate": {"all": [
+        {"path": "facts.log_retention_months.value", "op": "gte", "value": 6}
+      ]},
+      "outcome": {"finding": "log_retention_compliant", "severity": "info",
+                  "duty": "网络日志留存不少于六个月"},
+      "source_refs": ["cn-cybersecurity-law-2025@2025-revision"],
+      "coverage": {"covers": ["duty.log_retention"]},
+      "required_evidence_kinds": ["service_log", "policy_document"]
+    },
+    {
+      "rule_id": "rule-compliance-realname-verification",
+      "rule_version": "1.0.0",
+      "family": "compliance",
+      "predicate": {"all": [
+        {"path": "facts.has_realname_verification.value", "op": "eq", "value": true}
+      ]},
+      "outcome": {"finding": "realname_verification_present", "severity": "info",
+                  "duty": "用户真实身份信息核验"},
+      "source_refs": ["cn-cybersecurity-law-2025@2025-revision"],
+      "coverage": {"covers": ["duty.realname"]},
+      "required_evidence_kinds": ["policy_document"]
+    },
+    {
+      "rule_id": "rule-sentencing-assist-base",
+      "rule_version": "1.0.1",
+      "family": "sentencing",
+      "predicate": {"path": "facts.upstream_crime_established.value", "op": "eq", "value": true},
+      "outcome": {
+        "charge": "assisting_information_network_crime",
+        "statutory_range": "三年以下有期徒刑或者拘役，并处或者单处罚金",
+        "calculation": {
+          "base_tiers": [
+            {"when": {"path": "amounts.payment_settlement_amount.confirmedSum", "op": "gte", "value": 300000},
+             "months": 18},
+            {"when": {"path": "amounts.payment_settlement_amount.confirmedSum", "op": "gte", "value": 200000},
+             "months": 12},
+            {"when": {"path": "amounts.illegal_gain.confirmedSum", "op": "gte", "value": 10000},
+             "months": 9}
+          ],
+          "adjustments": [
+            {"id": "surrender", "label": "自首",
+             "when": {"path": "facts.has_surrender.value", "op": "eq", "value": true},
+             "direction": "decrease", "operation": "percent_of_base", "value": "0.30",
+             "source_ids": []},
+            {"id": "confession", "label": "坦白",
+             "when": {"path": "facts.has_confession.value", "op": "eq", "value": true},
+             "direction": "decrease", "operation": "percent_of_base", "value": "0.10",
+             "source_ids": []},
+            {"id": "guilty_plea", "label": "认罪认罚",
+             "when": {"path": "facts.has_guilty_plea.value", "op": "eq", "value": true},
+             "direction": "decrease", "operation": "percent_of_base", "value": "0.20",
+             "source_ids": []}
+          ],
+          "maximum_months": 36,
+          "fine": {"mode": "concurrent_or_single", "note": "并处或单处罚金，数额由裁量决定"}
+        },
+        "note": "基准档为起点建议值；自首/坦白/认罪认罚按指导意见幅度调节，重复评价须人工排除"
+      },
+      "source_refs": ["cn-criminal-law-287-2-current", "cn-sentencing-guidance-2024-2"],
+      "coverage": {"covers": ["sentencing.assist_ict"]},
+      "required_evidence_kinds": ["transaction_flow", "surrender_record", "plea_document"]
+    }
+  ]
+}

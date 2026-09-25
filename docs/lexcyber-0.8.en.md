@@ -3,6 +3,8 @@
 [中文](lexcyber-0.8.zh-CN.md) · [README](../README.md)
 
 **Version:** 0.8
+**Contract version:** 0.8.0
+**Current-state date:** 2026-09-19
 **Role:** An auditable task-execution and case-document workbench. It assists review. It does not replace judicial discretion and does not issue sentencing, liability, or crime conclusions.
 
 Open `http://127.0.0.1:18080`. Health check: `GET /healthz` should report `version: 0.8.0` after Java / Engine images are rebuilt.
@@ -101,7 +103,7 @@ flowchart LR
   Facts --> Fly
   Tasks --> Fly
   Reviews --> Fly
-  Sources -->|"501 until T3"| EngineApi2
+  Sources -->|"501 pending signoff"| EngineApi2
 ```
 
 | Area | Types | Public paths |
@@ -114,6 +116,10 @@ flowchart LR
 | Reviews | `ReviewService` | `/v1/reviews` (Bearer + owned case; see [t1-api-01-increment.md](t1-api-01-increment.md)) |
 | Search gate | `SourceSearchController` / `EngineSourceClient` | `POST /v1/sources/search` → 501 today |
 | Engine bridge | `EngineDispatcher`, `EngineResultCallbackController` | Internal HTTP + `X-Service-Token` |
+
+The T3 search and sentencing adapters and `demo_cases/three_case_demo` are present in Engine and included in the image by `engine/Dockerfile` (`COPY demo_cases`). The four public entry points—search, sentencing, `compliance.analyze`, and `conviction.analyze`—remain 501 until signoff is complete. Sentencing also requires both the Java and Engine flags to be enabled; the defaults remain off.
+
+Current public gates: search (`POST /v1/sources/search`) returns `501 SOURCE_SEARCH_UNAVAILABLE`; sentencing task creation (`sentencing.calculate`) returns `501 SENTENCING_UNAVAILABLE`; `compliance.analyze` returns `501 COMPLIANCE_UNAVAILABLE`; `conviction.analyze` returns `501 CONVICTION_UNAVAILABLE`. These response codes remain unchanged until signoff is complete.
 
 `document.parse` and `model.probe` require Bearer. Upload writes MinIO then creates parse and overwrites a client `storageKey`.
 
@@ -134,8 +140,8 @@ flowchart TB
     Parse["document_parse"]
     Probe["model_probe"]
     Skills["skill_runtime_PDF_DOCX"]
-    SrcAd["adapters.sources_501"]
-    SenAd["adapters.sentencing_501"]
+    SrcAd["T3_sources_adapter"]
+    SenAd["T3_sentencing_adapter"]
     Gw["ModelGateway"]
     Obj["object_store_MinIO"]
   end
@@ -163,8 +169,8 @@ flowchart TB
 | `engine/worker.py` + `workflow.py` | Leases, checkpoints, stub / domain tasks |
 | `document_parse.py` | Re-read MinIO bytes; emit `document.parse.v1` |
 | `model_probe.py` | External model only via `ModelGateway` |
-| `adapters/sources.py` | `SOURCE_SEARCH_UNAVAILABLE` |
-| `adapters/sentencing.py` | `SENTENCING_UNAVAILABLE` |
+| `adapters/sources.py` | T3 search adapter; returns `SOURCE_SEARCH_UNAVAILABLE` while the public gate is off |
+| `adapters/sentencing.py` | T3 sentencing adapter; returns `SENTENCING_UNAVAILABLE` while the public gate is off |
 | `engine/migrations` | Flyway `engine` schema |
 ---
 
@@ -199,8 +205,8 @@ flowchart LR
 | Track | Status in 0.8 |
 | --- | --- |
 | T1 | **On `main`.** Cases/documents/auto-parse, facts, reserved-task auth, `storageKey` bind, real `model.probe` |
-| T2 | **Main path on `main`.** Four-entry nav, list/create/upload/workspace parse/facts. Formal docket/analysis show “not connected” |
-| T3 | **Not started.** No `datasets/`; search and sentencing adapters return 501 |
+| T2 | **Merged into local `main`.** The case-center list/create/upload/workspace parse/facts path, formal document-review, sentencing, and source-law pages, and review archiving are wired; compliance/conviction pages expose module content, and conviction shows jurisdictional connections, baseline position, and missing items |
+| T3 | **Internal capability is in place.** The T3 search/sentencing adapters and `demo_cases/three_case_demo` are present in Engine and the image; public search, sentencing, compliance, and conviction analysis entry points remain behind the signoff gate and return 501 |
 
 Public contract: [`contracts/public-api.yaml`](../contracts/public-api.yaml) (`info.version: 0.8.0`). Internal: [`contracts/internal-engine-api.yaml`](../contracts/internal-engine-api.yaml).
 
@@ -281,4 +287,4 @@ Samples: [`LexCyber_T1接口交接样例.md`](../LexCyber_T1接口交接样例.m
 3. Treat unconfirmed sentencing ratios as production rules
 4. Show placeholder “Lin” excerpts as real parse or sentence output
 
-Retrieval signoff is still pending: [`t1-retrieval-boundary.md`](t1-retrieval-boundary.md).
+Public retrieval remains pending legal signoff: [`t1-retrieval-boundary.md`](t1-retrieval-boundary.md).

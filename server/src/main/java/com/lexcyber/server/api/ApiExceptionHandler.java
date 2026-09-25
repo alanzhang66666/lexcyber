@@ -26,7 +26,15 @@ public class ApiExceptionHandler {
     private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);
     @ExceptionHandler(ApiException.class)
     public ResponseEntity<Map<String, Object>> api(ApiException error) {
-        return body(error.status(), error.code(), error.getMessage());
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("code", error.code());
+        payload.put("message", error.getMessage() == null ? error.status().getReasonPhrase() : error.getMessage());
+        if (error.details() != null) {
+            payload.putAll(error.details());
+        }
+        payload.put("traceId", UUID.randomUUID().toString());
+        payload.put("retryable", false);
+        return ResponseEntity.status(error.status()).body(payload);
     }
 
     @ExceptionHandler(ResponseStatusException.class)

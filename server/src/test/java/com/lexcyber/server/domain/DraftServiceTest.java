@@ -60,8 +60,8 @@ class DraftServiceTest {
                 .load()
                 .migrate();
         jdbc = new JdbcTemplate(dataSource);
-        cases = new CaseService(jdbc, new ObjectMapper().findAndRegisterModules());
-        drafts = new DraftService(jdbc, cases);
+        cases = new CaseService(jdbc, new ObjectMapper().findAndRegisterModules(), new IdempotencyService(jdbc));
+        drafts = new DraftService(jdbc, cases, new ArtifactPublicationService(jdbc, new StalePropagationService(jdbc)));
         alice = insertAccount("alice_" + UUID.randomUUID().toString().replace("-", "").substring(0, 8));
         bob = insertAccount("bob_" + UUID.randomUUID().toString().replace("-", "").substring(0, 8));
         aliceCase = cases.create(alice, new CaseCreate("alice-drafts", "CN", null, Map.of()));
@@ -71,7 +71,7 @@ class DraftServiceTest {
     @Test
     void ownerCanCreateListAndReadDraft() {
         DraftView created = drafts.create(alice, aliceCase.id(), new DraftCreate("opinion", "初稿"));
-        assertTrue(created.id().startsWith("draft-"));
+        UUID.fromString(created.id());  // v13 起 draft id 为 uuid
         assertEquals(aliceCase.id(), created.caseId());
         assertEquals("opinion", created.draftType());
         assertEquals("初稿", created.body());
@@ -123,30 +123,37 @@ class DraftServiceTest {
     }
 
     @Test
-    void replaceSupersedesPendingAndApprovedReviewsOnOldVersion() {
+    void replaceSupersedesPendingReviewsAndStalesApprovedHead() {
         DraftView created = drafts.create(alice, aliceCase.id(),
                 new DraftCreate("opinion", "初稿", "tpl-1", "src-1"));
         assertEquals("tpl-1", created.templateVersion());
         assertEquals("src-1", created.sourceVersion());
+        UUID v1 = jdbc.queryForObject("""
+                SELECT v.artifact_version_id FROM app.artifact_version v
+                JOIN app.artifact_stream s ON s.artifact_stream_id = v.artifact_stream_id
+                WHERE s.case_id = ?::uuid AND s.scope_key = ?
+                """, UUID.class, aliceCase.id(), "draft:" + created.id());
         UUID pending = UUID.randomUUID();
         UUID approved = UUID.randomUUID();
         jdbc.update("""
-                INSERT INTO app.review_records(id, task_id, result_version, status, decision, case_id, draft_id, draft_version)
-                VALUES (?, NULL, 1, 'pending', 'none', ?, ?, 1)
-                """, pending, aliceCase.id(), created.id());
+                INSERT INTO app.review_records(review_id, artifact_version_id, case_id, status, actor_id)
+                VALUES (?, ?, ?::uuid, 'pending', ?)
+                """, pending, v1, aliceCase.id(), alice);
         jdbc.update("""
-                INSERT INTO app.review_records(id, task_id, result_version, status, decision, case_id, draft_id, draft_version)
-                VALUES (?, NULL, 1, 'approved', 'approve', ?, ?, 1)
-                """, approved, aliceCase.id(), created.id());
+                INSERT INTO app.review_records(review_id, artifact_version_id, case_id, status, actor_id, decided_at)
+                VALUES (?, ?, ?::uuid, 'approved', ?, now())
+                """, approved, v1, aliceCase.id(), alice);
 
         DraftView updated = drafts.replace(alice, aliceCase.id(), created.id(),
                 new DraftUpdate("二稿", 1, "tpl-2", "src-2"));
         assertEquals(2, updated.version());
         assertEquals("tpl-2", updated.templateVersion());
+        // 发布路径：旧版本 pending 复核置 superseded（§4.8.2 step 10）
         assertEquals("superseded", jdbc.queryForObject(
-                "SELECT status FROM app.review_records WHERE id=?", String.class, pending));
-        assertEquals("superseded", jdbc.queryForObject(
-                "SELECT status FROM app.review_records WHERE id=?", String.class, approved));
+                "SELECT status FROM app.review_records WHERE review_id=?", String.class, pending));
+        // 已批准复核保留状态；失效表达在 head.stale（INV-DOMAIN-002）
+        assertEquals("approved", jdbc.queryForObject(
+                "SELECT status FROM app.review_records WHERE review_id=?", String.class, approved));
     }
 
     private UUID insertAccount(String username) {

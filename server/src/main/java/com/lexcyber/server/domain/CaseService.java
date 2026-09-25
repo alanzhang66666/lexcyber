@@ -25,12 +25,16 @@ public class CaseService {
     private final JdbcTemplate jdbc;
     private final ObjectMapper objectMapper;
     private final ObjectMapper canonicalObjectMapper;
+    private final IdentityService ids;
+    private final IdempotencyService idempotency;
 
-    public CaseService(JdbcTemplate jdbc, ObjectMapper objectMapper) {
+    public CaseService(JdbcTemplate jdbc, ObjectMapper objectMapper, IdempotencyService idempotency) {
         this.jdbc = jdbc;
         this.objectMapper = objectMapper;
         this.canonicalObjectMapper = objectMapper.copy()
                 .enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS);
+        this.ids = new IdentityService(jdbc);
+        this.idempotency = idempotency;
     }
 
     @Transactional
@@ -45,8 +49,10 @@ public class CaseService {
         String key = normalizeIdempotencyKey(idempotencyKey);
         String requestHash = key == null ? null : caseRequestHash(request, metadata);
         if (key != null) {
-            CaseView replay = claimCaseIdempotency(ownerAccountId, key, requestHash);
-            if (replay != null) return replay;
+            IdempotencyService.Claim claim = idempotency.claim(ownerAccountId, key, requestHash);
+            if (claim.replay()) {
+                return requireOwned(ownerAccountId, claim.resourceId().toString());
+            }
         }
         DuplicateKeyException last = null;
         for (int attempt = 0; attempt < 3; attempt++) {
@@ -54,14 +60,11 @@ public class CaseService {
             try {
                 jdbc.update("""
                         INSERT INTO app.cases(id, owner_account_id, title, jurisdiction, as_of_date, metadata_json)
-                        VALUES (?, ?, ?, ?, ?, ?::jsonb)
+                        VALUES (?::uuid, ?, ?, ?, ?, ?::jsonb)
                         """,
                         id, ownerAccountId, title, request.jurisdiction(), request.asOfDate(), writeJson(metadata));
                 if (key != null) {
-                    jdbc.update("""
-                            UPDATE app.case_create_idempotency SET case_id = ?
-                            WHERE account_id = ? AND idempotency_key = ? AND request_hash = ?
-                            """, id, ownerAccountId, key, requestHash);
+                    idempotency.record(ownerAccountId, key, "case", UUID.fromString(id), 201);
                 }
                 return requireOwned(ownerAccountId, id);
             } catch (DuplicateKeyException duplicate) {
@@ -87,7 +90,7 @@ public class CaseService {
 
     @Transactional(readOnly = true)
     public CaseView requireOwned(UUID ownerAccountId, String caseId) {
-        return findOwned(ownerAccountId, caseId)
+        return findOwned(ownerAccountId, ids.caseId(caseId))
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "CASE_NOT_FOUND", "案件不存在或不可访问"));
     }
 
@@ -96,9 +99,9 @@ public class CaseService {
         List<CaseView> rows = jdbc.query("""
                 SELECT id, title, jurisdiction, as_of_date, metadata_json, created_at, updated_at
                 FROM app.cases
-                WHERE id = ? AND owner_account_id = ?
+                WHERE id = ?::uuid AND owner_account_id = ?
                 FOR UPDATE
-                """, this::map, caseId, ownerAccountId);
+                """, this::map, ids.caseId(caseId), ownerAccountId);
         if (rows.isEmpty()) {
             throw new ApiException(HttpStatus.NOT_FOUND, "CASE_NOT_FOUND", "案件不存在或不可访问");
         }
@@ -109,6 +112,7 @@ public class CaseService {
     public CaseView bindEventDocument(UUID ownerAccountId, String caseId, String eventId,
                                       CaseEventDocumentUpdate request) {
         CaseView current = lockOwned(ownerAccountId, caseId);
+        caseId = current.id();
         if (eventId == null || eventId.isBlank()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", "eventId is required");
         }
@@ -116,7 +120,8 @@ public class CaseService {
         if (documentId.isEmpty() || (request.locator() != null && request.locator().isBlank())) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", "documentId and locator must be nonblank");
         }
-        Long count = jdbc.queryForObject("SELECT COUNT(*) FROM app.documents WHERE id = ? AND case_id = ?",
+        documentId = ids.documentId(documentId);
+        Long count = jdbc.queryForObject("SELECT COUNT(*) FROM app.documents WHERE id = ?::uuid AND case_id = ?::uuid",
                 Long.class, documentId, caseId);
         if (count == null || count == 0L) {
             throw new ApiException(HttpStatus.NOT_FOUND, "DOCUMENT_NOT_FOUND", "材料不存在或不属于该案件");
@@ -153,7 +158,7 @@ public class CaseService {
         }
         relations.put("events", events);
         metadata.put("relations", relations);
-        jdbc.update("UPDATE app.cases SET metadata_json = ?::jsonb, updated_at = now() WHERE id = ? AND owner_account_id = ?",
+        jdbc.update("UPDATE app.cases SET metadata_json = ?::jsonb, updated_at = now() WHERE id = ?::uuid AND owner_account_id = ?",
                 writeJson(metadata), caseId, ownerAccountId);
         return requireOwned(ownerAccountId, caseId);
     }
@@ -163,7 +168,7 @@ public class CaseService {
         return jdbc.query("""
                 SELECT id, title, jurisdiction, as_of_date, metadata_json, created_at, updated_at
                 FROM app.cases
-                WHERE id = ? AND owner_account_id = ?
+                WHERE id = ?::uuid AND owner_account_id = ?
                 """, this::map, caseId, ownerAccountId).stream().findFirst();
     }
 
@@ -176,26 +181,6 @@ public class CaseService {
                 parseMap(rs.getString("metadata_json")),
                 rs.getObject("created_at", OffsetDateTime.class),
                 rs.getObject("updated_at", OffsetDateTime.class));
-    }
-
-    private CaseView claimCaseIdempotency(UUID ownerAccountId, String key, String requestHash) {
-        jdbc.update("""
-                INSERT INTO app.case_create_idempotency(account_id, idempotency_key, request_hash, case_id)
-                VALUES (?, ?, ?, NULL)
-                ON CONFLICT (account_id, idempotency_key) DO NOTHING
-                """, ownerAccountId, key, requestHash);
-        Map<String, Object> row = jdbc.queryForMap("""
-                SELECT request_hash, case_id
-                FROM app.case_create_idempotency
-                WHERE account_id = ? AND idempotency_key = ?
-                FOR UPDATE
-                """, ownerAccountId, key);
-        if (!requestHash.equals(String.valueOf(row.get("request_hash")))) {
-            throw new ApiException(HttpStatus.CONFLICT, "IDEMPOTENCY_CONFLICT",
-                    "相同幂等键已用于不同案件内容");
-        }
-        Object caseId = row.get("case_id");
-        return caseId == null ? null : requireOwned(ownerAccountId, String.valueOf(caseId));
     }
 
     private String caseRequestHash(CaseCreate request, Map<String, Object> metadata) {

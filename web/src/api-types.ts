@@ -330,6 +330,31 @@ export type SourceSearchResponse = {
   items: SourceSearchHit[]
 }
 
+export type ModelProvider = 'stub' | 'openai'
+export type ModelConfigSource = 'environment' | 'stored'
+
+export type ModelAccessConfigView = {
+  provider: ModelProvider
+  modelName: string
+  apiBaseUrl: string
+  timeoutSeconds: number
+  apiKeyConfigured: boolean
+  /** 固定掩码常量；API Key 只写不读。 */
+  apiKeyMask: '********'
+  source: ModelConfigSource
+  updatedBy?: string | null
+  updatedAt?: string | null
+}
+
+export type ModelAccessConfigUpdate = {
+  provider: ModelProvider
+  modelName: string
+  apiBaseUrl: string
+  /** 只写；省略表示保留已存密钥，空串表示清除。 */
+  apiKey?: string
+  timeoutSeconds: number
+}
+
 export type ApiErrorPayload = {
   code?: string
   message?: string
@@ -537,4 +562,150 @@ export type PageImportItem = {
   page: number
   size: number
   total: number
+}
+
+// ---------- /v2 生命周期契约（contracts/public-api-v2.yaml，v1.3 语义） ----------
+
+export type FactsVersionStatus = 'draft' | 'confirmed' | 'superseded'
+
+export type FactsVersionView = {
+  factsVersionId: string
+  caseId: string
+  version: number
+  /** 派生只读字段（ADR-0002），不落库 */
+  status: FactsVersionStatus
+  contentHash: string
+  createdAt: string
+  confirmedAt?: string | null
+}
+
+export type FactsVersionDetailView = FactsVersionView & {
+  /** 不可变全量快照：items 为 fact 条目；entities 按类分组 */
+  payload: {
+    items: Record<string, unknown>[]
+    entities: Record<string, Record<string, unknown>[]>
+  }
+}
+
+export type FactsHeadView = {
+  caseId: string
+  confirmedFactsVersionId?: string | null
+  updatedAt?: string | null
+}
+
+export type FactsEntityKind =
+  | 'facts'
+  | 'actors'
+  | 'events'
+  | 'evidence'
+  | 'amounts'
+  | 'jurisdiction-connections'
+
+export type FactsEntitiesView = {
+  caseId: string
+  items: Record<string, unknown>[]
+  entities: Record<string, Record<string, unknown>[]>
+}
+
+export type FactsEntitiesUpdate = {
+  items: Record<string, unknown>[]
+}
+
+export type FactsDiffSection = {
+  added: Record<string, unknown>[]
+  removed: Record<string, unknown>[]
+  changed: Record<string, unknown>[]
+}
+
+export type FactsDiffView = {
+  caseId: string
+  fromFactsVersionId: string
+  toFactsVersionId: string
+  sections: Record<string, FactsDiffSection>
+}
+
+export type ExecutionState = 'created' | 'queued' | 'claimed' | 'running' | 'completed' | 'failed'
+
+export type ExecutionView = {
+  executionId: string
+  state: ExecutionState
+  caseId?: string | null
+  taskId?: string | null
+  createdAt?: string | null
+}
+
+export type ArtifactOutcomeStatus = 'calculated' | 'blocked' | 'not_applicable'
+export type ArtifactKind = 'parse' | 'compliance' | 'conviction' | 'sentencing' | 'draft'
+
+export type ArtifactVersionView = {
+  artifactVersionId: string
+  streamId: string
+  caseId: string
+  kind: ArtifactKind
+  scopeKey: string
+  version: number
+  schemaVersion: string
+  outcomeStatus: ArtifactOutcomeStatus
+  payload: Record<string, unknown>
+  blockers: Record<string, unknown>[]
+  dependencySnapshot: Record<string, unknown>
+  executionId?: string | null
+  outputHash: string
+  createdAt: string
+}
+
+export type ModuleHeadView = {
+  caseId: string
+  module: ModuleName
+  streamId?: string | null
+  latestVersionId?: string | null
+  confirmedVersionId?: string | null
+  effectivelyConfirmed: boolean
+  stale: boolean
+  staleReason?: string | null
+  updatedAt?: string | null
+}
+
+export type DraftHeadView = {
+  draftId: string
+  caseId: string
+  streamId?: string | null
+  latestVersionId?: string | null
+  approvedVersionId?: string | null
+  effectivelyApproved: boolean
+  stale: boolean
+  staleReason?: string | null
+  updatedAt?: string | null
+}
+
+export type DraftRenderDispatch = {
+  taskId: string
+  executionId: string
+  status: string
+  docType: string
+}
+
+export type ReviewStatusV2 = 'pending' | 'approved' | 'rejected' | 'superseded'
+
+export type ReviewViewV2 = {
+  reviewId: string
+  artifactVersionId: string
+  caseId: string
+  status: ReviewStatusV2
+  decision?: string | null
+  actorId: string
+  comment?: string | null
+  createdAt: string
+  decidedAt?: string | null
+}
+
+export type ArchiveView = {
+  archiveId: string
+  caseId: string
+  archiveVersion: number
+  archiveProfile: string
+  factsVersionId: string
+  manifestHash: string
+  createdAt: string
+  items: { artifactVersionId: string; role: string }[]
 }

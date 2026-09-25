@@ -65,6 +65,84 @@ def submit_execution(payload: ExecutionRequest) -> ExecutionView:
     return ExecutionView.model_validate(view)
 
 
+@app.get("/internal/v1/capabilities", dependencies=[Depends(require_service_token)])
+def capabilities_endpoint() -> dict:
+    """模块能力声明：family 全部有 approved 规则包才可派发（INV-RULE-002 / INV-GATE-002）。"""
+    from engine.rules import registry
+
+    try:
+        return registry.capabilities()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="rule registry unavailable") from exc
+
+
+@app.post("/internal/v1/registry/legal-sources", status_code=status.HTTP_201_CREATED,
+          dependencies=[Depends(require_service_token)])
+def register_legal_source_endpoint(payload: dict) -> dict:
+    from engine.rules.registry import RegistryError, register_legal_source
+
+    try:
+        return register_legal_source(payload)
+    except RegistryError as exc:
+        raise HTTPException(status_code=409, detail=exc.code) from exc
+
+
+@app.post("/internal/v1/registry/rules", status_code=status.HTTP_201_CREATED,
+          dependencies=[Depends(require_service_token)])
+def register_rule_endpoint(payload: dict) -> dict:
+    from engine.rules.registry import RegistryError, register_rule_package
+
+    try:
+        return register_rule_package(payload)
+    except RegistryError as exc:
+        raise HTTPException(status_code=409, detail=exc.code) from exc
+
+
+@app.post("/internal/v1/registry/templates", status_code=status.HTTP_201_CREATED,
+          dependencies=[Depends(require_service_token)])
+def register_template_endpoint(payload: dict) -> dict:
+    from engine.rules.registry import RegistryError, register_template
+
+    try:
+        return register_template(payload)
+    except RegistryError as exc:
+        raise HTTPException(status_code=409, detail=exc.code) from exc
+
+
+@app.post("/internal/v1/registry/signoffs", status_code=status.HTTP_201_CREATED,
+          dependencies=[Depends(require_service_token)])
+def signoff_endpoint(payload: dict) -> dict:
+    from engine.rules.registry import RegistryError, signoff
+
+    try:
+        return signoff(
+            subject_kind=payload.get("subjectKind"),
+            subject_key=payload.get("subjectKey"),
+            reviewer=payload.get("reviewer"),
+            role=payload.get("role"),
+            decision=payload.get("decision"),
+            comment=payload.get("comment"),
+        )
+    except RegistryError as exc:
+        raise HTTPException(status_code=409, detail=exc.code) from exc
+
+
+@app.post("/internal/v1/registry/resolve", dependencies=[Depends(require_service_token)])
+def resolve_temporal_endpoint(payload: dict) -> dict:
+    from datetime import date as _date
+
+    from engine.rules.registry import resolve_temporal
+
+    def _parse(value):
+        return _date.fromisoformat(value) if value else None
+
+    return resolve_temporal(
+        payload.get("sourceKey", ""),
+        _parse(payload.get("conductDate")),
+        _parse(payload.get("judgmentDate")),
+    )
+
+
 @app.get("/internal/v1/executions/{execution_id}", dependencies=[Depends(require_service_token)])
 def execution_status(execution_id: UUID) -> ExecutionView:
     try:

@@ -26,18 +26,23 @@ public class DocumentService {
     private final CaseService cases;
     private final TaskService tasks;
     private final ObjectStorage storage;
+    private final IdentityService ids;
+    private final IdempotencyService idempotency;
 
-    public DocumentService(JdbcTemplate jdbc, CaseService cases, TaskService tasks, ObjectStorage storage) {
+    public DocumentService(JdbcTemplate jdbc, CaseService cases, TaskService tasks, ObjectStorage storage,
+                           IdempotencyService idempotency) {
         this.jdbc = jdbc;
         this.cases = cases;
         this.tasks = tasks;
         this.storage = storage;
+        this.ids = new IdentityService(jdbc);
+        this.idempotency = idempotency;
     }
 
     @Transactional
     public DocumentView upload(UUID ownerAccountId, String caseId, String filename, String contentType, byte[] data,
                                String role, String idempotencyKey) {
-        cases.requireOwned(ownerAccountId, caseId);
+        caseId = cases.requireOwned(ownerAccountId, caseId).id();
         if (data == null || data.length == 0) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", "file is required");
         }
@@ -60,8 +65,10 @@ public class DocumentService {
 
         String key = idempotencyKey == null || idempotencyKey.isBlank() ? null : idempotencyKey.trim();
         if (key != null) {
-            DocumentView replay = claimIdempotency(ownerAccountId, caseId, key, requestHash);
-            if (replay != null) return replay;
+            IdempotencyService.Claim claim = idempotency.claim(ownerAccountId, key, requestHash);
+            if (claim.replay()) {
+                return requireOwned(ownerAccountId, claim.resourceId().toString());
+            }
         }
 
         String documentId = allocateDocumentId();
@@ -86,6 +93,7 @@ public class DocumentService {
             metadata.put("taskType", "document.parse");
             metadata.put("documentId", documentId);
             metadata.put("schemaVersion", "document.parse.v1");
+            metadata.put("sha256", sha256);
             metadata.put("storageKey", storageKey);
             metadata.put("filename", normalizedName);
             metadata.put("contentType", resolvedType);
@@ -95,17 +103,12 @@ public class DocumentService {
 
             jdbc.update("""
                     INSERT INTO app.documents(id, case_id, filename, content_type, size, role, storage_key, sha256, parse_status, parse_task_id)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?)
+                    VALUES (?::uuid, ?::uuid, ?, ?, ?, ?, ?, ?, 'queued', ?)
                     """,
                     documentId, caseId, normalizedName, resolvedType, data.length, normalizedRole, storageKey, sha256, task.id());
 
             if (key != null) {
-                jdbc.update("""
-                        UPDATE app.upload_idempotency
-                        SET document_id = ?
-                        WHERE account_id = ? AND case_id = ? AND idempotency_key = ? AND request_hash = ?
-                        """,
-                        documentId, ownerAccountId, caseId, key, requestHash);
+                idempotency.record(ownerAccountId, key, "document", UUID.fromString(documentId), 201);
             }
             return requireOwned(ownerAccountId, documentId);
         } catch (RuntimeException ex) {
@@ -120,7 +123,7 @@ public class DocumentService {
 
     @Transactional(readOnly = true)
     public PageResponse<DocumentView> list(UUID ownerAccountId, String caseId, String role, int page, int size) {
-        cases.requireOwned(ownerAccountId, caseId);
+        caseId = cases.requireOwned(ownerAccountId, caseId).id();
         CaseService.requirePage(page, size);
         if (role != null && !role.isBlank()) {
             try {
@@ -134,11 +137,11 @@ public class DocumentService {
         Object[] itemsParams = filterRole
                 ? new Object[] {caseId, role, size, page * size}
                 : new Object[] {caseId, size, page * size};
-        List<DocumentView> items = jdbc.query(documentSelect() + " WHERE d.case_id = ?" + where
+        List<DocumentView> items = jdbc.query(documentSelect() + " WHERE d.case_id = ?::uuid" + where
                 + " ORDER BY d.created_at DESC LIMIT ? OFFSET ?", this::map, itemsParams);
         Long total = filterRole
-                ? jdbc.queryForObject("SELECT COUNT(*) FROM app.documents d WHERE d.case_id = ? AND d.role = ?", Long.class, caseId, role)
-                : jdbc.queryForObject("SELECT COUNT(*) FROM app.documents d WHERE d.case_id = ?", Long.class, caseId);
+                ? jdbc.queryForObject("SELECT COUNT(*) FROM app.documents d WHERE d.case_id = ?::uuid AND d.role = ?", Long.class, caseId, role)
+                : jdbc.queryForObject("SELECT COUNT(*) FROM app.documents d WHERE d.case_id = ?::uuid", Long.class, caseId);
         return new PageResponse<>(items, page, size, total == null ? 0L : total);
     }
 
@@ -151,7 +154,7 @@ public class DocumentService {
                 SELECT d.id, d.case_id, d.storage_key, d.filename, d.content_type
                 FROM app.documents d
                 JOIN app.cases c ON c.id = d.case_id
-                WHERE d.id = ? AND c.owner_account_id = ?
+                WHERE d.id = ?::uuid AND c.owner_account_id = ?
                 """,
                 (rs, ignored) -> new StoredDocument(
                         rs.getString("id"),
@@ -159,7 +162,7 @@ public class DocumentService {
                         rs.getString("storage_key"),
                         rs.getString("filename"),
                         rs.getString("content_type")),
-                documentId, ownerAccountId);
+                ids.documentId(documentId), ownerAccountId);
         if (rows.isEmpty()) {
             throw new ApiException(HttpStatus.NOT_FOUND, "DOCUMENT_NOT_FOUND", "材料不存在或不可访问");
         }
@@ -170,38 +173,18 @@ public class DocumentService {
     public DocumentView requireOwned(UUID ownerAccountId, String documentId) {
         List<DocumentView> rows = jdbc.query(documentSelect() + """
                 JOIN app.cases c ON c.id = d.case_id
-                WHERE d.id = ? AND c.owner_account_id = ?
-                """, this::map, documentId, ownerAccountId);
+                WHERE d.id = ?::uuid AND c.owner_account_id = ?
+                """, this::map, ids.documentId(documentId), ownerAccountId);
         if (rows.isEmpty()) {
             throw new ApiException(HttpStatus.NOT_FOUND, "DOCUMENT_NOT_FOUND", "材料不存在或不可访问");
         }
         return rows.get(0);
     }
 
-    private DocumentView claimIdempotency(UUID ownerAccountId, String caseId, String key, String requestHash) {
-        jdbc.update("""
-                INSERT INTO app.upload_idempotency(account_id, case_id, idempotency_key, document_id, request_hash)
-                VALUES (?, ?, ?, NULL, ?)
-                ON CONFLICT (account_id, case_id, idempotency_key) DO NOTHING
-                """, ownerAccountId, caseId, key, requestHash);
-        Map<String, Object> row = jdbc.queryForMap("""
-                SELECT document_id, request_hash
-                FROM app.upload_idempotency
-                WHERE account_id = ? AND case_id = ? AND idempotency_key = ?
-                FOR UPDATE
-                """, ownerAccountId, caseId, key);
-        if (!requestHash.equals(String.valueOf(row.get("request_hash")))) {
-            throw new ApiException(HttpStatus.CONFLICT, "IDEMPOTENCY_CONFLICT", "相同幂等键已用于不同内容的上传");
-        }
-        Object documentId = row.get("document_id");
-        if (documentId == null) return null;
-        return requireOwned(ownerAccountId, String.valueOf(documentId));
-    }
-
     private String allocateDocumentId() {
         for (int attempt = 0; attempt < 3; attempt++) {
             String id = DocumentPolicies.newDocumentId();
-            Long count = jdbc.queryForObject("SELECT COUNT(*) FROM app.documents WHERE id = ?", Long.class, id);
+            Long count = jdbc.queryForObject("SELECT COUNT(*) FROM app.documents WHERE id = ?::uuid", Long.class, id);
             if (count == null || count == 0L) return id;
         }
         return DocumentPolicies.newDocumentId();

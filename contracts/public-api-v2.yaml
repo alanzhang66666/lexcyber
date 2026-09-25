@@ -1,0 +1,575 @@
+openapi: 3.0.3
+info:
+  title: LexCyber Public API v2
+  version: 2.0.0
+  description: >-
+    v1.3 生命周期语义的公开契约。/v1 契约冻结并保持适配层语义；本文件暴露
+    facts version/head、module execution、artifact version、review binding 与
+    案件级归档。所有 id 均为 uuid；错误载荷见 components.schemas.Error。
+servers:
+  - url: /
+paths:
+  /v2/cases/{caseId}/facts-versions:
+    post:
+      summary: 固化当前事实编辑态为新的 draft FactsVersion（六类实体全量快照）
+      operationId: createFactsVersion
+      parameters: [{ $ref: '#/components/parameters/CaseId' }]
+      responses:
+        '201':
+          description: 新版本已创建
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FactsVersionView' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+    get:
+      summary: FactsVersion 历史列表（元数据，不含 payload）
+      operationId: listFactsVersions
+      parameters: [{ $ref: '#/components/parameters/CaseId' }]
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/FactsVersionView' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v2/cases/{caseId}/facts-versions/{factsVersionId}:
+    get:
+      summary: FactsVersion 明细（含不可变 payload 全文）
+      operationId: getFactsVersion
+      parameters:
+        - { $ref: '#/components/parameters/CaseId' }
+        - { $ref: '#/components/parameters/FactsVersionId' }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FactsVersionDetailView' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v2/cases/{caseId}/facts-versions/{factsVersionId}/diff:
+    get:
+      summary: 与另一版本逐条对比（added/removed/changed，按节分组）
+      operationId: diffFactsVersions
+      parameters:
+        - { $ref: '#/components/parameters/CaseId' }
+        - { $ref: '#/components/parameters/FactsVersionId' }
+        - name: against
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+          description: 基准版本 id；返回从 against 到 factsVersionId 的差异
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FactsDiffView' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v2/cases/{caseId}/facts-versions/{factsVersionId}/clone:
+    post:
+      summary: 把该版本内容回写为当前工作副本（不改 head，不改动任何已存版本）
+      operationId: cloneFactsVersion
+      parameters:
+        - { $ref: '#/components/parameters/CaseId' }
+        - { $ref: '#/components/parameters/FactsVersionId' }
+      responses:
+        '200':
+          description: 工作副本已回写，返回当前可编辑实体全集
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FactsEntitiesView' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /v2/cases/{caseId}/facts-versions/{factsVersionId}/confirm:
+    post:
+      summary: 原子确认 FactsVersion 并推进 facts_head（expected-head CAS）
+      operationId: confirmFactsVersion
+      parameters:
+        - { $ref: '#/components/parameters/CaseId' }
+        - { $ref: '#/components/parameters/FactsVersionId' }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                expectedConfirmedFactsVersionId:
+                  type: string
+                  format: uuid
+                  nullable: true
+                  description: >-
+                    调用方读到的当前 confirmed head；锁内不一致返 409
+                    FACTS_HEAD_CONFLICT（§4.8.1 后到者不得静默覆盖）。
+                    缺省/显式 null 表示“预期无已确认版本”。
+      responses:
+        '200':
+          description: 已确认；head 已推进；下游 head 已置 stale
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FactsHeadView' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /v2/cases/{caseId}/facts-entities:
+    get:
+      summary: 当前可编辑工作副本（六类实体全集，与快照 payload 形状一致）
+      operationId: getFactsEntities
+      parameters: [{ $ref: '#/components/parameters/CaseId' }]
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FactsEntitiesView' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v2/cases/{caseId}/facts-entities/{kind}:
+    put:
+      summary: 整组替换某类可编辑实体（确认后仍可编辑；只影响下一次快照）
+      operationId: replaceFactsEntities
+      parameters:
+        - { $ref: '#/components/parameters/CaseId' }
+        - { $ref: '#/components/parameters/FactsEntityKind' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FactsEntitiesUpdate' }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FactsEntitiesView' }
+        '400':
+          description: 字段缺失或 amount.kind 不在封闭集
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v2/cases/{caseId}/facts-head:
+    get:
+      summary: 当前事实基线指针
+      operationId: getFactsHead
+      parameters: [{ $ref: '#/components/parameters/CaseId' }]
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FactsHeadView' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v2/cases/{caseId}/modules/{module}/executions:
+    post:
+      summary: 为模块派发一次执行（Engine 能力不足 → 501，不产生任务）
+      operationId: dispatchModuleExecution
+      parameters:
+        - { $ref: '#/components/parameters/CaseId' }
+        - { $ref: '#/components/parameters/ModuleName' }
+      responses:
+        '202':
+          description: 执行已排队
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ExecutionView' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '501': { $ref: '#/components/responses/NotImplemented' }
+
+  /v2/executions/{executionId}:
+    get:
+      summary: 执行状态（技术态；不含业务结果）
+      operationId: getExecution
+      parameters: [{ $ref: '#/components/parameters/ExecutionId' }]
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ExecutionView' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v2/artifact-versions/{artifactVersionId}:
+    get:
+      summary: 工件版本（payload + 依赖快照 + 来源 execution）
+      operationId: getArtifactVersion
+      parameters: [{ $ref: '#/components/parameters/ArtifactVersionId' }]
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ArtifactVersionView' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v2/cases/{caseId}/modules/{module}:
+    get:
+      summary: 模块指针视图（latest / confirmed / stale；不复制正文）
+      operationId: getModuleHead
+      parameters:
+        - { $ref: '#/components/parameters/CaseId' }
+        - { $ref: '#/components/parameters/ModuleName' }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ModuleHeadView' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v2/artifact-versions/{artifactVersionId}/reviews:
+    post:
+      summary: 在该工件版本上开复核
+      operationId: openReview
+      parameters: [{ $ref: '#/components/parameters/ArtifactVersionId' }]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReviewOpenRequest' }
+      responses:
+        '201':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReviewView' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+    get:
+      summary: 该工件版本的人审历史
+      operationId: listReviews
+      parameters: [{ $ref: '#/components/parameters/ArtifactVersionId' }]
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/ReviewView' } }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v2/cases/{caseId}/drafts:
+    get:
+      summary: 案件下全部文书渲染流及最新工件版本指针（渲染结果发现入口）
+      operationId: listDraftStreams
+      parameters: [{ $ref: '#/components/parameters/CaseId' }]
+      responses:
+        '200':
+          description: 文书流清单
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        streamId: { type: string, format: uuid }
+                        docType: { type: string }
+                        latestVersionId: { type: string, format: uuid, nullable: true }
+                        updatedAt: { type: string, nullable: true }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v2/cases/{caseId}/drafts/render:
+    post:
+      summary: 派发文书渲染执行（approved 模板门闩 + confirmed facts 快照嵌入）
+      operationId: dispatchDraftRender
+      parameters: [{ $ref: '#/components/parameters/CaseId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [docType]
+              properties:
+                docType: { type: string, minLength: 1 }
+      responses:
+        '201':
+          description: 任务已派发
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  taskId: { type: string, format: uuid }
+                  executionId: { type: string, format: uuid }
+                  status: { type: string }
+                  docType: { type: string }
+        '400': { description: DOC_TYPE_MISSING }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '501': { description: DRAFT_RENDER_UNAVAILABLE（doc_type 无已会签模板） }
+
+  /v2/drafts/{draftId}:
+    get:
+      summary: 文书指针视图（approved / latest / stale）
+      operationId: getDraftHead
+      parameters: [{ $ref: '#/components/parameters/DraftId' }]
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DraftHeadView' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v2/cases/{caseId}/archives:
+    post:
+      summary: 创建案件级归档（锁内评估 + 固化 manifest）
+      operationId: createArchive
+      parameters: [{ $ref: '#/components/parameters/CaseId' }]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                archiveProfile: { type: string, default: case.full.v1 }
+      responses:
+        '201':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ArchiveView' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: ARCHIVE_PRECONDITION_FAILED + 可定位缺口
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /v2/cases/{caseId}/archives/{archiveId}:
+    get:
+      summary: 归档 manifest（可追溯 facts/module/review/规则/法源版本）
+      operationId: getArchive
+      parameters:
+        - { $ref: '#/components/parameters/CaseId' }
+        - { $ref: '#/components/parameters/ArchiveId' }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ArchiveView' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+components:
+  parameters:
+    CaseId:
+      name: caseId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    FactsVersionId:
+      name: factsVersionId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    ExecutionId:
+      name: executionId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    ArtifactVersionId:
+      name: artifactVersionId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    DraftId:
+      name: draftId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    ArchiveId:
+      name: archiveId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    ModuleName:
+      name: module
+      in: path
+      required: true
+      schema: { type: string, enum: [compliance, conviction, sentencing] }
+    FactsEntityKind:
+      name: kind
+      in: path
+      required: true
+      schema:
+        type: string
+        enum: [facts, actors, events, evidence, amounts, jurisdiction-connections]
+  responses:
+    NotFound:
+      description: not found
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Conflict:
+      description: conflict
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotImplemented:
+      description: capability not available
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+  schemas:
+    Error:
+      type: object
+      properties:
+        code: { type: string }
+        message: { type: string }
+        traceId: { type: string }
+        retryable: { type: boolean }
+        gaps:
+          type: array
+          items:
+            type: object
+            properties:
+              code: { type: string }
+              detail: { type: string }
+    FactsVersionView:
+      type: object
+      properties:
+        factsVersionId: { type: string, format: uuid }
+        caseId: { type: string, format: uuid }
+        version: { type: integer }
+        status: { type: string, enum: [draft, confirmed, superseded],
+                  description: 派生只读字段（ADR-0002），不落库 }
+        contentHash: { type: string }
+        createdAt: { type: string, format: date-time }
+        confirmedAt: { type: string, format: date-time, nullable: true }
+    FactsVersionDetailView:
+      allOf:
+        - $ref: '#/components/schemas/FactsVersionView'
+        - type: object
+          properties:
+            payload:
+              type: object
+              description: >-
+                不可变全量快照：items 为 fact 条目；entities 按
+                actors/events/evidence/amounts/jurisdictionConnections 分组。
+              properties:
+                items: { type: array, items: { type: object } }
+                entities: { type: object }
+    FactsEntitiesView:
+      type: object
+      description: 可编辑工作副本；形状与快照 payload 一致
+      properties:
+        caseId: { type: string, format: uuid }
+        items: { type: array, items: { type: object } }
+        entities: { type: object }
+    FactsEntitiesUpdate:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { type: object }
+          description: 该 kind 的整组替换内容；id 字段为 external_id（可空）
+    FactsDiffView:
+      type: object
+      properties:
+        caseId: { type: string, format: uuid }
+        fromFactsVersionId: { type: string, format: uuid }
+        toFactsVersionId: { type: string, format: uuid }
+        sections:
+          type: object
+          description: items + 五个实体节，每节含 added/removed/changed
+          additionalProperties:
+            type: object
+            properties:
+              added: { type: array, items: { type: object } }
+              removed: { type: array, items: { type: object } }
+              changed: { type: array, items: { type: object } }
+    FactsHeadView:
+      type: object
+      properties:
+        caseId: { type: string, format: uuid }
+        confirmedFactsVersionId: { type: string, format: uuid, nullable: true }
+        updatedAt: { type: string, format: date-time }
+    ExecutionView:
+      type: object
+      properties:
+        executionId: { type: string, format: uuid }
+        state: { type: string, enum: [created, queued, claimed, running, completed, failed] }
+        caseId: { type: string, format: uuid, nullable: true }
+        taskId: { type: string, format: uuid, nullable: true }
+        createdAt: { type: string, format: date-time }
+    ArtifactVersionView:
+      type: object
+      properties:
+        artifactVersionId: { type: string, format: uuid }
+        streamId: { type: string, format: uuid }
+        caseId: { type: string, format: uuid }
+        kind: { type: string, enum: [parse, compliance, conviction, sentencing, draft] }
+        scopeKey: { type: string }
+        version: { type: integer }
+        schemaVersion: { type: string }
+        outcomeStatus: { type: string, enum: [calculated, blocked, not_applicable] }
+        payload: { type: object }
+        blockers: { type: array, items: { type: object } }
+        dependencySnapshot: { type: object }
+        executionId: { type: string, format: uuid, nullable: true }
+        outputHash: { type: string }
+        createdAt: { type: string, format: date-time }
+    ModuleHeadView:
+      type: object
+      properties:
+        caseId: { type: string, format: uuid }
+        module: { type: string }
+        streamId: { type: string, format: uuid }
+        latestVersionId: { type: string, format: uuid, nullable: true }
+        confirmedVersionId: { type: string, format: uuid, nullable: true }
+        effectivelyConfirmed: { type: boolean }
+        stale: { type: boolean }
+        staleReason: { type: string, nullable: true }
+        updatedAt: { type: string, format: date-time }
+    DraftHeadView:
+      type: object
+      properties:
+        draftId: { type: string, format: uuid }
+        caseId: { type: string, format: uuid }
+        streamId: { type: string, format: uuid }
+        latestVersionId: { type: string, format: uuid, nullable: true }
+        approvedVersionId: { type: string, format: uuid, nullable: true }
+        effectivelyApproved: { type: boolean }
+        stale: { type: boolean }
+        staleReason: { type: string, nullable: true }
+    ReviewOpenRequest:
+      type: object
+      properties:
+        comment: { type: string }
+    ReviewView:
+      type: object
+      properties:
+        reviewId: { type: string, format: uuid }
+        artifactVersionId: { type: string, format: uuid }
+        caseId: { type: string, format: uuid }
+        status: { type: string, enum: [pending, approved, rejected, superseded] }
+        decision: { type: string, nullable: true }
+        actorId: { type: string, format: uuid }
+        comment: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        decidedAt: { type: string, format: date-time, nullable: true }
+    ArchiveView:
+      type: object
+      properties:
+        archiveId: { type: string, format: uuid }
+        caseId: { type: string, format: uuid }
+        archiveVersion: { type: integer }
+        archiveProfile: { type: string }
+        factsVersionId: { type: string, format: uuid }
+        manifestHash: { type: string }
+        createdAt: { type: string, format: date-time }
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              artifactVersionId: { type: string, format: uuid }
+              role: { type: string }

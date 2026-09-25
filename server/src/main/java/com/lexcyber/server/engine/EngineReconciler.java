@@ -38,7 +38,7 @@ public class EngineReconciler {
             try {
                 ResultEnvelope envelope = client.get().uri("/internal/v1/executions/{id}", executionId)
                         .header("X-Service-Token", token).retrieve().body(ResultEnvelope.class);
-                if (envelope != null && !List.of("queued", "running").contains(envelope.status())) {
+                if (envelope != null && !List.of("created", "queued", "claimed", "running").contains(envelope.status())) {
                     results.accept(envelope);
                 }
             } catch (RuntimeException failure) {

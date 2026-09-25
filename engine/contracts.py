@@ -32,6 +32,8 @@ class ExecutionRequest(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
     input_hash: str = Field(min_length=16, max_length=128)
     contract_version: str = "public-api-0.8"
+    artifact_stream_id: UUID | None = None
+    input_snapshot_ref: str | None = None
 
 
 class SourceSearchRequest(BaseModel):
@@ -89,3 +91,7 @@ class ExecutionView(BaseModel):
     updated_at: datetime | None = None
     input_hash: str | None = None
     enqueued_at: datetime | None = None
+    fencing_token: int | None = None
+    completion_identity: str | None = None
+    output_hash: str | None = None
+    output_envelope: dict[str, Any] | None = None

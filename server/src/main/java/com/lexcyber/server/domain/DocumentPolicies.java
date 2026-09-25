@@ -56,16 +56,17 @@ public final class DocumentPolicies {
         return "cases/" + caseId + "/" + documentId + "/" + sha256;
     }
 
+    /** v13 起实体主键为 uuid；返回值保持 String，调用方在 SQL 中以 ?::uuid 绑定。 */
     public static String newCaseId() {
-        return "case-" + shortId();
+        return UUID.randomUUID().toString();
     }
 
     public static String newDocumentId() {
-        return "doc-" + shortId();
+        return UUID.randomUUID().toString();
     }
 
     public static String newDraftId() {
-        return "draft-" + shortId();
+        return UUID.randomUUID().toString();
     }
 
     public static String normalizeFilename(String filename) {

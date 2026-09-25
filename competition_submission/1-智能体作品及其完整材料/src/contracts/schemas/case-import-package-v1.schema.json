@@ -1,0 +1,120 @@
+{
+  "title": "LexCyber case import package v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "package_id",
+    "producer_id",
+    "dataset_id",
+    "revision",
+    "created_at",
+    "items",
+    "package_digest"
+  ],
+  "properties": {
+    "schema_version": { "const": "lexcyber.case-import.v1" },
+    "package_id": { "$ref": "#/$defs/stableId" },
+    "producer_id": { "$ref": "#/$defs/stableId" },
+    "dataset_id": { "$ref": "#/$defs/stableId" },
+    "revision": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "created_at": { "type": "string", "format": "date-time" },
+    "metadata": { "type": "object", "maxProperties": 100 },
+    "items": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1000,
+      "items": { "$ref": "#/$defs/item" }
+    },
+    "package_digest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "canonicalization", "value"],
+      "properties": {
+        "algorithm": { "const": "sha256" },
+        "canonicalization": { "const": "lexcyber.case-import.c14n.v1" },
+        "value": { "$ref": "#/$defs/sha256" }
+      }
+    }
+  },
+  "$defs": {
+    "stableId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "safePath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500,
+      "allOf": [
+        { "pattern": "^[^\\u0000]+$" },
+        { "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.\\.?(?:/|$)).*[^/]$" }
+      ]
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "media_type", "schema_version", "size", "sha256"],
+      "properties": {
+        "path": {
+          "allOf": [
+            { "$ref": "#/$defs/safePath" },
+            { "pattern": "\\.json$" }
+          ]
+        },
+        "media_type": { "const": "application/vnd.lexcyber.case-bundle+json;version=1" },
+        "schema_version": { "const": "lexcyber.case-bundle.v1" },
+        "size": { "type": "integer", "minimum": 2, "maximum": 10485760 },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "file": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file_id", "document_id", "role", "path", "media_type", "size", "sha256"],
+      "properties": {
+        "file_id": { "$ref": "#/$defs/stableId" },
+        "document_id": { "$ref": "#/$defs/stableId" },
+        "role": { "enum": ["case_material", "benchmark_annotation", "legal_review_summary"] },
+        "path": {
+          "allOf": [
+            { "$ref": "#/$defs/safePath" },
+            { "pattern": "\\.(pdf|docx)$" }
+          ]
+        },
+        "media_type": {
+          "enum": [
+            "application/pdf",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          ]
+        },
+        "size": { "type": "integer", "minimum": 1, "maximum": 52428800 },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["item_id", "external_case_id", "resource_type", "payload", "files"],
+      "properties": {
+        "item_id": { "$ref": "#/$defs/stableId" },
+        "external_case_id": { "$ref": "#/$defs/stableId" },
+        "resource_type": { "const": "case" },
+        "payload": { "$ref": "#/$defs/payload" },
+        "files": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 100,
+          "items": { "$ref": "#/$defs/file" }
+        },
+        "metadata": { "type": "object", "maxProperties": 100 }
+      }
+    }
+  }
+}

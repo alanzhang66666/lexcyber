@@ -28,4 +28,10 @@ deploy/ecs-upload/*
 !deploy/ecs-upload/.env.v03.example
 !deploy/ecs-upload/start-on-ecs.sh
 法学材料/
+开源代码/
 pytest-cache-files-*/
+开源代码*.zip
+开源代码1/
+本科生组*/
+competition_submission/*.zip
+.kiro/

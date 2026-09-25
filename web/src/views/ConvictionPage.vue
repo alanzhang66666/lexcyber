@@ -16,7 +16,7 @@ import {
 const route = useRoute()
 const router = useRouter()
 const caseId = computed(() => String(route.params.caseId || ''))
-const { loading, error, caseItem, moduleState, confirming, confirmError, isPlaceholder, load, confirm } = useCaseModule(caseId, 'conviction')
+const { loading, error, caseItem, moduleState, confirming, confirmError, dispatching, dispatchError, isPlaceholder, load, dispatch, confirm } = useCaseModule(caseId, 'conviction')
 
 const facts = computed(() => (moduleState.value ? toAnalysisFacts(moduleState.value.content) : []))
 const paths = computed(() => (moduleState.value ? toCandidatePaths(moduleState.value.content) : []))
@@ -117,7 +117,11 @@ watch(caseId, () => void load())
         </template>
         <div v-else class="empty-state">
           <strong>该模块尚未产生结果</strong>
-          <p>完成案件材料上传与事实确认后，由引擎生成定罪研判。</p>
+          <p>完成案件材料上传与事实确认后，可运行定罪研判（需事实已确认且规则已会签）。</p>
+          <button class="button button-primary" type="button" :disabled="dispatching" @click="dispatch">
+            {{ dispatching ? '分析中…' : '运行定罪研判' }}
+          </button>
+          <p v-if="dispatchError" class="notice notice-error" role="alert">{{ dispatchError }}</p>
         </div>
       </section>
 
@@ -245,17 +249,21 @@ watch(caseId, () => void load())
       </section>
 
       <div v-if="moduleState" class="action-box">
-        <p>{{ moduleState.status === 'confirmed' ? '该模块结果已确认，可提交人工复核。' : '核对候选路径与证据后确认本模块结果。' }}</p>
+        <p>{{ moduleState.status === 'confirmed' ? '该模块结果已经人工复核确认。' : '核对候选路径与证据后提交人工复核。' }}</p>
+        <button class="button button-quiet" type="button" :disabled="dispatching" @click="dispatch">
+          {{ dispatching ? '分析中…' : '重新分析' }}
+        </button>
         <button
           class="button button-primary"
           type="button"
           :disabled="confirming || moduleState.status === 'confirmed'"
           @click="confirm"
         >
-          {{ confirming ? '确认中…' : moduleState.status === 'confirmed' ? '已确认' : '确认模块结果' }}
+          {{ confirming ? '提交中…' : moduleState.status === 'confirmed' ? '已确认' : '提交人工复核' }}
         </button>
       </div>
       <p v-if="confirmError" class="notice notice-error" role="alert">{{ confirmError }}</p>
+      <p v-if="dispatchError" class="notice notice-error" role="alert">{{ dispatchError }}</p>
     </template>
   </div>
 </template>

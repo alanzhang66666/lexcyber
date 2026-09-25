@@ -42,6 +42,20 @@ paths:
       responses:
         '200': { description: Accepted idempotently. }
         '409': { description: Result content or execution association conflict. }
+  /internal/v1/model-access-config:
+    get:
+      summary: Read the effective model access configuration for engine-side invocation
+      description: >-
+        Served by the Java application and reachable only inside the Compose network. The response
+        carries the plaintext API key for the engine-side call and MUST NOT be logged, persisted to
+        the engine schema, or placed in execution metadata.
+      security: [{ serviceToken: [] }]
+      responses:
+        '200':
+          description: Effective configuration merged from stored values and environment fallbacks.
+          content: { application/json: { schema: { $ref: '#/components/schemas/ModelAccessConfigInternalView' } } }
+        '401': { description: Invalid service token. }
+        '503': { description: Stored key material cannot be decrypted. }
   /internal/v1/imports/validate:
     post:
       summary: Validate a retained case-import.v1 package and return a normalized application plan
@@ -71,6 +85,57 @@ paths:
           description: Matching sources.
           content: { application/json: { schema: { $ref: '#/components/schemas/SourceSearchResponse' } } }
         '501': { description: Retrieval adapter is not wired. }
+  /internal/v1/capabilities:
+    get:
+      summary: Module capability declarations (approved rule packages per family)
+      description: >-
+        INV-GATE-002：Java 派发模块执行前查询。模块可用 ⟺ 其所需 rule family
+        全部存在 legal_review_status=approved 的规则包。
+      security: [{ serviceToken: [] }]
+      responses:
+        '200': { description: Capability map. }
+        '503': { description: Rule registry unavailable. }
+  /internal/v1/registry/legal-sources:
+    post:
+      summary: Register a legal-source version (pending review)
+      security: [{ serviceToken: [] }]
+      responses:
+        '201': { description: Registered; returns sourceId + contentHash. }
+        '409': { description: Duplicate source_key+source_version or invalid payload. }
+  /internal/v1/registry/rules:
+    post:
+      summary: Register a rule package version (pending review)
+      security: [{ serviceToken: [] }]
+      responses:
+        '201': { description: Registered; returns rulePackageId + contentHash. }
+        '409': { description: Duplicate rule_id+rule_version, unknown source_ids, or invalid family. }
+  /internal/v1/registry/templates:
+    post:
+      summary: Register a template package version (pending review)
+      security: [{ serviceToken: [] }]
+      responses:
+        '201': { description: Registered; returns templateId + templateVersion + contentHash. }
+        '409': { description: Duplicate template_id+template_version or invalid payload. }
+  /internal/v1/registry/signoffs:
+    post:
+      summary: Record a sign-off decision (the only approval path)
+      description: >-
+        同事务写入 signoff_record 并推进 subject 状态（DB 触发器校验
+        engine.signoff_authorized GUC）。approved 内容此后不可变；
+        approved→superseded 退役另行允许。
+      security: [{ serviceToken: [] }]
+      responses:
+        '201': { description: Sign-off recorded and status advanced. }
+        '409': { description: Invalid subject or decision. }
+  /internal/v1/registry/resolve:
+    post:
+      summary: Dual-time-point legal source resolution (conduct vs judgment date)
+      description: >-
+        INV-LEGAL-006：行为时点与裁判时点落在不同版本时返回 divergence，
+        阻断自动择一；任一时点无覆盖返回覆盖缺口而非近似。
+      security: [{ serviceToken: [] }]
+      responses:
+        '200': { description: Resolution with conduct_law/judgment_law/divergence. }
 components:
   securitySchemes:
     serviceToken: { type: apiKey, in: header, name: X-Service-Token }
@@ -91,6 +156,15 @@ components:
         metadata: { type: object, additionalProperties: true }
         input_hash: { type: string, minLength: 16 }
         contract_version: { type: string }
+        artifact_stream_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: 应用侧已定位的工件流（v1.3 §4.6.12）；可空，发布时由应用侧解析。
+        input_snapshot_ref:
+          type: string
+          nullable: true
+          description: 不可变输入快照引用（对象存储键或版本指针）。
     ExecutionView:
       type: object
       required: [execution_id, task_id, status, current_stage]
@@ -101,7 +175,13 @@ components:
         result_id: { type: string, format: uuid, nullable: true }
         result_version: { type: integer, minimum: 1, nullable: true }
         result_type: { type: string, nullable: true }
-        status: { type: string, enum: [queued, running, completed, waiting_review, failed, timed_out] }
+        status:
+          type: string
+          enum: [created, queued, claimed, running, completed, failed]
+          description: >-
+            v1.3 执行态（INV-RUNTIME-001）：人审决定与超时不再是执行态。
+            waiting_review → completed + output_envelope.human_review_required；
+            timed_out → failed + error_code。
         current_stage: { type: string }
         content_json: { type: string, nullable: true }
         content_hash: { type: string, nullable: true }
@@ -111,6 +191,37 @@ components:
         result_ref: { type: object, nullable: true, additionalProperties: true }
         input_hash: { type: string, nullable: true }
         enqueued_at: { type: string, format: date-time, nullable: true }
+        fencing_token:
+          type: integer
+          format: int64
+          nullable: true
+          description: 当前持有者的 fencing token；过期 worker 的写全部被拒绝（§8.4）。
+        completion_identity:
+          type: string
+          nullable: true
+          description: 完成者身份（owner:fencing_token），应用侧发布时校验。
+        output_hash: { type: string, nullable: true }
+        output_envelope:
+          type: object
+          nullable: true
+          additionalProperties: true
+          description: 执行结果包络，含 outcome_status / human_review_required（§8.3）。
+    ModelAccessConfigInternalView:
+      type: object
+      required: [provider, modelName, apiBaseUrl, timeoutSeconds, source]
+      properties:
+        provider: { type: string, enum: [stub, openai] }
+        modelName: { type: string }
+        apiBaseUrl: { type: string }
+        apiKey:
+          type: string
+          nullable: true
+          description: >-
+            Plaintext key material. Present only on this internal path, which is reachable from the
+            Compose network alone. It MUST NOT be logged, persisted to the engine schema, or placed
+            in execution metadata.
+        timeoutSeconds: { type: number, exclusiveMinimum: 0 }
+        source: { type: string, enum: [environment, stored] }
     ImportPackageValidationRequest:
       type: object
       required: [storage_key, raw_sha256]

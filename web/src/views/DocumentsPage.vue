@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { api } from '../api'
+import { api, apiV2 } from '../api'
 import type { CaseView, DraftView } from '../api-types'
 import { isPlaceholderCaseId } from '../data/placeholder-cases'
 import { rememberT1Case } from '../lib/current-case'
@@ -27,6 +27,15 @@ const createError = ref('')
 const submitting = ref(false)
 const submitError = ref('')
 const submitOk = ref('')
+
+const renderDocType = ref('')
+const rendering = ref(false)
+const renderError = ref('')
+const renderedBody = ref('')
+const renderedMeta = ref<Record<string, unknown> | null>(null)
+
+const RENDER_POLL_MS = 1500
+const RENDER_POLL_LIMIT = 80
 
 const workspaceTo = computed(() => (caseItem.value ? `/cases/${caseItem.value.id}` : '/cases'))
 const selectedDraft = computed(() => drafts.value.find((d) => d.id === selectedId.value) ?? null)
@@ -54,6 +63,11 @@ async function loadCase() {
     caseItem.value = await api.getCase(caseId.value)
     rememberT1Case(caseItem.value.id)
     await loadDrafts()
+    try {
+      await loadRendered()
+    } catch {
+      // 尚无渲染流时保持空态，不阻塞手工草稿区
+    }
   } catch (caught) {
     error.value = caught instanceof Error ? caught.message : '案件读取失败。'
   } finally {
@@ -143,6 +157,59 @@ async function submitReview() {
     submitError.value = caught instanceof Error ? caught.message : '提交复核失败。'
   } finally {
     submitting.value = false
+  }
+}
+
+async function pollExecutionDone(executionId: string) {
+  for (let attempt = 0; attempt < RENDER_POLL_LIMIT; attempt += 1) {
+    const exec = await apiV2.getExecution(executionId)
+    const state = String(exec.state ?? '')
+    if (state === 'completed') return
+    if (state === 'failed') throw new Error('文书渲染执行失败。')
+    await new Promise((resolve) => window.setTimeout(resolve, RENDER_POLL_MS))
+  }
+  throw new Error('文书渲染超时，请稍后在任务中心查看。')
+}
+
+async function loadRendered(docType?: string) {
+  const list = await apiV2.listDraftStreams(caseId.value)
+  const items = list.items ?? []
+  const target = docType
+    ? items.find((i) => i.docType === docType)
+    : items[items.length - 1]
+  const latestId = target?.latestVersionId as string | null | undefined
+  if (!latestId) {
+    renderedBody.value = ''
+    renderedMeta.value = null
+    return
+  }
+  const artifact = await apiV2.getArtifactVersion(latestId)
+  const payload = (artifact.payload ?? {}) as Record<string, unknown>
+  renderedBody.value = typeof payload.body === 'string' ? payload.body : ''
+  renderedMeta.value = {
+    docType: target?.docType,
+    version: artifact.version,
+    outcomeStatus: artifact.outcomeStatus,
+    blockers: payload.blockers ?? artifact.blockers,
+    dependencySnapshot: artifact.dependencySnapshot,
+  }
+}
+
+async function renderDraft() {
+  const docType = renderDocType.value.trim()
+  if (!docType) return
+  rendering.value = true
+  renderError.value = ''
+  try {
+    const created = await apiV2.dispatchDraftRender(caseId.value, docType)
+    const executionId = String(created.executionId ?? '')
+    if (!executionId) throw new Error('派发响应缺少 executionId')
+    await pollExecutionDone(executionId)
+    await loadRendered(docType)
+  } catch (caught) {
+    renderError.value = caught instanceof Error ? caught.message : '文书渲染失败。'
+  } finally {
+    rendering.value = false
   }
 }
 
@@ -261,6 +328,43 @@ onMounted(() => void loadCase())
         <div v-else class="empty-state">
           <strong>尚未选择文书</strong>
           <p>从左侧选择一份草稿，或新建一份文书。</p>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-heading">
+          <div><p class="section-index">03</p><h2>模板渲染</h2></div>
+          <span v-if="renderedMeta" class="subtle-chip mono">{{ renderedMeta.docType }} · v{{ renderedMeta.version }}</span>
+        </div>
+        <p class="panel-note">按已会签模板与已确认事实快照渲染文书；上游模块结论自动代入。结果须人工复核，不作为正式法律文书。</p>
+
+        <form class="form-stack create-row" @submit.prevent="renderDraft">
+          <label>
+            <span>文书类型（docType）</span>
+            <input v-model="renderDocType" placeholder="如 indictment" />
+          </label>
+          <button class="button button-primary" type="submit" :disabled="rendering || !renderDocType.trim()">
+            {{ rendering ? '渲染中…' : '渲染文书' }}
+          </button>
+        </form>
+        <p v-if="renderError" class="notice notice-error" role="alert">{{ renderError }}</p>
+
+        <template v-if="renderedMeta">
+          <dl class="data-list inline-data">
+            <div><dt>状态</dt><dd>{{ renderedMeta.outcomeStatus }}</dd></div>
+            <div><dt>文书类型</dt><dd class="mono">{{ renderedMeta.docType }}</dd></div>
+            <div><dt>工件版本</dt><dd class="mono">v{{ renderedMeta.version }}</dd></div>
+          </dl>
+          <div v-if="renderedBody" class="draft-preview">
+            <pre class="draft-body">{{ renderedBody }}</pre>
+          </div>
+          <p v-else class="notice notice-warning" role="note">
+            渲染被阻断，未产出正文（存在未解析占位或缺失输入）。
+          </p>
+        </template>
+        <div v-else class="empty-state">
+          <strong>尚无渲染结果</strong>
+          <p>需事实已确认、模板与上游模块结论已具备；渲染结果留痕并须人工复核。</p>
         </div>
       </section>
     </div>

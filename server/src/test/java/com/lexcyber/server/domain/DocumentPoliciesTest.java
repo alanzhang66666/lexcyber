@@ -1,5 +1,6 @@
 package com.lexcyber.server.domain;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -35,8 +36,9 @@ class DocumentPoliciesTest {
 
     @Test
     void generatesBusinessIds() {
-        assertTrue(DocumentPolicies.newCaseId().startsWith("case-"));
-        assertTrue(DocumentPolicies.newDocumentId().startsWith("doc-"));
+        // v1.3 uuid identity：业务 id 不再带 case-/doc- 前缀
+        assertDoesNotThrow(() -> java.util.UUID.fromString(DocumentPolicies.newCaseId()));
+        assertDoesNotThrow(() -> java.util.UUID.fromString(DocumentPolicies.newDocumentId()));
         assertEquals("案情材料.docx", DocumentPolicies.normalizeFilename("C:\\\\tmp\\\\案情材料.docx"));
     }
 }

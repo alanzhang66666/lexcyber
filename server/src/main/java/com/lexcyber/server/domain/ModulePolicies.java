@@ -8,8 +8,10 @@ import org.springframework.http.HttpStatus;
 public final class ModulePolicies {
     public static final String COMPLIANCE = "compliance";
     public static final String CONVICTION = "conviction";
+    public static final String SENTENCING = "sentencing";
     public static final String SCHEMA_VERSION = "case.module.v1";
-    public static final Set<String> MODULES = Set.of(COMPLIANCE, CONVICTION);
+    /** v1.3 §4.6.7：module_head.module 封闭集 —— 量刑首次成为模块。 */
+    public static final Set<String> MODULES = Set.of(COMPLIANCE, CONVICTION, SENTENCING);
     public static final Set<String> APPLICABILITY =
             Set.of("unknown", "not_applicable", "limited_context", "applicable");
     public static final Set<String> VERIFICATION =
@@ -23,7 +25,7 @@ public final class ModulePolicies {
     public static String requireModule(String module) {
         String value = module == null ? "" : module.trim();
         if (!MODULES.contains(value)) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", "module must be compliance or conviction");
+            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", "module must be compliance, conviction, or sentencing");
         }
         return value;
     }

@@ -1,0 +1,1 @@
+请基于案件材料、已抽取事实、争议点和检索片段生成结构化辅助研判。区分 confirmed、candidate、conflicted、missing 四种状态；不得把候选路径写成已确认结论。对每条分析理由给出 source_refs，对事实给出 document_id、页码或段落定位。法源未命中、版本不明、生效状态不明或材料相互矛盾时，必须在 blockers 或 risks 中明确列出并要求人工复核。

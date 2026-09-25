@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ApiError, api } from '../api'
-import type { CaseView, RelationActor, SentencingResult } from '../api-types'
+import { ApiError, api, apiV2 } from '../api'
+import type { CaseView, SentencingResult } from '../api-types'
 import CasePhaseBar from '../components/CasePhaseBar.vue'
 import SentencingResultPanel from '../components/SentencingResultPanel.vue'
 import StatusBadge from '../components/StatusBadge.vue'
@@ -22,21 +22,6 @@ const moduleAmounts = ref<SentencingResult['amounts']>([])
 const analysisStatus = ref('')
 const humanReviewRequired = ref(false)
 
-const actors = computed<RelationActor[]>(() => {
-  const metadata = caseItem.value?.metadata
-  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return []
-  const relations = (metadata as Record<string, unknown>).relations
-  if (!relations || typeof relations !== 'object' || Array.isArray(relations)) return []
-  const list = (relations as Record<string, unknown>).actors
-  return Array.isArray(list) ? (list as RelationActor[]) : []
-})
-const datasetCaseId = computed(() => {
-  const metadata = caseItem.value?.metadata
-  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return ''
-  const v = (metadata as Record<string, unknown>).datasetCaseId
-  return typeof v === 'string' ? v : ''
-})
-const selectedActorId = ref('')
 const creating = ref(false)
 const createError = ref('')
 
@@ -51,10 +36,6 @@ const resultBlocked = computed(() => Boolean(sentencingResult.value?.blockers?.l
 
 const workspaceTo = computed(() => (caseItem.value ? `/cases/${caseItem.value.id}` : '/cases'))
 
-function actorLabel(actorId: string) {
-  return actors.value.find((a) => a.actorId === actorId)?.label || actorId
-}
-
 async function load() {
   loading.value = true
   error.value = ''
@@ -68,13 +49,15 @@ async function load() {
   try {
     caseItem.value = await api.getCase(caseId.value)
     rememberT1Case(caseItem.value.id)
-    if (!selectedActorId.value && actors.value.length) {
-      selectedActorId.value = actors.value[0].actorId
-    }
     try {
-      const moduleState = await api.getCaseModule(caseId.value, 'conviction')
-      if (moduleState.content && typeof moduleState.content === 'object') {
-        moduleAmounts.value = toAmounts(moduleState.content as Record<string, unknown>)
+      const head = await apiV2.getModuleHead(caseId.value, 'conviction')
+      const latestId = head.latestVersionId as string | null
+      if (latestId) {
+        const artifact = await apiV2.getArtifactVersion(latestId)
+        const payload = artifact.payload
+        if (payload && typeof payload === 'object') {
+          moduleAmounts.value = toAmounts(payload as Record<string, unknown>)
+        }
       }
     } catch {
       // 定罪模块结果缺失时金额口径留空，不阻塞量刑页
@@ -118,18 +101,8 @@ async function runSentencing() {
   analysisStatus.value = ''
   humanReviewRequired.value = false
   try {
-    const created = await api.createTask({
-      query: `量刑重放：${caseItem.value.title} / ${actorLabel(selectedActorId.value)}`,
-      caseId: caseItem.value.id,
-      metadata: {
-        taskType: 'sentencing.calculate',
-        sentencing: {
-          datasetCaseId: datasetCaseId.value,
-          actorId: selectedActorId.value,
-        },
-      },
-    })
-    taskId.value = created.id
+    const created = await apiV2.dispatchModuleExecution(caseItem.value.id, 'sentencing')
+    taskId.value = String(created.taskId ?? '')
     start()
   } catch (caught) {
     if (caught instanceof ApiError && caught.status === 501) {
@@ -152,7 +125,6 @@ onMounted(() => void load())
 watch(caseId, () => {
   stop()
   taskId.value = ''
-  selectedActorId.value = ''
   void load()
 })
 </script>
@@ -164,7 +136,7 @@ watch(caseId, () => {
         <RouterLink class="back-link" :to="workspaceTo">← 返回案件工作区</RouterLink>
         <p class="eyebrow">量刑推导链</p>
         <h1>量刑分析</h1>
-        <p>{{ caseItem?.title || '当前案件' }} · 重放法学负责人已复核的宣告口径，不输出系统自创刑期</p>
+        <p>{{ caseItem?.title || '当前案件' }} · 按已确认事实逐档计算量刑区间并留痕，不输出系统自创刑期</p>
       </div>
       <div class="heading-actions">
         <CasePhaseBar current="analysis" />
@@ -173,7 +145,7 @@ watch(caseId, () => {
     </header>
     <p class="notice notice-warning" role="note">
       <strong>辅助分析，不替代司法裁量</strong>
-      <span>刑期与罚金为已复核宣告口径的留痕重放，计算参数必须全部经人工确认；阻断项只展示待确认，不编造结果。</span>
+      <span>刑期与罚金为注册表规则的可解释计算结果，输入为已确认事实快照；阻断项只展示待确认，不编造结果。</span>
     </p>
     <div v-if="loading" class="panel empty-state" aria-live="polite">正在读取案件…</div>
     <div v-else-if="error" class="panel">
@@ -182,28 +154,19 @@ watch(caseId, () => {
     </div>
     <template v-else>
       <section class="panel">
-        <div class="panel-heading"><div><p class="section-index">01</p><h2>重放输入</h2></div></div>
-        <p class="panel-note">按行为主体分别重放法学已核对的宣告口径。无已核口径的主体会列出待确认项，不编造刑期。</p>
+        <div class="panel-heading"><div><p class="section-index">01</p><h2>量刑分析</h2></div></div>
+        <p class="panel-note">按已确认事实快照逐档计算量刑区间并留痕；需事实已确认且量刑规则已会签。结果为辅助意见，须人工复核。</p>
         <div class="sentencing-form">
-          <label class="actor-field">
-            <span>行为主体</span>
-            <select v-model="selectedActorId" :disabled="!actors.length">
-              <option v-for="a in actors" :key="a.actorId" :value="a.actorId">{{ a.label || a.actorId }}</option>
-            </select>
-          </label>
           <button
             class="button button-primary"
             type="button"
-            :disabled="creating || !selectedActorId || !datasetCaseId"
+            :disabled="creating"
             @click="runSentencing"
           >
-            {{ creating ? '创建中…' : '重放已核对宣告口径' }}
+            {{ creating ? '派发中…' : '运行量刑分析' }}
           </button>
           <StatusBadge v-if="task" :status="task.status" />
         </div>
-        <p v-if="!actors.length || !datasetCaseId" class="notice notice-info" role="note">
-          本案尚未绑定已核对主体，无法重放宣告口径。
-        </p>
         <p v-if="createError" class="notice notice-error" role="alert">{{ createError }}</p>
         <p v-if="taskError" class="notice notice-error" role="alert">{{ taskError }}</p>
         <p v-if="task && !taskTerminal" class="subtle-text">任务 {{ task.id }} · {{ task.currentStage || '排队中' }}…</p>
@@ -223,10 +186,10 @@ watch(caseId, () => {
         </p>
         <SentencingResultPanel :result="sentencingResult" @locate="handleLocate" />
       </section>
-      <section v-else-if="taskLoading" class="panel empty-state">正在重放已核对口径…</section>
+      <section v-else-if="taskLoading" class="panel empty-state">正在计算量刑区间…</section>
       <section v-else class="panel empty-state">
-        <strong>尚未重放宣告口径</strong>
-        <p>选择行为主体后重放法学已核对的宣告口径；本页不计算刑期。</p>
+        <strong>尚未运行量刑分析</strong>
+        <p>按已确认事实快照逐档计算量刑区间；本页不编造刑期。</p>
       </section>
     </template>
   </div>

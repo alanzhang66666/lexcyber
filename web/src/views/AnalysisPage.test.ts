@@ -1,7 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { api } from '../api'
+import { api, apiV2 } from '../api'
 import AnalysisPage from './AnalysisPage.vue'
 
 afterEach(() => {
@@ -50,41 +50,25 @@ describe('AnalysisPage', () => {
     })
     const wrapper = await mountAnalysis('t1-case-9')
     expect(wrapper.text()).toContain('交接样例案')
-    expect(wrapper.text()).toContain('尚未重放宣告口径')
-    expect(wrapper.text()).toContain('尚未绑定已核对主体')
+    expect(wrapper.text()).toContain('尚未运行量刑分析')
     expect(wrapper.text()).not.toContain('10～14 个月')
     wrapper.unmount()
   })
 
-  it('runs sentencing.calculate for a dataset case and renders the replayed result', async () => {
+  it('dispatches sentencing through /v2 and renders the calculated result', async () => {
     vi.spyOn(api, 'getCase').mockResolvedValue({
       id: 'srv-c',
       title: 'C 单位涉外案',
       createdAt: 't',
       updatedAt: 't',
-      metadata: {
-        datasetCaseId: 'C',
-        relations: {
-          actors: [
-            { actorId: 'actor-c-jia', label: '甲某', roleHint: 'legal_representative' },
-            { actorId: 'actor-c-yi', label: '乙某', roleHint: 'co_owner' },
-          ],
-        },
-      },
     })
-    const getModule = vi.spyOn(api, 'getCaseModule').mockRejectedValue(new Error('404'))
-    const createTask = vi.spyOn(api, 'createTask').mockResolvedValue({
-      id: 'task-1',
-      requestId: 'r',
-      executionId: 'e',
-      caseId: 'srv-c',
-      status: 'queued',
-      currentStage: 'accepted',
-      result: null,
-      errorCode: null,
-      error: null,
-      createdAt: 't',
-      updatedAt: 't',
+    const getModuleHead = vi.spyOn(apiV2, 'getModuleHead').mockResolvedValue({
+      caseId: 'srv-c', module: 'conviction', streamId: 'st-1',
+      latestVersionId: null, confirmedVersionId: null,
+      effectivelyConfirmed: false, stale: true, staleReason: null, updatedAt: null,
+    })
+    const dispatch = vi.spyOn(apiV2, 'dispatchModuleExecution').mockResolvedValue({
+      taskId: 'task-1', executionId: 'e', status: 'queued', module: 'sentencing',
     })
     vi.spyOn(api, 'getTask').mockResolvedValue({
       id: 'task-1',
@@ -121,25 +105,16 @@ describe('AnalysisPage', () => {
       },
     })
     const wrapper = await mountAnalysis('srv-c')
-    expect(wrapper.text()).toContain('甲某')
-    const runButton = wrapper.findAll('button').find((b) => b.text().includes('重放已核对宣告口径'))
+    const runButton = wrapper.findAll('button').find((b) => b.text().includes('运行量刑分析'))
     expect(runButton).toBeTruthy()
     await runButton!.trigger('click')
     await flushPromises()
-    expect(createTask).toHaveBeenCalledWith(
-      expect.objectContaining({
-        caseId: 'srv-c',
-        metadata: expect.objectContaining({
-          taskType: 'sentencing.calculate',
-          sentencing: { datasetCaseId: 'C', actorId: 'actor-c-jia' },
-        }),
-      }),
-    )
+    expect(dispatch).toHaveBeenCalledWith('srv-c', 'sentencing')
     expect(wrapper.text()).toContain('8 个月')
     expect(wrapper.text()).toContain('14 个月')
     expect(wrapper.text()).toContain('罚金')
     expect(wrapper.text()).toContain('待人工复核')
-    expect(getModule).toHaveBeenCalledWith('srv-c', 'conviction')
+    expect(getModuleHead).toHaveBeenCalledWith('srv-c', 'conviction')
     wrapper.unmount()
   })
 })

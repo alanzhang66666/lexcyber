@@ -1,0 +1,18 @@
+[
+  {
+    "id": "core.echo",
+    "name": "Core deterministic echo",
+    "version": "0.8.0",
+    "pack": "core",
+    "category": "core",
+    "description": "A deterministic development Skill for contract and pipeline checks.",
+    "handler": "skills.common.stub:echo",
+    "input_schema": {"type": "object", "properties": {"text": {"type": "string"}}, "additionalProperties": true},
+    "output_schema": {"type": "object", "required": ["status", "echo"], "properties": {"status": {"type": "string"}, "echo": {"type": "string"}}},
+    "permissions": [],
+    "timeout_seconds": 5,
+    "risk_level": "low",
+    "enabled": true,
+    "status": "active"
+  }
+]

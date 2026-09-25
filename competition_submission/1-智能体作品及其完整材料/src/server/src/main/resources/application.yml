@@ -1,0 +1,38 @@
+spring:
+  application:
+    name: lexcyber-java
+  datasource:
+    url: ${DATABASE_URL}
+    username: ${DATABASE_USER}
+    password: ${DATABASE_PASSWORD}
+  flyway:
+    enabled: true
+    locations: ${SPRING_FLYWAY_LOCATIONS:classpath:db/migration}
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 50MB
+server:
+  port: ${SERVER_PORT:8080}
+engine:
+  base-url: ${ENGINE_BASE_URL:http://engine:8100}
+  service-token: ${ENGINE_SERVICE_TOKEN}
+sentencing:
+  enabled: ${SENTENCING_ENABLED:false}
+review:
+  auth-mode: ${REVIEW_AUTH_MODE:disabled}
+model-access:
+  encryption-key: ${MODEL_CONFIG_ENCRYPTION_KEY:}
+minio:
+  endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
+  access-key: ${MINIO_ACCESS_KEY:minio}
+  secret-key: ${MINIO_SECRET_KEY:minio-password}
+  bucket: ${MINIO_BUCKET:lexcyber}
+storage:
+  provider: ${OBJECT_STORAGE_PROVIDER:filesystem}
+  root: ${OBJECT_STORAGE_ROOT:/data/objects}
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

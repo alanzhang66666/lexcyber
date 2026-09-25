@@ -1,0 +1,176 @@
+openapi: 3.1.0
+info:
+  title: LexCyber Internal Engine API
+  version: 0.8.0
+servers:
+  - url: http://engine:8100
+paths:
+  /internal/v1/executions:
+    post:
+      summary: Submit one idempotent execution
+      security: [{ serviceToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ExecutionRequest' }
+      responses:
+        '202':
+          description: Accepted or already queued.
+          content: { application/json: { schema: { $ref: '#/components/schemas/ExecutionView' } } }
+        '409': { description: Same execution id with a different input hash. }
+  /internal/v1/executions/{executionId}:
+    get:
+      summary: Read execution state and terminal result
+      security: [{ serviceToken: [] }]
+      parameters:
+        - { name: executionId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Execution state, content: { application/json: { schema: { $ref: '#/components/schemas/ExecutionView' } } } }
+        '404': { description: Execution not found. }
+  /internal/v1/executions/{executionId}/result:
+    post:
+      summary: Deliver one terminal result to the Java application boundary
+      security: [{ serviceToken: [] }]
+      parameters:
+        - { name: executionId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ExecutionView' }
+      responses:
+        '200': { description: Accepted idempotently. }
+        '409': { description: Result content or execution association conflict. }
+  /internal/v1/model-access-config:
+    get:
+      summary: Read the effective model access configuration for engine-side invocation
+      description: This Java endpoint is restricted to the internal service token and must never be exposed through Nginx.
+      security: [{ serviceToken: [] }]
+      responses:
+        '200':
+          description: Effective configuration merged from stored values and environment fallbacks.
+          content: { application/json: { schema: { $ref: '#/components/schemas/ModelAccessConfigInternalView' } } }
+        '401': { description: Invalid service token. }
+        '503': { description: Stored key material cannot be decrypted. }
+  /internal/v1/imports/validate:
+    post:
+      summary: Validate a retained case-import.v1 package and return a normalized application plan
+      security: [{ serviceToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ImportPackageValidationRequest' }
+      responses:
+        '200':
+          description: Validation result; invalid package details are returned with valid=false.
+          content: { application/json: { schema: { $ref: '#/components/schemas/ImportPackageValidationResponse' } } }
+        '401': { description: Invalid service token. }
+        '503': { description: Object storage is unavailable. }
+  /internal/v1/sources/search:
+    post:
+      summary: Search legal sources without using the public sample corpus
+      security: [{ serviceToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SourceSearchRequest' }
+      responses:
+        '200':
+          description: Matching sources.
+          content: { application/json: { schema: { $ref: '#/components/schemas/SourceSearchResponse' } } }
+        '501': { description: Retrieval adapter is not wired. }
+components:
+  securitySchemes:
+    serviceToken: { type: apiKey, in: header, name: X-Service-Token }
+  schemas:
+    ExecutionRequest:
+      type: object
+      required: [task_id, execution_id, request_id, result_id, result_version, result_type, query, input_hash, contract_version]
+      properties:
+        task_id: { type: string, format: uuid }
+        execution_id: { type: string, format: uuid }
+        request_id: { type: string, format: uuid }
+        result_id: { type: string, format: uuid }
+        result_version: { type: integer, minimum: 1 }
+        result_type: { type: string }
+        query: { type: string, minLength: 1, maxLength: 20000 }
+        case_id: { type: string, nullable: true }
+        session_id: { type: string, nullable: true }
+        metadata: { type: object, additionalProperties: true }
+        input_hash: { type: string, minLength: 16 }
+        contract_version: { type: string }
+    ExecutionView:
+      type: object
+      required: [execution_id, task_id, status, current_stage]
+      properties:
+        execution_id: { type: string, format: uuid }
+        task_id: { type: string, format: uuid }
+        request_id: { type: string, format: uuid, nullable: true }
+        result_id: { type: string, format: uuid, nullable: true }
+        result_version: { type: integer, minimum: 1, nullable: true }
+        result_type: { type: string, nullable: true }
+        status: { type: string, enum: [queued, running, completed, waiting_review, failed, timed_out] }
+        current_stage: { type: string }
+        content_json: { type: string, nullable: true }
+        content_hash: { type: string, nullable: true }
+        error_code: { type: string, nullable: true }
+        error_message: { type: string, nullable: true }
+        retryable: { type: boolean }
+        result_ref: { type: object, nullable: true, additionalProperties: true }
+        input_hash: { type: string, nullable: true }
+        enqueued_at: { type: string, format: date-time, nullable: true }
+    ModelAccessConfigInternalView:
+      type: object
+      required: [provider, modelName, apiBaseUrl, timeoutSeconds, source]
+      properties:
+        provider: { type: string, enum: [stub, openai] }
+        modelName: { type: string }
+        apiBaseUrl: { type: string }
+        apiKey: { type: string, nullable: true, description: Plaintext key material for the trusted Engine process only; never log or persist it. }
+        timeoutSeconds: { type: number, exclusiveMinimum: 0, maximum: 600 }
+        source: { type: string, enum: [environment, stored] }
+    ImportPackageValidationRequest:
+      type: object
+      required: [storage_key, raw_sha256]
+      properties:
+        storage_key: { type: string, minLength: 1, maxLength: 1000 }
+        raw_sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
+    ImportPackageValidationResponse:
+      type: object
+      required: [valid, items, errors]
+      properties:
+        valid: { type: boolean }
+        schema_version: { type: string, nullable: true }
+        package_id: { type: string, nullable: true }
+        producer_id: { type: string, nullable: true }
+        dataset_id: { type: string, nullable: true }
+        revision: { type: string, nullable: true }
+        package_digest: { type: string, nullable: true }
+        items: { type: array, items: { type: object, additionalProperties: true } }
+        errors: { type: array, items: { type: object, additionalProperties: true } }
+    SourceSearchRequest:
+      type: object
+      required: [query]
+      properties:
+        query: { type: string, minLength: 1, maxLength: 4000 }
+        jurisdiction: { type: string, nullable: true }
+        as_of_date: { type: string, nullable: true }
+        top_k: { type: integer, minimum: 1, maximum: 50, default: 5 }
+    SourceSearchHit:
+      type: object
+      required: [source_id, locator]
+      properties:
+        source_id: { type: string }
+        locator: { type: string }
+        title: { type: string, nullable: true }
+        quote: { type: string, nullable: true }
+        version: { type: string, nullable: true }
+        jurisdiction: { type: string, nullable: true }
+    SourceSearchResponse:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/SourceSearchHit' } }

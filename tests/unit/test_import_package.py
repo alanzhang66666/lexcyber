@@ -7,6 +7,8 @@ import pytest
 
 from engine.import_package import (
     CANONICALIZATION_VERSION,
+    MAX_COMPRESSION_RATIO,
+    MAX_PACKAGE_ENTRIES,
     PACKAGE_SCHEMA_VERSION,
     calculate_package_digest,
     load_import_package,
@@ -110,6 +112,16 @@ def _write_package(root: Path, item_count: int) -> Path:
     return root
 
 
+def _mark_first_zip_entry_encrypted(archive_path: Path) -> None:
+    data = bytearray(archive_path.read_bytes())
+    for signature, flag_offset in ((b"PK\x03\x04", 6), (b"PK\x01\x02", 8)):
+        header_offset = data.index(signature)
+        flags_start = header_offset + flag_offset
+        flags = int.from_bytes(data[flags_start : flags_start + 2], "little")
+        data[flags_start : flags_start + 2] = (flags | 0x1).to_bytes(2, "little")
+    archive_path.write_bytes(data)
+
+
 @pytest.mark.parametrize("item_count", [1, 3])
 def test_directory_package_supports_one_or_many_items(tmp_path: Path, item_count: int):
     package = load_import_package(_write_package(tmp_path / "package", item_count))
@@ -149,3 +161,50 @@ def test_duplicate_document_identity_is_rejected(tmp_path: Path):
     report = validate_import_package(root)
     assert report["valid"] is False
     assert "DUPLICATE_DOCUMENT_ID" in {item["code"] for item in report["errors"]}
+
+
+def test_zip_compression_ratio_limit_is_rejected(tmp_path: Path):
+    archive_path = tmp_path / "compression-ratio.zip"
+    with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("payload.bin", b"0" * (MAX_COMPRESSION_RATIO * 1024))
+
+    report = validate_import_package(archive_path)
+
+    assert report["valid"] is False
+    assert any(
+        item["code"] == "INVALID_PACKAGE_SOURCE"
+        and "ZIP compression ratio exceeds limit" in item["message"]
+        for item in report["errors"]
+    )
+
+
+def test_zip_entry_count_limit_is_rejected(tmp_path: Path):
+    archive_path = tmp_path / "entry-count.zip"
+    with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_STORED) as archive:
+        for index in range(MAX_PACKAGE_ENTRIES + 1):
+            archive.writestr(f"entries/{index}.bin", b"")
+
+    report = validate_import_package(archive_path)
+
+    assert report["valid"] is False
+    assert any(
+        item["code"] == "INVALID_PACKAGE_SOURCE"
+        and "ZIP exceeds entry or total size limit" in item["message"]
+        for item in report["errors"]
+    )
+
+
+def test_encrypted_zip_entry_is_rejected(tmp_path: Path):
+    archive_path = tmp_path / "encrypted-entry.zip"
+    with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_STORED) as archive:
+        archive.writestr("payload.bin", b"payload")
+    _mark_first_zip_entry_encrypted(archive_path)
+
+    report = validate_import_package(archive_path)
+
+    assert report["valid"] is False
+    assert any(
+        item["code"] == "INVALID_PACKAGE_SOURCE"
+        and "encrypted ZIP entries are forbidden" in item["message"]
+        for item in report["errors"]
+    )

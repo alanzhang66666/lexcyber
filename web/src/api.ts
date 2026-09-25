@@ -14,6 +14,8 @@ import type {
   FactView,
   ModuleStateUpdate,
   ModuleStateView,
+  ModelAccessConfigUpdate,
+  ModelAccessConfigView,
   PageCase,
   PageDocument,
   ResultPayload,
@@ -230,6 +232,17 @@ export const api = {
     })
   },
 
+  getModelAccessConfig() {
+    return request<ModelAccessConfigView>('/v1/settings/model-access')
+  },
+
+  putModelAccessConfig(input: ModelAccessConfigUpdate) {
+    return request<ModelAccessConfigView>('/v1/settings/model-access', {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    })
+  },
+
   createCase(input: CaseCreate) {
     return request<CaseView>('/v1/cases', { method: 'POST', body: JSON.stringify(input) })
   },
@@ -266,5 +279,103 @@ export const api = {
 
   getDocument(documentId: string) {
     return request<DocumentView>(`/v1/documents/${encodeURIComponent(documentId)}`)
+  },
+}
+
+/** /v2 生命周期端点（contracts/public-api-v2.yaml）。 */
+export const apiV2 = {
+  getFactsEntities(caseId: string) {
+    return request<Record<string, unknown>>(`/v2/cases/${encodeURIComponent(caseId)}/facts-entities`)
+  },
+
+  replaceFactsEntities(caseId: string, kind: string, items: unknown[]) {
+    return request<Record<string, unknown>>(
+      `/v2/cases/${encodeURIComponent(caseId)}/facts-entities/${encodeURIComponent(kind)}`,
+      { method: 'PUT', body: JSON.stringify({ items }) },
+    )
+  },
+
+  createFactsVersion(caseId: string) {
+    return request<Record<string, unknown>>(`/v2/cases/${encodeURIComponent(caseId)}/facts-versions`, {
+      method: 'POST',
+    })
+  },
+
+  confirmFactsVersion(caseId: string, factsVersionId: string, expectedConfirmedId: string | null) {
+    return request<Record<string, unknown>>(
+      `/v2/cases/${encodeURIComponent(caseId)}/facts-versions/${encodeURIComponent(factsVersionId)}/confirm`,
+      { method: 'POST', body: JSON.stringify({ expectedConfirmedFactsVersionId: expectedConfirmedId }) },
+    )
+  },
+
+  listFactsVersions(caseId: string) {
+    return request<{ items: Record<string, unknown>[] }>(
+      `/v2/cases/${encodeURIComponent(caseId)}/facts-versions`)
+  },
+
+  getFactsVersion(caseId: string, factsVersionId: string) {
+    return request<Record<string, unknown>>(
+      `/v2/cases/${encodeURIComponent(caseId)}/facts-versions/${encodeURIComponent(factsVersionId)}`)
+  },
+
+  cloneFactsVersion(caseId: string, factsVersionId: string) {
+    return request<Record<string, unknown>>(
+      `/v2/cases/${encodeURIComponent(caseId)}/facts-versions/${encodeURIComponent(factsVersionId)}/clone`,
+      { method: 'POST' })
+  },
+
+  getFactsHead(caseId: string) {
+    return request<Record<string, unknown>>(`/v2/cases/${encodeURIComponent(caseId)}/facts-head`)
+  },
+
+  dispatchModuleExecution(caseId: string, module: string) {
+    return request<Record<string, unknown>>(
+      `/v2/cases/${encodeURIComponent(caseId)}/modules/${encodeURIComponent(module)}/executions`,
+      { method: 'POST' })
+  },
+
+  dispatchDraftRender(caseId: string, docType: string) {
+    return request<Record<string, unknown>>(
+      `/v2/cases/${encodeURIComponent(caseId)}/drafts/render`,
+      { method: 'POST', body: JSON.stringify({ docType }) })
+  },
+
+  getExecution(executionId: string) {
+    return request<Record<string, unknown>>(`/v2/executions/${encodeURIComponent(executionId)}`)
+  },
+
+  getArtifactVersion(artifactVersionId: string) {
+    return request<Record<string, unknown>>(`/v2/artifact-versions/${encodeURIComponent(artifactVersionId)}`)
+  },
+
+  getModuleHead(caseId: string, module: string) {
+    return request<Record<string, unknown>>(
+      `/v2/cases/${encodeURIComponent(caseId)}/modules/${encodeURIComponent(module)}`)
+  },
+
+  openReview(artifactVersionId: string, comment?: string) {
+    return request<Record<string, unknown>>(
+      `/v2/artifact-versions/${encodeURIComponent(artifactVersionId)}/reviews`,
+      { method: 'POST', body: JSON.stringify({ comment: comment ?? null }) })
+  },
+
+  listReviews(artifactVersionId: string) {
+    return request<{ items: Record<string, unknown>[] }>(
+      `/v2/artifact-versions/${encodeURIComponent(artifactVersionId)}/reviews`)
+  },
+
+  listDraftStreams(caseId: string) {
+    return request<{ items: Record<string, unknown>[] }>(
+      `/v2/cases/${encodeURIComponent(caseId)}/drafts`)
+  },
+
+  getDraftHead(draftId: string) {
+    return request<Record<string, unknown>>(`/v2/drafts/${encodeURIComponent(draftId)}`)
+  },
+
+  createArchive(caseId: string, archiveProfile = 'case.full.v1') {
+    return request<Record<string, unknown>>(`/v2/cases/${encodeURIComponent(caseId)}/archives`, {
+      method: 'POST', body: JSON.stringify({ archiveProfile }),
+    })
   },
 }

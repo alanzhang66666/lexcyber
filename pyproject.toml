@@ -37,6 +37,7 @@ markers = [
 [tool.ruff]
 line-length = 140
 target-version = "py311"
+exclude = ["competition_submission"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "TID251"]

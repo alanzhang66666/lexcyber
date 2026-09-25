@@ -13,6 +13,8 @@ import java.security.MessageDigest;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.OffsetDateTime;
+import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -30,6 +32,7 @@ public class TaskService {
     private final JdbcTemplate jdbc;
     private final ObjectMapper objectMapper;
     private final boolean sentencingEnabled;
+    private final IdentityService ids;
 
     public TaskService(JdbcTemplate jdbc, ObjectMapper objectMapper) {
         this(jdbc, objectMapper, false);
@@ -41,24 +44,46 @@ public class TaskService {
         this.jdbc = jdbc;
         this.objectMapper = objectMapper;
         this.sentencingEnabled = sentencingEnabled;
+        this.ids = new IdentityService(jdbc);
     }
 
     @Transactional
     public TaskView create(TaskCreate request) {
-        Map<String, Object> metadata = request.metadata() == null ? Map.of() : request.metadata();
-        TaskPolicies.requireSupported(metadata, sentencingEnabled);
+        return createInternal(request, false);
+    }
+
+    /**
+     * /v2 模块派发专用入口：跳过 /v1 公开口的静态 501 门闩（能力门闩由调用方
+     * 前置校验——INV-GATE-002），但仍校验 taskType 属于已知集合。
+     */
+    @Transactional
+    public TaskView createModuleTask(TaskCreate request) {
+        return createInternal(request, true);
+    }
+
+    private TaskView createInternal(TaskCreate request, boolean moduleDispatch) {
+        Map<String, Object> metadata = normalizeJson(
+                request.metadata() == null ? Map.of() : request.metadata());
+        if (moduleDispatch) {
+            TaskPolicies.requireKnown(metadata);
+        } else {
+            TaskPolicies.requireSupported(metadata, sentencingEnabled);
+        }
         UUID id = UUID.randomUUID();
         UUID requestId = UUID.randomUUID();
         UUID executionId = UUID.randomUUID();
         UUID resultId = UUID.randomUUID();
-        String caseId = request.caseId() == null ? "" : request.caseId();
-        requireConfirmedFactsForSentencing(TaskPolicies.taskType(metadata), caseId);
+        String caseId = ids.caseIdOrNull(request.caseId());
+        String taskType = TaskPolicies.taskType(metadata);
+        UUID factsVersionId = requireConfirmedFacts(taskType, caseId);
+        ExecutionBinding binding = bindExecution(taskType, caseId, metadata, factsVersionId);
         String inputHash = hashInput(request.query(), caseId, request.sessionId(), metadata);
         ExecutionRequest envelope = new ExecutionRequest(id, executionId, requestId, resultId, 1, "workflow.output",
-                request.query(), caseId, request.sessionId(), metadata, inputHash, "public-api-0.8");
+                request.query(), caseId, request.sessionId(), metadata, inputHash, "public-api-0.8",
+                binding.streamId(), binding.inputSnapshotRef());
         jdbc.update("""
                 INSERT INTO app.tasks(id, request_id, execution_id, case_id, session_id, query_text, status, current_stage, metadata_json)
-                VALUES (?, ?, ?, ?, ?, ?, 'queued', 'accepted', ?::jsonb)
+                VALUES (?, ?, ?, ?::uuid, ?, ?, 'queued', 'accepted', ?::jsonb)
                 """, id, requestId, executionId, caseId, request.sessionId(), request.query(), toJson(metadata));
         jdbc.update("INSERT INTO app.task_dispatch_outbox(task_id, execution_id, event_type, payload_json) VALUES (?, ?, 'execution.requested', ?::jsonb)",
                 id, executionId, writeJson(envelope));
@@ -81,11 +106,11 @@ public class TaskService {
     public Optional<TaskView> find(UUID taskId) {
         return jdbc.query("""
                 SELECT t.id, t.request_id, t.execution_id, t.case_id, t.status, t.current_stage, t.error_code, t.error, t.created_at, t.updated_at,
-                       r.result_id, r.version, r.result_type, r.content_hash
+                       r.artifact_version_id AS result_id, r.version, r.schema_version AS result_type, r.output_hash AS content_hash
                 FROM app.tasks t
                 LEFT JOIN LATERAL (
-                  SELECT result_id, version, result_type, content_hash
-                  FROM app.result_versions WHERE task_id=t.id AND execution_id=t.execution_id
+                  SELECT artifact_version_id, version, schema_version, output_hash
+                  FROM app.artifact_version WHERE execution_id = t.execution_id
                   ORDER BY version DESC LIMIT 1
                 ) r ON TRUE
                 WHERE t.id = ?
@@ -96,9 +121,10 @@ public class TaskService {
     @Transactional(readOnly = true)
     public Map<String, Object> result(UUID taskId) {
         List<Map<String, Object>> rows = jdbc.query("""
-                SELECT r.result_id, r.version, r.result_type, r.content_hash, r.content_json
-                FROM app.result_versions r JOIN app.tasks t ON t.id=r.task_id AND t.execution_id=r.execution_id
-                WHERE r.task_id=? ORDER BY r.version DESC LIMIT 1
+                SELECT v.artifact_version_id AS result_id, v.version, v.schema_version AS result_type,
+                       v.output_hash AS content_hash, v.payload::text AS content_json
+                FROM app.artifact_version v JOIN app.tasks t ON t.execution_id = v.execution_id
+                WHERE t.id = ? ORDER BY v.version DESC LIMIT 1
                 """, (rs, ignored) -> {
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("resultId", rs.getObject("result_id", UUID.class));
@@ -129,7 +155,10 @@ public class TaskService {
         if (!List.of("failed", "timed_out", "rejected").contains(status)) {
             throw new IllegalStateException("task is not retryable or does not exist");
         }
-        int resultVersion = Optional.ofNullable(jdbc.queryForObject("SELECT COALESCE(MAX(version), 0) + 1 FROM app.result_versions WHERE task_id = ?", Integer.class, taskId)).orElse(1);
+        // 结果序号 = 该任务的第 N 次派发（与 artifact version 解耦；INV-VERSION-005）
+        int resultVersion = Optional.ofNullable(jdbc.queryForObject(
+                "SELECT COUNT(*) + 1 FROM app.task_dispatch_outbox WHERE task_id = ? AND event_type = 'execution.requested'",
+                Integer.class, taskId)).orElse(1);
         UUID resultId = UUID.randomUUID();
         Map<String, Object> metadata = parseMap(task.get("metadata_json"));
         TaskPolicies.requireSupported(metadata, sentencingEnabled);
@@ -137,9 +166,13 @@ public class TaskService {
         String caseId = task.get("case_id") == null ? null : String.valueOf(task.get("case_id"));
         String sessionId = task.get("session_id") == null ? null : String.valueOf(task.get("session_id"));
         UUID requestId = (UUID) task.get("request_id");
+        String taskType = TaskPolicies.taskType(metadata);
+        UUID factsVersionId = requireConfirmedFacts(taskType, caseId);
+        ExecutionBinding binding = bindExecution(taskType, caseId, metadata, factsVersionId);
         String inputHash = hashInput(query, caseId, sessionId, metadata);
         ExecutionRequest envelope = new ExecutionRequest(taskId, executionId, requestId, resultId, resultVersion, "workflow.output",
-                query, caseId, sessionId, metadata, inputHash, "public-api-0.8");
+                query, caseId, sessionId, metadata, inputHash, "public-api-0.8",
+                binding.streamId(), binding.inputSnapshotRef());
         jdbc.update("UPDATE app.task_dispatch_outbox SET published_at=COALESCE(published_at, now()), last_error='superseded_by_retry' WHERE task_id=? AND published_at IS NULL", taskId);
         jdbc.update("UPDATE app.tasks SET execution_id = ?, status = 'queued', current_stage = 'retry_requested', error_code = NULL, error = NULL, updated_at = now() WHERE id = ?",
                 executionId, taskId);
@@ -149,17 +182,76 @@ public class TaskService {
         return find(taskId).orElseThrow();
     }
 
-    private void requireConfirmedFactsForSentencing(String taskType, String caseId) {
-        if (!TaskPolicies.SENTENCING_CALCULATE.equals(taskType) || caseId == null || caseId.isBlank()) {
-            return;
+    /**
+     * 派发前绑定不可变输入（v1.3：执行不得读“当前可变状态”）。
+     * 有案模块任务（sentencing/compliance/conviction）必须有 confirmed FactsVersion ——
+     * 它是执行输入快照的权威引用；parse 任务以 document + sha256 为输入引用。
+     */
+    private UUID requireConfirmedFacts(String taskType, String caseId) {
+        if (caseId == null || caseId.isBlank()) {
+            return null;
         }
-        List<String> rows = jdbc.query(
-                "SELECT status FROM app.case_facts WHERE case_id = ?",
-                (rs, ignored) -> rs.getString(1),
+        List<UUID> rows = jdbc.query(
+                "SELECT confirmed_facts_version_id FROM app.facts_head WHERE case_id = ?::uuid",
+                (rs, ignored) -> rs.getObject(1, UUID.class),
                 caseId);
-        if (rows.isEmpty() || !"confirmed".equals(rows.get(0))) {
-            throw new ApiException(HttpStatus.CONFLICT, "FACTS_NOT_CONFIRMED", "量刑前须先确认案件事实");
+        UUID factsVersionId = rows.isEmpty() ? null : rows.get(0);
+        boolean requiresFacts = TaskPolicies.SENTENCING_CALCULATE.equals(taskType)
+                || TaskPolicies.COMPLIANCE_ANALYZE.equals(taskType)
+                || TaskPolicies.CONVICTION_ANALYZE.equals(taskType)
+                || TaskPolicies.DRAFT_RENDER.equals(taskType);
+        if (requiresFacts && factsVersionId == null) {
+            throw new ApiException(HttpStatus.CONFLICT, "FACTS_NOT_CONFIRMED", "该任务须先确认案件事实");
         }
+        return factsVersionId;
+    }
+
+    /** (kind, scope_key) → stream 行锁创建/锁定；输入快照引用随执行入队，Engine 只按引用取输入。 */
+    private ExecutionBinding bindExecution(String taskType, String caseId,
+            Map<String, Object> metadata, UUID factsVersionId) {
+        if (caseId == null || caseId.isBlank()) {
+            return new ExecutionBinding(null, null);
+        }
+        ArtifactPublicationService publications =
+                new ArtifactPublicationService(jdbc, new StalePropagationService(jdbc));
+        if (TaskPolicies.DOCUMENT_PARSE.equals(taskType)) {
+            String documentId = stringOrNull(metadata.get("documentId"));
+            if (documentId == null) {
+                return new ExecutionBinding(null, null);
+            }
+            UUID streamId = publications.ensureStreamLocked(caseId, "parse", "document:" + documentId);
+            String sha = stringOrNull(metadata.get("sha256"));
+            String ref = "document:" + documentId + (sha == null ? "" : "@sha256:" + sha);
+            return new ExecutionBinding(streamId, ref);
+        }
+        if (TaskPolicies.DRAFT_RENDER.equals(taskType)) {
+            String docType = stringOrNull(metadata.get("docType"));
+            if (docType == null) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "DOC_TYPE_MISSING", "draft.render 需要 metadata.docType");
+            }
+            UUID streamId = publications.ensureStreamLocked(caseId, "draft", "draft:" + docType);
+            String ref = factsVersionId == null ? null : "facts_version:" + factsVersionId;
+            return new ExecutionBinding(streamId, ref);
+        }
+        String module = switch (taskType == null ? "" : taskType) {
+            case TaskPolicies.SENTENCING_CALCULATE -> "sentencing";
+            case TaskPolicies.COMPLIANCE_ANALYZE -> "compliance";
+            case TaskPolicies.CONVICTION_ANALYZE -> "conviction";
+            default -> null;
+        };
+        if (module == null) {
+            return new ExecutionBinding(null, null);
+        }
+        UUID streamId = publications.ensureStreamLocked(caseId, module, "module:" + module);
+        String ref = factsVersionId == null ? null : "facts_version:" + factsVersionId;
+        return new ExecutionBinding(streamId, ref);
+    }
+
+    private record ExecutionBinding(UUID streamId, String inputSnapshotRef) {
+    }
+
+    private static String stringOrNull(Object value) {
+        return value == null ? null : String.valueOf(value);
     }
 
     private TaskView map(ResultSet rs, int ignored) throws SQLException {
@@ -189,6 +281,32 @@ public class TaskService {
         } catch (JsonProcessingException ex) {
             throw new IllegalStateException("unable to serialize execution payload", ex);
         }
+    }
+
+    /**
+     * 数值归一化：BigDecimal/BigInteger → double/long，保证 canonical JSON 与
+     * Engine（Python json.dumps 把 JSON 数字一律解析为 float/int）逐字节一致。
+     * 哈希与发送体必须使用同一份规范化数据，否则 input_hash 校验 409。
+     */
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> normalizeJson(Map<String, Object> metadata) {
+        return (Map<String, Object>) normalizeValue(metadata);
+    }
+
+    private static Object normalizeValue(Object value) {
+        if (value instanceof Map<?, ?> map) {
+            Map<String, Object> out = new LinkedHashMap<>();
+            map.forEach((k, v) -> out.put(String.valueOf(k), normalizeValue(v)));
+            return out;
+        }
+        if (value instanceof List<?> list) {
+            List<Object> out = new ArrayList<>(list.size());
+            for (Object item : list) out.add(normalizeValue(item));
+            return out;
+        }
+        if (value instanceof BigDecimal bd) return bd.doubleValue();
+        if (value instanceof java.math.BigInteger bi) return bi.longValue();
+        return value;
     }
 
     private String hashInput(String query, String caseId, String sessionId, Map<String, Object> metadata) {

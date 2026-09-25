@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { ApiError, api } from '../api'
+import { ApiError, api, apiV2 } from '../api'
 import type { ResultPayload, ReviewRecord, TaskView } from '../api-types'
 import ResultContent from '../components/ResultContent.vue'
 import StatusBadge from '../components/StatusBadge.vue'
@@ -38,13 +38,15 @@ async function load() {
       const moduleName = review.value.moduleState
         || (review.value.module === 'compliance' || review.value.module === 'conviction' ? review.value.module : null)
       if (moduleName === 'compliance' || moduleName === 'conviction') {
-        const state = await api.getCaseModule(review.value.caseId, moduleName)
+        const head = await apiV2.getModuleHead(review.value.caseId, moduleName)
+        const latestId = head.latestVersionId as string | null
+        const artifact = latestId ? await apiV2.getArtifactVersion(latestId) : null
         result.value = {
           resultId: review.value.id,
           version: review.value.resultVersion,
           type: 'case.module.content.v1',
           contentHash: '',
-          content: state.content,
+          content: (artifact?.payload ?? {}) as Record<string, unknown>,
         }
       }
     }

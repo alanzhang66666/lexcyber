@@ -33,7 +33,7 @@ from engine.adapters.t1_contract import (  # noqa: E402
 PLACEHOLDER = ROOT / ".t1-smoke-input.docx"
 OUT = ROOT / ".t1-three-case-import.md"
 DEFAULT_CHECKPOINT = ROOT / ".t1-three-case-import.checkpoint.json"
-CHECKPOINT_SCHEMA = "lexcyber.import-checkpoint.v1"
+CHECKPOINT_SCHEMA = "lexcyber.import-checkpoint.v2-uuid"
 DOCX_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 PDF_TYPE = "application/pdf"
 TERMINAL_TASK_STATUSES = {"completed", "failed", "timed_out", "rejected"}

@@ -29,7 +29,7 @@ class DocumentServiceValidationTest {
         CaseService cases = mock(CaseService.class);
         when(cases.requireOwned(any(), any())).thenReturn(new CaseView("case-1", "t", "CN", null, Map.of(),
                 OffsetDateTime.now(), OffsetDateTime.now()));
-        DocumentService service = new DocumentService(mock(JdbcTemplate.class), cases, mock(TaskService.class), mock(ObjectStorage.class));
+        DocumentService service = new DocumentService(mock(JdbcTemplate.class), cases, mock(TaskService.class), mock(ObjectStorage.class), mock(IdempotencyService.class));
         ApiException error = assertThrows(ApiException.class, () -> service.upload(
                 UUID.randomUUID(), "case-1", "notes.txt", "text/plain", "hello".getBytes(), "input", null));
         assertEquals(HttpStatus.UNSUPPORTED_MEDIA_TYPE, error.status());
@@ -41,7 +41,7 @@ class DocumentServiceValidationTest {
         CaseService cases = mock(CaseService.class);
         when(cases.requireOwned(any(), any())).thenReturn(new CaseView("case-1", "t", "CN", null, Map.of(),
                 OffsetDateTime.now(), OffsetDateTime.now()));
-        DocumentService service = new DocumentService(mock(JdbcTemplate.class), cases, mock(TaskService.class), mock(ObjectStorage.class));
+        DocumentService service = new DocumentService(mock(JdbcTemplate.class), cases, mock(TaskService.class), mock(ObjectStorage.class), mock(IdempotencyService.class));
         ApiException error = assertThrows(ApiException.class, () -> service.upload(
                 UUID.randomUUID(), "case-1", "notes.pdf", "application/pdf", "hello".getBytes(), "kind", null));
         assertEquals(HttpStatus.BAD_REQUEST, error.status());
@@ -57,7 +57,7 @@ class DocumentServiceValidationTest {
         TaskService tasks = mock(TaskService.class);
         when(tasks.create(any())).thenThrow(new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "ENGINE_UNAVAILABLE", "down"));
         InMemoryObjectStorage storage = spy(new InMemoryObjectStorage());
-        DocumentService service = new DocumentService(jdbc, cases, tasks, storage);
+        DocumentService service = new DocumentService(jdbc, cases, tasks, storage, new IdempotencyService(jdbc));
 
         ApiException error = assertThrows(ApiException.class, () -> service.upload(
                 UUID.randomUUID(), "case-1", "notes.pdf", "application/pdf", "hello".getBytes(), "input", null));
@@ -79,7 +79,7 @@ class DocumentServiceValidationTest {
         when(tasks.create(any())).thenThrow(new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "ENGINE_UNAVAILABLE", "down"));
         ObjectStorage storage = mock(ObjectStorage.class);
         doThrow(new RuntimeException("delete failed")).when(storage).delete(any());
-        DocumentService service = new DocumentService(jdbc, cases, tasks, storage);
+        DocumentService service = new DocumentService(jdbc, cases, tasks, storage, new IdempotencyService(jdbc));
 
         ApiException error = assertThrows(ApiException.class, () -> service.upload(
                 UUID.randomUUID(), "case-1", "notes.pdf", "application/pdf", "hello".getBytes(), "input", null));
