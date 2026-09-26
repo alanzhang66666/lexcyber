@@ -910,6 +910,21 @@ def apply_modules(
                 token=token,
                 json_body=update,
             )
+            if put_status == 410:
+                # v1.3 写层默认退役（MODULE_WRITE_RETIRED）；需 DEMO_IMPORT_ENABLED=true 才能写模块壳
+                action = "skipped_write_retired"
+                written = current
+                report[module] = {
+                    "action": action,
+                    "warning": "module shell write retired; set DEMO_IMPORT_ENABLED=true to import legacy shells",
+                }
+                module_states[module] = {
+                    "state": "skipped",
+                    "contentHash": canonical_hash(expected),
+                    "action": action,
+                }
+                save_checkpoint(checkpoint_path, checkpoint)
+                continue
             written = require_object(put_status, put_body, 200, f"put {module}")
             action = "written" if empty else "refreshed_facts_snapshot"
         else:

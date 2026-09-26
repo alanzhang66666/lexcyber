@@ -354,7 +354,9 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
     put:
       tags: [cases]
+      deprecated: true
       summary: Replace the opaque compliance shell when the version matches
+      description: "v1.3: 模块结果仅由执行→发布路径产生。默认返回 410 MODULE_WRITE_RETIRED；仅服务端 DEMO_IMPORT_ENABLED=true 时放行（三案演示导入）。"
       operationId: putCaseCompliance
       security:
         - bearerAuth: []
@@ -378,7 +380,9 @@ paths:
   /cases/{caseId}/compliance/confirm:
     post:
       tags: [cases]
+      deprecated: true
       summary: Lock the current compliance shell
+      description: "v1.3: 确认走 /v2 复核管线。默认返回 410 MODULE_WRITE_RETIRED；仅服务端 DEMO_IMPORT_ENABLED=true 时放行。"
       operationId: confirmCaseCompliance
       security:
         - bearerAuth: []
@@ -412,7 +416,9 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
     put:
       tags: [cases]
+      deprecated: true
       summary: Replace the opaque conviction shell when the version matches
+      description: "v1.3: 模块结果仅由执行→发布路径产生。默认返回 410 MODULE_WRITE_RETIRED；仅服务端 DEMO_IMPORT_ENABLED=true 时放行（三案演示导入）。"
       operationId: putCaseConviction
       security:
         - bearerAuth: []
@@ -436,7 +442,9 @@ paths:
   /cases/{caseId}/conviction/confirm:
     post:
       tags: [cases]
+      deprecated: true
       summary: Lock the current conviction shell
+      description: "v1.3: 确认走 /v2 复核管线。默认返回 410 MODULE_WRITE_RETIRED；仅服务端 DEMO_IMPORT_ENABLED=true 时放行。"
       operationId: confirmCaseConviction
       security:
         - bearerAuth: []
@@ -1037,7 +1045,7 @@ components:
             Opaque case bag. Three-case actor/organization/account/event relations
             go in metadata.relations; amount kinds in metadata.amounts; jurisdiction
             connection points in metadata.relations.jurisdictionConnections
-            (see docs/t1-api-01-increment.md). No graph tables this round.
+            (see docs/archive/t1-api-01-increment.md). No graph tables this round.
     CaseView:
       type: object
       required: [id, title, createdAt, updatedAt]

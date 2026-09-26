@@ -10,6 +10,7 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -28,15 +29,18 @@ public class ModuleStateService {
     private final CaseService cases;
     private final ArtifactPublicationService artifacts;
     private final ModuleConfirmationService confirmation;
+    private final boolean demoImportEnabled;
 
     public ModuleStateService(JdbcTemplate jdbc, ObjectMapper objectMapper, CaseService cases,
                               ArtifactPublicationService artifacts,
-                              ModuleConfirmationService confirmation) {
+                              ModuleConfirmationService confirmation,
+                              @Value("${demo.import.enabled:false}") boolean demoImportEnabled) {
         this.jdbc = jdbc;
         this.objectMapper = objectMapper;
         this.cases = cases;
         this.artifacts = artifacts;
         this.confirmation = confirmation;
+        this.demoImportEnabled = demoImportEnabled;
     }
 
     @Transactional(readOnly = true)
@@ -48,6 +52,7 @@ public class ModuleStateService {
     @Transactional
     public ModuleStateView replace(UUID ownerAccountId, String caseId, String module,
                                    ModuleStateUpdate update) {
+        requireWriteEnabled();
         caseId = cases.lockOwned(ownerAccountId, caseId).id();
         String resolved = ModulePolicies.requireModule(module);
         if (update == null || update.version() == null || update.content() == null) {
@@ -85,11 +90,19 @@ public class ModuleStateService {
 
     @Transactional
     public ModuleStateView confirm(UUID ownerAccountId, String caseId, String module) {
+        requireWriteEnabled();
         caseId = cases.lockOwned(ownerAccountId, caseId).id();
         String resolved = ModulePolicies.requireModule(module);
         ensureHead(caseId, resolved);
         confirmation.confirm(caseId, resolved, ownerAccountId);
         return view(caseId, resolved);
+    }
+
+    private void requireWriteEnabled() {
+        if (!demoImportEnabled) {
+            throw new ApiException(HttpStatus.GONE, "MODULE_WRITE_RETIRED",
+                    "模块写层已退役：结果仅由执行发布产生；演示导入需显式开启 DEMO_IMPORT_ENABLED");
+        }
     }
 
     private void ensureHead(String caseId, String module) {

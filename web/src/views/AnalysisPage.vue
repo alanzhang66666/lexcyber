@@ -9,7 +9,8 @@ import StatusBadge from '../components/StatusBadge.vue'
 import { useTaskPolling } from '../composables/useTaskPolling'
 import { isPlaceholderCaseId } from '../data/placeholder-cases'
 import { rememberT1Case } from '../lib/current-case'
-import { toAmounts, toSentencingTaskResult } from '../lib/module-content'
+import { toSentencingTaskResult } from '../lib/module-content'
+import { toFactsVersionAmounts, toSentencingResultV2 } from '../lib/module-content-v2'
 
 const route = useRoute()
 const router = useRouter()
@@ -50,17 +51,18 @@ async function load() {
     caseItem.value = await api.getCase(caseId.value)
     rememberT1Case(caseItem.value.id)
     try {
-      const head = await apiV2.getModuleHead(caseId.value, 'conviction')
-      const latestId = head.latestVersionId as string | null
-      if (latestId) {
-        const artifact = await apiV2.getArtifactVersion(latestId)
-        const payload = artifact.payload
-        if (payload && typeof payload === 'object') {
-          moduleAmounts.value = toAmounts(payload as Record<string, unknown>)
+      // 金额口径读已确认事实快照（定罪/量刑 payload 均不含金额明细）
+      const factsHead = await apiV2.getFactsHead(caseId.value)
+      const confirmedId = factsHead.confirmedFactsVersionId as string | null
+      if (confirmedId) {
+        const version = await apiV2.getFactsVersion(caseId.value, confirmedId)
+        const payload = version.payload
+        if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
+          moduleAmounts.value = toFactsVersionAmounts(payload as Record<string, unknown>)
         }
       }
     } catch {
-      // 定罪模块结果缺失时金额口径留空，不阻塞量刑页
+      // 事实快照缺失时金额口径留空，不阻塞量刑页
     }
     try {
       const page = await api.listReviews({ module: 'sentencing', archiveStatus: 'open', size: 100 })
@@ -84,13 +86,15 @@ watch(result, (payload) => {
   const content = payload.content
   if (!content || typeof content !== 'object' || Array.isArray(content)) return
   const rec = content as Record<string, unknown>
-  const normalized = toSentencingTaskResult(rec)
+  const v2 = toSentencingResultV2(rec)
+  const normalized = v2 ?? toSentencingTaskResult(rec)
   if (!normalized.amounts?.length && moduleAmounts.value?.length) {
     normalized.amounts = moduleAmounts.value
   }
   sentencingResult.value = normalized
-  analysisStatus.value = typeof rec.analysisStatus === 'string' ? rec.analysisStatus : ''
-  humanReviewRequired.value = rec.humanReviewRequired === true
+  analysisStatus.value = typeof rec.status === 'string' ? rec.status
+    : typeof rec.analysisStatus === 'string' ? rec.analysisStatus : ''
+  humanReviewRequired.value = rec.human_review_required === true || rec.humanReviewRequired === true
 })
 
 async function runSentencing() {

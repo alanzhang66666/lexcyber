@@ -3,13 +3,16 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useCaseModule } from '../composables/useCaseModule'
 import FactCard from '../components/FactCard.vue'
+import RuleResultsPanel from '../components/RuleResultsPanel.vue'
 import { APPLICABILITY_LABEL, caseRelationsFrom, toAnalysisFacts, toComplianceChecklist } from '../lib/module-content'
+import { toV2ModuleAnalysis } from '../lib/module-content-v2'
 
 const route = useRoute()
 const router = useRouter()
 const caseId = computed(() => String(route.params.caseId || ''))
 const { loading, error, caseItem, moduleState, confirming, confirmError, dispatching, dispatchError, isPlaceholder, load, dispatch, confirm } = useCaseModule(caseId, 'compliance')
 
+const v2Analysis = computed(() => (moduleState.value ? toV2ModuleAnalysis(moduleState.value.content) : null))
 const facts = computed(() => (moduleState.value ? toAnalysisFacts(moduleState.value.content) : []))
 const checklist = computed(() => (moduleState.value ? toComplianceChecklist(moduleState.value.content) : []))
 const contentNote = computed(() => {
@@ -96,6 +99,13 @@ watch(caseId, () => void load())
         </div>
       </section>
 
+      <section v-if="v2Analysis" class="panel">
+        <div class="panel-heading"><div><p class="section-index">02</p><h2>规则执行结果</h2></div></div>
+        <p class="panel-note">approved 规则包对确认事实快照的逐条求值；不构成合规结论。</p>
+        <RuleResultsPanel :analysis="v2Analysis" />
+      </section>
+
+      <template v-else>
       <section class="panel">
         <div class="panel-heading"><div><p class="section-index">02</p><h2>合规事实梳理</h2></div></div>
         <p class="panel-note">按以下维度整理客观事实，作为行为归属与主观认识的审查底稿；条目来自法学已核对标注，不是系统合规结论。</p>
@@ -130,6 +140,7 @@ watch(caseId, () => void load())
           <p>事件时间线可在案件工作区查看。</p>
         </div>
       </section>
+      </template>
 
       <section v-if="moduleState" class="panel">
         <div class="panel-heading">

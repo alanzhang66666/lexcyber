@@ -62,10 +62,9 @@ describe('AnalysisPage', () => {
       createdAt: 't',
       updatedAt: 't',
     })
-    const getModuleHead = vi.spyOn(apiV2, 'getModuleHead').mockResolvedValue({
-      caseId: 'srv-c', module: 'conviction', streamId: 'st-1',
-      latestVersionId: null, confirmedVersionId: null,
-      effectivelyConfirmed: false, stale: true, staleReason: null, updatedAt: null,
+    const getFactsHead = vi.spyOn(apiV2, 'getFactsHead').mockResolvedValue({
+      caseId: 'srv-c', confirmedFactsVersionId: null, nextVersion: 2,
+      stale: false, updatedAt: null,
     })
     const dispatch = vi.spyOn(apiV2, 'dispatchModuleExecution').mockResolvedValue({
       taskId: 'task-1', executionId: 'e', status: 'queued', module: 'sentencing',
@@ -114,7 +113,7 @@ describe('AnalysisPage', () => {
     expect(wrapper.text()).toContain('14 个月')
     expect(wrapper.text()).toContain('罚金')
     expect(wrapper.text()).toContain('待人工复核')
-    expect(getModuleHead).toHaveBeenCalledWith('srv-c', 'conviction')
+    expect(getFactsHead).toHaveBeenCalledWith('srv-c')
     wrapper.unmount()
   })
 })

@@ -106,9 +106,30 @@ def seed_rules(path: str | Path) -> dict[str, int]:
     return stats
 
 
+def seed_templates(path: str | Path) -> dict[str, int]:
+    """播种模板语料：templates[] 逐条 register_template，已存在则跳过。"""
+    from engine.rules.registry import register_template
+
+    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    templates = data.get("templates", data if isinstance(data, list) else [])
+    stats = {"registered": 0, "skipped": 0, "failed": 0}
+    for item in templates:
+        try:
+            register_template(item)
+            stats["registered"] += 1
+        except RegistryError as exc:
+            if exc.code == "TEMPLATE_EXISTS":
+                stats["skipped"] += 1
+            else:
+                stats["failed"] += 1
+    return stats
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "--rules":
         print(json.dumps(seed_rules(sys.argv[2]), ensure_ascii=False))
+    elif len(sys.argv) > 1 and sys.argv[1] == "--templates":
+        print(json.dumps(seed_templates(sys.argv[2]), ensure_ascii=False))
     else:
         target = sys.argv[1] if len(sys.argv) > 1 else "engine/adapters/legal_sources.json"
         print(json.dumps(seed_corpus(target), ensure_ascii=False))

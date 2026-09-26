@@ -67,7 +67,7 @@ class ModuleStateServiceTest {
         facts = new FactService(jdbc, cases, new FactsBaselineService(jdbc, new StalePropagationService(jdbc)));
         modules = new ModuleStateService(jdbc, mapper, cases,
                 new ArtifactPublicationService(jdbc, new StalePropagationService(jdbc)),
-                new ModuleConfirmationService(jdbc));
+                new ModuleConfirmationService(jdbc), true);
         alice = insertAccount(jdbc, "alice_" + UUID.randomUUID().toString().replace("-", "").substring(0, 8));
         bob = insertAccount(jdbc, "bob_" + UUID.randomUUID().toString().replace("-", "").substring(0, 8));
         aliceCase = cases.create(alice, new CaseCreate("alice-modules", "CN", null, Map.of()));
@@ -136,6 +136,30 @@ class ModuleStateServiceTest {
         facts.replace(alice, aliceCase.id(),
                 new FactUpdate(List.of(new FactItem(null, "amount", "200", "paragraph:1", "doc-1"))));
         assertTrue(modules.get(alice, aliceCase.id(), "compliance").factsStale());
+    }
+
+    @Test
+    void writesRetiredUnlessDemoImportEnabled() {
+        DataSource dataSource = dataSource();
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+        ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
+        ModuleStateService gated = new ModuleStateService(jdbc, mapper, cases,
+                new ArtifactPublicationService(jdbc, new StalePropagationService(jdbc)),
+                new ModuleConfirmationService(jdbc), false);
+
+        ApiException put = assertThrows(ApiException.class,
+                () -> gated.replace(alice, aliceCase.id(), "conviction",
+                        new ModuleStateUpdate(null, Map.of("note", "x"), null, 0)));
+        assertEquals(HttpStatus.GONE, put.status());
+        assertEquals("MODULE_WRITE_RETIRED", put.code());
+
+        ApiException confirm = assertThrows(ApiException.class,
+                () -> gated.confirm(alice, aliceCase.id(), "conviction"));
+        assertEquals(HttpStatus.GONE, confirm.status());
+        assertEquals("MODULE_WRITE_RETIRED", confirm.code());
+
+        ModuleStateView view = gated.get(alice, aliceCase.id(), "conviction");
+        assertEquals("draft", view.status());
     }
 
     private UUID insertAccount(JdbcTemplate jdbc, String username) {

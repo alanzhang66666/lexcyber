@@ -17,9 +17,12 @@ import type {
 } from '../api-types'
 
 /**
- * 把 ModuleStateView.content（Record<string, unknown>）归一化成 T2 展示类型。
+ * 【遗留读取器】把 /v1 模块壳与三案演示内容（ModuleStateView.content）归一化成 T2 展示类型。
  * T3 的精确 JSON key 尚未会签，这里用**容错读取**：对每个字段尝试若干候选 key，
- * 取第一个命中的。等 T3 样例到位后只需调整这里的候选 key，页面与组件不改。
+ * 取第一个命中的。
+ *
+ * v2 工件 payload（case.*.v2 / sentencing.v2 / draft.v2）一律用
+ * `module-content-v2.ts` 的严格读取器，不要在这里加 v2 键。
  */
 
 type Rec = Record<string, unknown>

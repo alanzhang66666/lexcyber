@@ -163,7 +163,7 @@ class ReviewServiceTest {
         CaseService cases = new CaseService(jdbc, mapper, new IdempotencyService(jdbc));
         ModuleStateService modules = new ModuleStateService(jdbc, mapper, cases,
                 new ArtifactPublicationService(jdbc, new StalePropagationService(jdbc)),
-                new ModuleConfirmationService(jdbc));
+                new ModuleConfirmationService(jdbc), true);
         modules.replace(alice, aliceCase.id(), "conviction",
                 new ModuleStateUpdate("unknown", Map.of("note", "shell"), null, 0));
 

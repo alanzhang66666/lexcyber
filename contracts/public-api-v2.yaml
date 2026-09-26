@@ -509,7 +509,10 @@ components:
         kind: { type: string, enum: [parse, compliance, conviction, sentencing, draft] }
         scopeKey: { type: string }
         version: { type: integer }
-        schemaVersion: { type: string }
+        schemaVersion:
+          type: string
+          enum: [document.parse.v1, case.module.v1, case.compliance.v2, case.conviction.v2, sentencing.v2, draft.v2]
+          description: 工件 payload 的冻结 schema 标识；case.module.v1 为 /v1 演示写层遗留（默认 410）
         outcomeStatus: { type: string, enum: [calculated, blocked, not_applicable] }
         payload: { type: object }
         blockers: { type: array, items: { type: object } }

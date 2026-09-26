@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useCaseModule } from '../composables/useCaseModule'
 import CandidatePathCard from '../components/CandidatePathCard.vue'
 import FactCard from '../components/FactCard.vue'
+import RuleResultsPanel from '../components/RuleResultsPanel.vue'
 import {
   APPLICABILITY_LABEL,
   caseRelationsFrom,
@@ -12,12 +13,14 @@ import {
   toJurisdictionConnections,
   toMissingItems,
 } from '../lib/module-content'
+import { toV2ModuleAnalysis } from '../lib/module-content-v2'
 
 const route = useRoute()
 const router = useRouter()
 const caseId = computed(() => String(route.params.caseId || ''))
 const { loading, error, caseItem, moduleState, confirming, confirmError, dispatching, dispatchError, isPlaceholder, load, dispatch, confirm } = useCaseModule(caseId, 'conviction')
 
+const v2Analysis = computed(() => (moduleState.value ? toV2ModuleAnalysis(moduleState.value.content) : null))
 const facts = computed(() => (moduleState.value ? toAnalysisFacts(moduleState.value.content) : []))
 const paths = computed(() => (moduleState.value ? toCandidatePaths(moduleState.value.content) : []))
 const connections = computed(() => (moduleState.value ? toJurisdictionConnections(moduleState.value.content) : []))
@@ -125,6 +128,13 @@ watch(caseId, () => void load())
         </div>
       </section>
 
+      <section v-if="v2Analysis" class="panel">
+        <div class="panel-heading"><div><p class="section-index">02</p><h2>规则执行结果</h2></div></div>
+        <p class="panel-note">approved 规则包对确认事实快照的逐条求值；不构成定罪结论。</p>
+        <RuleResultsPanel :analysis="v2Analysis" />
+      </section>
+
+      <template v-else>
       <section class="panel">
         <div class="panel-heading"><div><p class="section-index">02</p><h2>案件事实结构化整理</h2></div></div>
         <p class="panel-note">按「人—行为—阶段」整理法学已核对标注，同一行为人不同阶段分列，不合并；定位指向本次上传材料。</p>
@@ -238,6 +248,7 @@ watch(caseId, () => void load())
         </div>
         <p v-else class="panel-note">待确认事项：无</p>
       </section>
+      </template>
 
       <section v-if="moduleState" class="panel">
         <div class="panel-heading">

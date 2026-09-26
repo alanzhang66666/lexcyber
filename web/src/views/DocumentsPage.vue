@@ -5,6 +5,7 @@ import { api, apiV2 } from '../api'
 import type { CaseView, DraftView } from '../api-types'
 import { isPlaceholderCaseId } from '../data/placeholder-cases'
 import { rememberT1Case } from '../lib/current-case'
+import { toV2Draft } from '../lib/module-content-v2'
 
 const route = useRoute()
 const caseId = computed(() => String(route.params.caseId || ''))
@@ -185,12 +186,13 @@ async function loadRendered(docType?: string) {
   }
   const artifact = await apiV2.getArtifactVersion(latestId)
   const payload = (artifact.payload ?? {}) as Record<string, unknown>
-  renderedBody.value = typeof payload.body === 'string' ? payload.body : ''
+  const draft = toV2Draft(payload)
+  renderedBody.value = draft?.body ?? ''
   renderedMeta.value = {
-    docType: target?.docType,
+    docType: draft?.docType ?? target?.docType,
     version: artifact.version,
     outcomeStatus: artifact.outcomeStatus,
-    blockers: payload.blockers ?? artifact.blockers,
+    blockers: draft?.unresolved?.length ? draft.unresolved : artifact.blockers,
     dependencySnapshot: artifact.dependencySnapshot,
   }
 }
@@ -341,7 +343,7 @@ onMounted(() => void loadCase())
         <form class="form-stack create-row" @submit.prevent="renderDraft">
           <label>
             <span>文书类型（docType）</span>
-            <input v-model="renderDocType" placeholder="如 indictment" />
+            <input v-model="renderDocType" placeholder="如 indictment-assist" />
           </label>
           <button class="button button-primary" type="submit" :disabled="rendering || !renderDocType.trim()">
             {{ rendering ? '渲染中…' : '渲染文书' }}
