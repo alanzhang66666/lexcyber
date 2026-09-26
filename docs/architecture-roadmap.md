@@ -15,18 +15,17 @@
 | 阶段 | 内容 | 状态 |
 |---|---|---|
 | 0 | 决策收口 + 基线冻结 | ✅ 完成：ADR-0001..0006、tag `arch-v13-baseline`、roadmap、文档指针 |
-| 1 | 主键迁移到 uuid（V13 + legacy_id_map） | ✅ 代码完成，**未编译验证**（本机无 JDK/Docker）。V13 + IdentityService + 全部服务 `?::uuid` 绑定 + 契约 format:uuid + 导入 checkpoint epoch（`lexcyber.import-checkpoint.v2-uuid`） |
-| 2a | 五张实体表（actor/event/evidence/amount/jurisdiction_connection） | ✅ 代码完成，未验证。V14 建表 + 从 `metadata_json.relations` 抽取；amount kind 封闭集落 CHECK，不可归类标 `conflicted`（ADR-0003） |
-| 2b | FactsVersion/FactsHead + FactsBaselineService | ✅ 代码完成，未验证。V14 + FactsBaselineService（`next_version` 锁内分配）+ FactService 降为 /v1 适配层 |
-| 3 | ArtifactStream/ArtifactVersion + 依赖表 + execution_publication + 三套结果合并 | ✅ 代码完成，未验证。V15 + ArtifactPublicationService（§4.8.2 十二步）+ 回填经 `artifact_backfill_map` + EngineResultService 改走发布路径 |
-| 4 | ModuleHead/DraftHead + 有效确认判定 + stale 传播 | ✅ 代码完成，未验证。V16 + ModuleConfirmationService/DraftApprovalService/StalePropagationService（递归 CTE 反索引）；ModuleStateService 降为适配层；`ModulePolicies.MODULES` 纳入 sentencing |
-| 5 | ReviewRecord 改绑 artifact_version_id + CaseArchive | ✅ 代码完成，未验证。V17（不可改绑历史行审计后删除）+ V18 + CaseArchiveService（锁内评估 + manifest_hash）+ ReviewService 重写；`/v1` review archive 端点返 410 |
-| 6 | engine.execution 契约分离 + fencing + outcome envelope | ✅ 代码完成，未验证。engine/V5 + store.py fencing（claim 铸 token，checkpoint/stage/complete 全部带 token 门控）+ `waiting_review`/`timed_out` 移出执行态 + Java `taskStatusOf` 映射 `output_envelope.human_review_required` |
-| 7 | 统一幂等 + `/v2` 契约 + 前端迁移 + 删多 key 容错层 | 🔶 部分完成：V19 + IdempotencyService + `contracts/public-api-v2.yaml`（18 paths）+ V2LifecycleController/Service + `api-types.ts` v2 类型。前端已迁：CaseFactsPanel（facts-entities + 版本 CAS 确认）、useCaseModule（moduleHead + artifactVersion + dispatch + openReview，覆盖定罪/合规页 + 运行分析入口）、AnalysisPage（/v2 量刑派发 + 定罪工件金额）、ReviewDetailPage（模块内容走工件）、DocumentsPage（模板渲染区块）。`apiV2` 客户端 + 契约测试已加；文档/任务轮询/复核队列保留 /v1 兼容读层。未做：`module-content.ts` 多 key 容错层**待 payload schema 冻结后删除** |
+| 1 | 主键迁移到 uuid（V13 + legacy_id_map） | ✅ 已在开发库应用并实测（e2e 全链路 uuid 主键） |
+| 2a/2b | 五张实体表 + FactsVersion/FactsHead | ✅ 已在开发库应用；全量快照 + CAS + diff/clone 实测通过 |
+| 3 | ArtifactStream/ArtifactVersion + 依赖表 + execution_publication + 三套结果合并 | ✅ 发布幂等实测；模块/文书结果经 `publishModuleArtifact` 发布 |
+| 4 | ModuleHead/DraftHead + 有效确认判定 + stale 传播 | ✅ 实测：facts 变更 → 工件 stale → 旧工件批准被 DEPENDENCY_STALE 拦截 |
+| 5 | ReviewRecord 改绑 artifact_version_id + CaseArchive | ✅ 实测：复核裁决 → effectivelyConfirmed → `case.full.v1` 归档（manifestHash） |
+| 6 | engine.execution 契约分离 + fencing + outcome envelope | ✅ engine V5 应用；waiting_review 展示态经 output_envelope 映射 |
+| 7 | 统一幂等 + `/v2` 契约 + 前端迁移 + 删多 key 容错层 | ✅ 基本完成：V19 + IdempotencyService + `/v2`（18 paths）+ 前端逐页迁移 + `apiV2` 契约测试；payload schemaVersion 已在契约冻结（枚举），前端新增 `module-content-v2.ts` 严格读取器 + `RuleResultsPanel`（v2 工件此前在模块页显示为空——容错键不命中，现已修）；`module-content.ts` 容错层仅留 /v1 演示壳用途；文档/任务轮询/复核队列保留 /v1 兼容读层 |
 | 8a | 法源/规则/模板注册与会签（P5 前置基建） | ✅ 代码完成并在真实库验证。engine/V6 注册表（legal_source + alias + supersession 链 + rule_package + template_package + signoff_record）+ `engine/rules/registry.py` + `/internal/v1/capabilities` 等 6 个内部端点 + `EngineCapabilitiesClient`；`/v2` 模块派发已接真实能力门闩（无 approved 规则 → `MODULE_EXECUTION_UNAVAILABLE`，有能力但适配器未实现 → `ENGINE_ADAPTER_PENDING`） |
-| 8b | 规则层（合规/定罪/界分执行体） | 🔶 部分完成：`engine/rules/evaluator.py`（谓词 DSL：all/any/not + exists/missing/eq/neq/gt/gte/lt/lte/in/contains/confirmed；facts/amounts/entities 寻址 + confirmed_sum 聚合）+ `engine/adapters/module_analysis.py`（compliance.analyze/conviction.analyze → case.*.v2 payload，缺快照/缺 approved 规则 fail-closed，谓词错误 → blocked，fired 规则绑 source 做双时点解析）；`/v2` 派发已翻成真实建任务（能力门闩→嵌 factsSnapshot→createModuleTask）；`engine/rules/corpus/core_rules.json` 7 条法学底稿（pending 待会签）。未做：文书渲染 |
-| 8c | 可解释量刑（注册表化） | 🔶 部分完成：`engine/adapters/sentencing_v2.py`——factsSnapshot 路径走注册表（base_tiers 择档 + when-gated adjustments + 显式夹逼留痕 + ROUND_HALF_UP），产出 sentencing.v2；旧 metadata 重放保留兼容。未做：地方细则插件、缓刑/罚金独立计算块 |
-| 8d | 文书渲染 | 🔶 部分完成：`engine/adapters/document_render.py`（`draft.render` → draft.v2；approved 模板 + `{{path}}` 占位符按 evaluator 语义解析 facts/amounts/entities/artifacts；解析失败 → blocked 不产正文）；`registry.active_template` + capabilities 增 draft 模块；Java `POST /v2/cases/{id}/drafts/render`（doc_type 模板门闩 + factsSnapshot + 上游最新 payload 嵌入）+ `GET /v2/cases/{id}/drafts`（渲染结果发现）；流绑定 `draft:{docType}`；DocumentsPage「模板渲染」区块（派发→轮询→展示正文/阻断）。未做：模板语料（仅 1 个测试模板）、下载导出 |
+| 8b | 规则层（合规/定罪/界分执行体） | ✅ 第一片已验证：evaluator DSL + `module_analysis.py` → case.*.v2 payload + 逐条件 trace + fired 规则双时点法源解析；e2e 实测 calculated/not_applicable/blocked 三态。剩余：规则语料扩充（当前 7 条底稿） |
+| 8c | 可解释量刑（注册表化） | ✅ 第一片已验证：base_tiers 择档 + when-gated adjustments + 显式夹逼留痕 + ROUND_HALF_UP，产出 sentencing.v2；旧 metadata 重放保留兼容。剩余：地方细则插件、缓刑/罚金独立计算块 |
+| 8d | 文书渲染 | ✅ 第一片已验证：`draft.render` → draft.v2 + 占位符阻断 + 上游 payload 代入；模板按案型分（`indictment-assist` 通用 + `indictment-draft` 支付结算型，语料 `engine/rules/corpus/core_templates.json` + `seed --templates`）。剩余：下载导出 |
 | 9 | 法源层 + AI 边界 + 门闩双侧 + 可观测性 | 🔶 法源注册 + 双时点解析（`resolve_temporal`）已随 8a 落地；新旧链数据、AI 边界审计、可观测性未做 |
 
 ## 验证状态（2026-09-24 实测）
@@ -96,7 +95,17 @@
 4. **CAS 并发实测**：错误 expected head → `409 FACTS_HEAD_CONFLICT`。
 5. **发现的口径分歧**：bundle 审定基准 12–18 月 vs corpus 量刑规则算出 8.1 月——规则基准档与案载裁量有偏差，属规则语料精度问题，留待法学评审校正。
 
-**仍待办**：案例 B/C 键化覆盖层（需法学审定映射）、`module-content.ts` 多 key 容错层删除（待 payload schema 冻结）、§19 其余并发用例（双发布/归档交错）、真实法学负责人会签（当前 e2e 占位）、文书模板对非支付结算案的占位符策略（可选占位符语法 or 按 doc_type 分模板）。
+**本轮（收口整理）已落地**：
+
+1. **V20 授权迁移**：`lex_app` 对 app schema 全部表/序列的 CRUD 授权 + migrator 新建对象默认授权，固化此前手工执行的 GRANT；角色缺失/权限不足时降级 WARNING 不炸迁移。
+2. **`app-migrate` compose 服务**：app schema 迁移由 `lex_migrator`（POSTGRES_USER）执行，Java 启动 Flyway 仅校验——修复全新环境 `lex_app` 无 `pgcrypto` 权限导致的 V13 失败。engine/engine-worker 共用 `image: lexcyber-v03-engine:latest` 消除镜像漂移。
+3. **`/v1` 模块写层退役**：PUT 模块壳 + POST confirm 默认 `410 MODULE_WRITE_RETIRED`，仅 `DEMO_IMPORT_ENABLED` 放行；契约标 deprecated；导入脚本容忍 410 记 `skipped_write_retired`。
+4. **v2 payload schema 冻结**：`ArtifactVersionView.schemaVersion` 改枚举（document.parse.v1 / case.module.v1 / case.compliance.v2 / case.conviction.v2 / sentencing.v2 / draft.v2）；前端新增 `module-content-v2.ts` 严格读取器 + `RuleResultsPanel` 组件——此前 v2 工件在模块页全部显示为空（容错键不命中），现定罪/合规页展示规则逐条 fired + 逐条件 trace；AnalysisPage 金额改读确认事实快照（原读定罪 payload，v2 下本为空）；DocumentsPage 渲染结果走严格读取。
+5. **模板按案型**：`engine/rules/corpus/core_templates.json` 新增 `indictment-assist` 通用模板（无 payment_settlement_amount 占位符）；`seed --templates` 播种路径。
+6. **§19 并发脚本**：`scripts/concurrency_check.py`——双确认 CAS（409）、双发布重放（工件版本稳定）、归档/复核交错（无 5xx）；internal 用例需容器网内执行。
+7. **文档归档**：11 篇历史文档 + 根 `PLAN.md` → `docs/archive/`（git mv 保历史 + 归档横幅）；`AGENTS.md`/`README.md` 按现状重写；`docs/legal-signoff-checklist.md` 补法学待签清单。
+
+**仍待办**：案例 B/C 键化覆盖层（需法学审定映射）、真实法学负责人会签（当前 e2e 占位，含新增 `indictment-assist` 模板）、量刑基准档与案载裁量偏差校正（法学）、文书下载导出、§19 脚本在 CI/容器网内定期执行。
 
 ## 关键不变量速查
 

@@ -7,7 +7,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 if (-not $OutFile) {
-    $OutFile = Join-Path $PSScriptRoot "..\docs\model-probe-record.md"
+    $OutFile = Join-Path $PSScriptRoot "..\docs\archive\model-probe-record.md"
 }
 
 if (-not $env:MODEL_PROVIDER -or $env:MODEL_PROVIDER -eq "stub") {

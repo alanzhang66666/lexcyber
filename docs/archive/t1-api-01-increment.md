@@ -1,3 +1,5 @@
+> **归档文档（历史）**：本文件已于 2026-09-26 移入 docs/archive/，内容反映其写作时点状态，可能与现行实现不一致。现役入口见根 README.md 与 AGENTS.md。
+
 # API-01：三案增量契约（T1 → T2 / T3）
 
 在现有 `CaseCreate` / `CaseView`、facts、tasks、reviews 之上的**一页增量**。不重做案件 / 上传 / 解析 / facts / 鉴权 / `model.probe`。检索与量刑适配器保持 `501`，等 T3 会签。

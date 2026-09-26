@@ -1,3 +1,5 @@
+> **归档文档（历史）**：本文件已于 2026-09-26 移入 docs/archive/，内容反映其写作时点状态，可能与现行实现不一致。现役入口见根 README.md 与 AGENTS.md。
+
 # LexCyber 系统架构书（理想态）
 
 > **⚠️ 已被取代。** 目标架构以 `LexCyber-system-architecture-v1.3-postgresql-physical-model.md`（仓库根）为准；

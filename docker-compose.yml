@@ -30,9 +30,12 @@ services:
       MINIO_BUCKET: lexcyber
       MODEL_CONFIG_ENCRYPTION_KEY: ${MODEL_CONFIG_ENCRYPTION_KEY:-}
       SENTENCING_ENABLED: ${SENTENCING_ENABLED:-false}
+      DEMO_IMPORT_ENABLED: ${DEMO_IMPORT_ENABLED:-false}
     depends_on:
       postgres:
         condition: service_healthy
+      app-migrate:
+        condition: service_completed_successfully
       engine-migrate:
         condition: service_completed_successfully
       engine:
@@ -47,6 +50,7 @@ services:
       dockerfile: engine/Dockerfile
       args:
         PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+    image: lexcyber-v03-engine:latest
     command: ["uvicorn", "engine.run_api_v03:app", "--host", "0.0.0.0", "--port", "8100"]
     environment:
       ENGINE_DATABASE_URL: postgresql://lex_engine:${ENGINE_DB_PASSWORD:?ENGINE_DB_PASSWORD is required}@postgres:5432/lexcyber
@@ -89,6 +93,7 @@ services:
       dockerfile: engine/Dockerfile
       args:
         PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+    image: lexcyber-v03-engine:latest
     command: ["dramatiq", "engine.run_api_v03", "--processes", "1", "--threads", "4"]
     environment:
       ENGINE_DATABASE_URL: postgresql://lex_engine:${ENGINE_DB_PASSWORD:?ENGINE_DB_PASSWORD is required}@postgres:5432/lexcyber
@@ -118,6 +123,15 @@ services:
         condition: service_healthy
       minio:
         condition: service_started
+
+  app-migrate:
+    image: flyway/flyway:10.20.1-alpine
+    command: ["migrate", "-url=jdbc:postgresql://postgres:5432/lexcyber", "-user=lex_migrator", "-password=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}", "-schemas=app", "-locations=filesystem:/flyway/sql"]
+    volumes:
+      - ./server/src/main/resources/db/migration/app:/flyway/sql:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   engine-migrate:
     image: flyway/flyway:10.20.1-alpine

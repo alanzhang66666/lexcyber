@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-PLAN_DOCUMENT = ROOT / "docs" / "iterative-delivery-plan.md"
+PLAN_DOCUMENT = ROOT / "docs" / "archive" / "iterative-delivery-plan.md"
 SIGNOFF_DOCUMENT = ROOT / "docs" / "legal-signoff-checklist.md"
 
 ROUND_NAMES = ("R1", "R2", "R3", "R4")
@@ -242,23 +242,8 @@ def test_status_document_set_is_current_and_bilingual_tracks_are_aligned() -> No
         )
 
     readme_path, readme_text = documents["README.md"]
-    agents_path, agents_text = documents["AGENTS.md"]
-    assert re.search(
-        r"T2 frontend case-center.*?formal\s+module pages are merged into local `main`",
-        readme_text,
-        re.DOTALL,
-    ), (
-        f"{readme_path}: T2 formal pages must be recorded as merged into local `main`; "
-        "the former feat/case-import pending state must not return"
-    )
-    assert re.search(r"(?m)^- \*\*T2\*\*[：:].*已合入本地 `main`", agents_text), (
-        f"{agents_path}: T2 status must explicitly say 已合入本地 `main`"
-    )
     assert "feat/case-import" not in readme_text, (
         f"{readme_path}: must not retain the old feat/case-import branch-location status"
-    )
-    assert "`feat/case-import` 已合入本地 `main`" in agents_text, (
-        f"{agents_path}: must record that feat/case-import has been merged into local `main`"
     )
     for label, (path, text) in documents.items():
         stale_match = STALE_CASE_IMPORT_STATUS.search(text)
@@ -280,7 +265,7 @@ def test_delivery_plan_round_structure_and_exit_conditions() -> None:
         f"found {tuple(sorted(linked_ids))!r}"
     )
     for signoff_id, target in plan_links:
-        expected_target = f"legal-signoff-checklist.md#{signoff_id.lower()}"
+        expected_target = f"../legal-signoff-checklist.md#{signoff_id.lower()}"
         assert target == expected_target, (
             f"{PLAN_DOCUMENT}: {signoff_id}: expected link target {expected_target!r}; found {target!r}"
         )

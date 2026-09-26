@@ -4,8 +4,8 @@ Product notes with architecture diagrams: [中文 0.8](docs/lexcyber-0.8.zh-CN.m
 
 **Target architecture**: `LexCyber-system-architecture-v1.3-postgresql-physical-model.md` (normative). Decisions resolving internal ambiguities: `docs/adr/ADR-0001`–`0006`. Delivery status: `docs/architecture-roadmap.md`.
 
-**契约版本：** 0.8.0
-**现状日期：** 2026-09-19
+**契约版本：** 0.8.0（/v1 兼容）+ /v2 生命周期契约
+**现状日期：** 2026-09-26
 
 LexCyber is a general-purpose, auditable task-execution platform. It provides a
 stable Java public API, a Python execution Engine, durable PostgreSQL state,
@@ -13,25 +13,21 @@ Redis work queues, MinIO object storage, a default Stub workflow, and a small
 Vue developer console. It intentionally does not make sentencing, liability,
 crime, or other legal conclusions.
 
-**LexCyber 0.8.** The supported local runtime is the Compose stack in
-`docker-compose.yml` (project name remains `lexcyber-v03`; env file is still
-`.env.v03`). **T1 backend contracts are on `main`**: owner-scoped cases and
-documents with upload-time auto-parse, facts, reserved-task auth, owned
-`storageKey` bind, `model.probe`, opaque drafts, and case-level compliance /
-conviction shells. T3 Engine adapters for search and sentencing are on `main`,
-but the Compose flags stay off. Public source search, sentencing,
-`compliance.analyze`, and `conviction.analyze` therefore remain `501` by
-default with codes `SOURCE_SEARCH_UNAVAILABLE`, `SENTENCING_UNAVAILABLE`,
-`COMPLIANCE_UNAVAILABLE`, and `CONVICTION_UNAVAILABLE`. Opening only the Java
-sentencing flag creates a task that then `failed` on the Engine side.
-T2 frontend case-center (list/create/workspace/facts) is on `main`. The formal
-module pages are merged into local `main`: docket reads documents +
-`document.parse.v1` results, analysis runs `sentencing.calculate` when the
-flags are enabled, sources searches the Engine adapter, and review detail can
-archive decided records. With `SENTENCING_ENABLED` /
-`LEGAL_SOURCE_SEARCH_ENABLED` on and the three-case demo imported, the
-case-center → conviction → sentencing → review/archive flow runs end to end.
-Compose defaults still keep both flags off.
+**LexCyber v1.3 lifecycle (verified end to end on 2026-09-24/26).** The Compose
+stack in `docker-compose.yml` runs the full pipeline: versioned facts with CAS
+confirmation → module dispatch behind the rule-registry capability gate →
+Engine execution consuming approved rule/template packages → idempotent
+artifact publication with dependency snapshots → human review → staleness
+propagation → archive. Module results only exist via execution+publication;
+the legacy `/v1` module write endpoints return `410 MODULE_WRITE_RETIRED`
+unless `DEMO_IMPORT_ENABLED=true` (three-case demo import). The
+`/v2` contract lives in `contracts/public-api-v2.yaml`; `/v1` remains as the
+compat read layer (documents, task polling, review queue, manual drafts,
+auth). Engine-side v2 executors — `module_analysis` (compliance / conviction /
+distinction), `sentencing_v2`, `document_render` — consume only approved
+registry entries and always mark `human_review_required`. Current corpus
+sign-offs use the placeholder `e2e-reviewer` and still need real legal-owner
+sign-off.
 
 ## Start the complete local demo
 
@@ -57,13 +53,13 @@ curl.exe -X POST http://127.0.0.1:18080/v1/tasks `
 Use `GET /v1/tasks/{id}` for lifecycle and `GET /v1/tasks/{id}/result` for the
 immutable Stub content. Caseless stub tasks stay public so this path still works
 without a session. Reviews require Bearer and are scoped to cases the account
-owns (`GET /v1/reviews`); see [`docs/t1-api-01-increment.md`](docs/t1-api-01-increment.md).
+owns (`GET /v1/reviews`); see [`docs/archive/t1-api-01-increment.md`](docs/archive/t1-api-01-increment.md).
 
 ## T1 on main
 
 Measured against the public API (`contracts/public-api.yaml`). Request and
-response samples for T2/T3 are in [`LexCyber_T1接口交接样例.md`](LexCyber_T1接口交接样例.md).
-Three-case field increment and owner-scoped reviews: [`docs/t1-api-01-increment.md`](docs/t1-api-01-increment.md).
+response samples for T2/T3 are in [`docs/archive/LexCyber_T1接口交接样例.md`](docs/archive/LexCyber_T1接口交接样例.md).
+Three-case field increment and owner-scoped reviews: [`docs/archive/t1-api-01-increment.md`](docs/archive/t1-api-01-increment.md).
 
 | Area | Status on `main` |
 | --- | --- |
@@ -115,7 +111,7 @@ shell (`MODEL_PROVIDER` must not be `stub`):
 ./scripts/model-probe.ps1
 ```
 
-The script writes `docs/model-probe-record.md` and refuses a stub result.
+The script writes `docs/archive/model-probe-record.md` and refuses a stub result.
 
 ## Service boundaries
 

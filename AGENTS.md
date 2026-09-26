@@ -1,8 +1,8 @@
 # LexCyber — Agent 规则
 
-可审计任务执行工作台。辅助研判，不替代司法裁量；不产出量刑 / 责任 / 犯罪结论。
+可审计任务执行工作台。辅助研判，不替代司法裁量；不产出量刑 / 责任 / 犯罪终局结论。
 
-**目标架构**：`LexCyber-system-architecture-v1.3-postgresql-physical-model.md`（唯一权威）。矛盾裁决见 `docs/adr/ADR-0001`~`0006`。实施进度见 `docs/architecture-roadmap.md`。`docs/architecture-1.0.zh-CN.md` 已被取代。
+**目标架构**：`LexCyber-system-architecture-v1.3-postgresql-physical-model.md`（唯一权威）。矛盾裁决见 `docs/adr/ADR-0001`~`0006`。实施进度见 `docs/architecture-roadmap.md`。历史文档在 `docs/archive/`。
 
 ## 怎么跑
 
@@ -11,7 +11,9 @@ Copy-Item .env.v03.example .env.v03
 docker compose --env-file .env.v03 up --build
 ```
 
-入口 `http://127.0.0.1:18080`。健康检查 `GET /healthz`。**契约版本：** 0.8.0。**现状日期：** 2026-09-19。
+入口 `http://127.0.0.1:18080`。健康检查 `GET /healthz`。**契约版本：** 0.8.0（/v1）+ /v2。**现状日期：** 2026-09-26。
+
+迁移由一次性服务执行：`app-migrate`（lex_migrator，app schema）、`engine-migrate`（lex_engine，engine schema），Java 启动时 Flyway 仅做校验。
 
 ## 技术栈
 
@@ -19,25 +21,50 @@ docker compose --env-file .env.v03 up --build
 - 执行：Python Engine + Dramatiq（`engine/`）
 - 前端：Vue（`web/`）
 - 存储：Postgres（`app` / `engine` 分 schema）+ Redis + MinIO
-- 契约：`contracts/public-api.yaml`、`contracts/internal-engine-api.yaml`
+- 契约：`contracts/public-api.yaml`（/v1 兼容读层）、`contracts/public-api-v2.yaml`（/v2 生命周期，现役入口）、`contracts/internal-engine-api.yaml`
 
 ## 目录与约定
 
-- **现役**：`web/`、`server/`、`engine/`、`contracts/`、`nginx/nginx.v03.conf`
-- **Engine 仍依赖**：`models/`、`graph/`、`skill_runtime/`、`skills/`、`retrieval/`；legal profile 链 `agents/`、`audit/`、`config/`、`prompts/`、`storage/`、`tools/`；Compose 挂载 `infra/`
-- **边界**：浏览器只打 Java `/v1`，不直连 Engine / MinIO。0.2 遗留树（`apps/`、`domain/`、`migrations/`、`legacy/`、根 `Dockerfile`）已删，engine 侧禁止再 import
+- **现役**：`web/`、`server/`、`engine/`、`contracts/`、`nginx/nginx.v03.conf`、`infra/postgres/init/`
+- **Engine 旧任务类型仍依赖**：`models/`、`graph/`、`skill_runtime/`、`skills/`、`retrieval/`；legal profile 链 `agents/`、`audit/`、`config/`、`prompts/`、`storage/`、`tools/`；v2 执行体（`engine/adapters/module_analysis.py`、`sentencing_v2.py`、`document_render.py`、`engine/rules/`）不依赖这些
+- **边界**：浏览器只打 Java `/v1`/`/v2`，不直连 Engine / MinIO；`/internal/` 不经过 nginx
 - 上传后只轮询 `parseTaskId`，正文只读 `GET /v1/tasks/{id}/result`。不要再创建解析任务，不要传 `storageKey`
 - `document.parse` / `model.probe` 必须 Bearer。caseless stub 任务可无会话
-- 检索 / 量刑公开口保持 501，直到 T3 会签。`compliance.analyze` / `conviction.analyze` 也保持 501。T3 适配器已在 Engine，Compose 默认开关关闭；只开 Java `SENTENCING_ENABLED` 会建成任务再被 Engine 标 `failed`。不要改公开口或默认开关假装已接通
-- DB 只走 Flyway，禁止改已发布迁移。密钥只进 `.env.v03`，禁止提交
+- **能力门闩**：模块派发前置查询 Engine `/internal/v1/capabilities`——family 缺 approved 规则包 → `MODULE_EXECUTION_UNAVAILABLE`；适配器未实现 → `ENGINE_ADAPTER_PENDING`；Engine 不可达 → fail-closed。已取代 /v2 派发侧旧静态 501
+- **/v1 遗留公开口门闩仍在**：检索 / 量刑 / 合规分析 / 定罪分析的 /v1 公开入口按未会签保持 `501`（`SOURCE_SEARCH_UNAVAILABLE` / `SENTENCING_UNAVAILABLE` / `COMPLIANCE_UNAVAILABLE` / `CONVICTION_UNAVAILABLE`）；只开 Java `SENTENCING_ENABLED` 会建成任务再被 Engine 标 `failed`。不要改默认开关假装已接通
+- **`/v1` 模块写层（PUT module state / confirm）已退役**：默认 410 `MODULE_WRITE_RETIRED`；仅 `DEMO_IMPORT_ENABLED=true` 放行（三案演示导入脚本用）。结果只能来自执行→发布路径
+- DB 只走 Flyway，**禁止改已应用迁移**（app V1–V20、engine V1–V6 已应用到开发库，仅前向新增）。app schema 迁移执行角色 = `lex_migrator`
+- 密钥只进 `.env.v03`，禁止提交
+- **engine 代码变更后必须 `docker compose build engine engine-worker`**——两服务共用镜像 `lexcyber-v03-engine:latest`，只 build 一个会漂移
 
-## 当前状态（2026-09-19）
+## 冻结快照
 
-- **T1**：案件 / 材料 / 自动解析 / facts / 鉴权 / `model.probe` / 文书草稿空壳 / sentencing facts 门闩 / `ReviewRecord.module` / 合规定罪案件级空壳 / 条级 `verificationStatus` / 草稿改稿 supersede / 无任务开单复核 已在 main；公开检索、量刑、`compliance.analyze`、`conviction.analyze` 默认仍返回 501（分别为 `SOURCE_SEARCH_UNAVAILABLE`、`SENTENCING_UNAVAILABLE`、`COMPLIANCE_UNAVAILABLE`、`CONVICTION_UNAVAILABLE`）
-- **T2**：列表 / 新建 / 工作区 / 上传 / facts 已接通（main）。阅卷 / 量刑 / 法源正式页与复核归档已接通并已合入本地 `main`；合规 / 定罪页接 module content，定罪页展示管辖连接点 / 基准位置 / 缺失事项
-- **T3**：适配器与 `demo_cases/three_case_demo` 已在 Engine 与镜像（`COPY demo_cases`）；公开检索、量刑、合规与定罪分析入口默认仍按会签门闩返回 501，本地 `.env.v03` 可显式开启
-- **演示链路**：本地 `.env.v03` 开双开关 + `scripts/import_three_case_demo.py` 灌三案后，案件中心 → 定罪 → 量刑 → 复核归档可端到端演示；文书字段字典仍待法学会签
-- **case-import.v1**：`feat/case-import` 已合入本地 `main`（该分支 tip `5ed75ca` 已是 `main` 的祖先）；租约 fencing 已验证（stale token 不能 claim/complete），ZIP 提取为精确缓冲
-- 权威现状：`README.md` 与 `docs/lexcyber-0.8.*.md`。过期时以代码与契约为准
+`competition_submission/`、`本科生组+…/`：**自 `6ef7803`（2026-09-26）起冻结**，不再与主树同步，修改需单独说明理由。
 
-下一步：法学负责人逐案验收 + 文书字段字典会签；并继续完成已合入 import 线的发布验证与评审收尾。产品图与边界见那两份 0.8 文档。
+## 测试
+
+```powershell
+# Java（需要可达的 Postgres；容器内跑 maven）
+docker compose run --rm -e TEST_JDBC_URL=jdbc:postgresql://postgres:5432/lexcyber_test `
+  -e TEST_JDBC_USER=lex_app -e TEST_JDBC_PASSWORD=<pwd> java mvn -B test
+# 前端
+cd web; npm ci; npm run typecheck; npx vitest run; npm run build
+# Engine
+python -m pytest -q            # 含 tests/integration 时需可达 engine 库
+python -m ruff check engine/
+# 契约
+python -c "import yaml; yaml.safe_load(open('contracts/public-api-v2.yaml',encoding='utf-8')); yaml.safe_load(open('contracts/public-api.yaml',encoding='utf-8'))"
+# §19 并发验证（公开用例经 nginx；双发布需容器网内）
+python scripts/concurrency_check.py
+```
+
+## 当前状态（2026-09-26）
+
+- **v1.3 生命周期已端到端实测**：facts 版本化（六实体快照 + CAS 确认 + diff/clone）、工件发布幂等（execution_publication）、stale 传播、复核裁决、归档——五段管道全通
+- **规则注册表**（engine V6）：法源 + 新旧链 + 规则包/模板包 + 会签记录；approved/superseded 不可变；所有评审结论必须走 `signoff()`（`engine.signoff_authorized` GUC，直连 SQL 被拒）
+- **v2 执行体**：合规/定罪/界分（`module_analysis.py`）、可解释量刑（`sentencing_v2.py`）、文书渲染（`document_render.py`）——只消费 approved 规则/模板 + 确认事实快照，恒 `human_review_required`
+- **语料**：`engine/rules/corpus/core_rules.json`（7 条法学底稿）+ `core_templates.json`（文书模板）+ `engine/adapters/legal_sources.json`；播种 `python -m engine.rules.seed [--rules|--templates] <path>`，**当前会签人为占位 `e2e-reviewer`，非正式批准**
+- **演示**：`scripts/import_three_case_demo.py` 导入三案（需 `DEMO_IMPORT_ENABLED=true` 才写模块壳）；案例 A 已加键化覆盖层跑通全管道，B/C 覆盖层待法学审定
+- **遗留缺口**：量刑基准档与案载裁量有偏差（8.1 vs 12–18 月，待法学校正）；`module-content.ts` 容错读取器仅服务 /v1 演示壳（v2 工件用 `module-content-v2.ts`）
+
+下一步：真实法学负责人会签（规则/法源/模板 + B/C 覆盖层映射 + 量刑基准校正）。

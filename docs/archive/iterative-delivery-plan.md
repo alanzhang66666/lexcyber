@@ -1,3 +1,5 @@
+> **归档文档（历史）**：本文件已于 2026-09-26 移入 docs/archive/，内容反映其写作时点状态，可能与现行实现不一致。现役入口见根 README.md 与 AGENTS.md。
+
 # LexCyber 迭代交付计划
 
 **现状日期：** 2026-09-19
@@ -144,9 +146,9 @@ R3 不改变四处公开安全门闩的默认返回码，不改变 `SENTENCING_E
 | 数据库变更是前向迁移 | `git diff --name-status origin/main -- server/src/main/resources/db/migration` 对本特性只允许新增 `app/V12__model_access_config.sql`；既有 `V1`–`V11` 不得修改，迁移版本号互不重复且新版本严格大于 `11`。 | — |
 | 配置读写、加密与审计安全 | `mvn -B test -Dtest=ModelAccessServiceTest,SecretBoxTest`（工作目录 `server`）通过。**该判据依赖可选测试项**：测试类未落地时退回必做产物判据——读取响应不含 `apiKey` 键、`apiKeyMask` 固定为 `********`、写入 API Key 只落密文、审计只含变更字段/供应商/模型/指纹等非原值信息。 | — |
 | 前端表单和验证轮询 | `npm run typecheck` 与 `npm test`（工作目录 `web`）通过。**该判据依赖可选测试项**：新增模型表单测试未落地时退回既有前端测试加人工核对五字段校验、密码输入置空、`/v1` 请求边界和轮询终态；不能把缺失测试写成已通过。 | — |
-| 四处安全门闩不受配置写入影响 | 必做 `mvn -B test -Dtest=TaskPoliciesTest`（工作目录 `server`）通过；可选的 `ModelAccessGateInvarianceTest` 若存在则一并执行。检索、量刑、`compliance.analyze`、`conviction.analyze` 仍分别保持现有 501 错误码。 | [SIGNOFF-001](legal-signoff-checklist.md#signoff-001)、[SIGNOFF-002](legal-signoff-checklist.md#signoff-002)、[SIGNOFF-003](legal-signoff-checklist.md#signoff-003)、[SIGNOFF-004](legal-signoff-checklist.md#signoff-004)、[SIGNOFF-005](legal-signoff-checklist.md#signoff-005) |
+| 四处安全门闩不受配置写入影响 | 必做 `mvn -B test -Dtest=TaskPoliciesTest`（工作目录 `server`）通过；可选的 `ModelAccessGateInvarianceTest` 若存在则一并执行。检索、量刑、`compliance.analyze`、`conviction.analyze` 仍分别保持现有 501 错误码。 | [SIGNOFF-001](../legal-signoff-checklist.md#signoff-001)、[SIGNOFF-002](../legal-signoff-checklist.md#signoff-002)、[SIGNOFF-003](../legal-signoff-checklist.md#signoff-003)、[SIGNOFF-004](../legal-signoff-checklist.md#signoff-004)、[SIGNOFF-005](../legal-signoff-checklist.md#signoff-005) |
 | 默认开关与 501 门闩无变化 | `git diff origin/main -- docker-compose.yml .env.v03.example` 中 `SENTENCING_ENABLED`、`LEGAL_SOURCE_SEARCH_ENABLED`、`MODEL_PROVIDER`、`WORKFLOW_PROFILE` 的默认取值未被改变；公开门闩相关测试仍通过。 | — |
-| 解禁前置材料完整 | `docs/legal-signoff-checklist.md` 的五条记录均有非空「解禁后验收动作」，且主表记录安全门闩、默认开关、状态、返回码和解禁归属轮次；未签署期间仍写明 501。 | [SIGNOFF-001](legal-signoff-checklist.md#signoff-001)、[SIGNOFF-002](legal-signoff-checklist.md#signoff-002)、[SIGNOFF-003](legal-signoff-checklist.md#signoff-003)、[SIGNOFF-004](legal-signoff-checklist.md#signoff-004)、[SIGNOFF-005](legal-signoff-checklist.md#signoff-005) |
+| 解禁前置材料完整 | `docs/legal-signoff-checklist.md` 的五条记录均有非空「解禁后验收动作」，且主表记录安全门闩、默认开关、状态、返回码和解禁归属轮次；未签署期间仍写明 501。 | [SIGNOFF-001](../legal-signoff-checklist.md#signoff-001)、[SIGNOFF-002](../legal-signoff-checklist.md#signoff-002)、[SIGNOFF-003](../legal-signoff-checklist.md#signoff-003)、[SIGNOFF-004](../legal-signoff-checklist.md#signoff-004)、[SIGNOFF-005](../legal-signoff-checklist.md#signoff-005) |
 | 模型链路保留 | R1 的必做保留命令通过；若新增 `tests/unit/test_model_access.py` 已落地，则另执行该测试验证环境变量回退、内部口失败回落、覆盖后网关 URL/Authorization 头仍保持原行为。新增测试属于可选补充，缺失时退回 R1 的必做源文件/既有测试核对，不得退回删除模型接入配置。 | — |
 
 ### 产物清单
@@ -256,13 +258,13 @@ R4 是发布轮，范围为发布前加固、日常三门复核、本地 Compose
 
 ## 会签与公开安全边界
 
-会签清单由 [`docs/legal-signoff-checklist.md`](legal-signoff-checklist.md) 独立维护。五条事项的出口引用如下：
+会签清单由 [`docs/legal-signoff-checklist.md`](../legal-signoff-checklist.md) 独立维护。五条事项的出口引用如下：
 
-- [`SIGNOFF-001`](legal-signoff-checklist.md#signoff-001)：检索公开口；未签署时 `POST /v1/sources/search` 返回 `501 SOURCE_SEARCH_UNAVAILABLE`，默认 `LEGAL_SOURCE_SEARCH_ENABLED` 保持关闭。
-- [`SIGNOFF-002`](legal-signoff-checklist.md#signoff-002)：量刑公开口；未签署时量刑任务创建返回 `501 SENTENCING_UNAVAILABLE`。解禁后必须同时验证 Java 与 Engine 两侧开关；只开 Java 侧会建成任务但可能被 Engine 标为 `failed`，不构成验收通过。
-- [`SIGNOFF-003`](legal-signoff-checklist.md#signoff-003)：`compliance.analyze`；未签署时保持 `501 COMPLIANCE_UNAVAILABLE`。
-- [`SIGNOFF-004`](legal-signoff-checklist.md#signoff-004)：`conviction.analyze`；未签署时保持 `501 CONVICTION_UNAVAILABLE`。
-- [`SIGNOFF-005`](legal-signoff-checklist.md#signoff-005)：文书字段字典；字段语义、`draftType`、`templateVersion` 和复核归档边界完成会签前，不把文书草稿空壳当作正式法律结论。
+- [`SIGNOFF-001`](../legal-signoff-checklist.md#signoff-001)：检索公开口；未签署时 `POST /v1/sources/search` 返回 `501 SOURCE_SEARCH_UNAVAILABLE`，默认 `LEGAL_SOURCE_SEARCH_ENABLED` 保持关闭。
+- [`SIGNOFF-002`](../legal-signoff-checklist.md#signoff-002)：量刑公开口；未签署时量刑任务创建返回 `501 SENTENCING_UNAVAILABLE`。解禁后必须同时验证 Java 与 Engine 两侧开关；只开 Java 侧会建成任务但可能被 Engine 标为 `failed`，不构成验收通过。
+- [`SIGNOFF-003`](../legal-signoff-checklist.md#signoff-003)：`compliance.analyze`；未签署时保持 `501 COMPLIANCE_UNAVAILABLE`。
+- [`SIGNOFF-004`](../legal-signoff-checklist.md#signoff-004)：`conviction.analyze`；未签署时保持 `501 CONVICTION_UNAVAILABLE`。
+- [`SIGNOFF-005`](../legal-signoff-checklist.md#signoff-005)：文书字段字典；字段语义、`draftType`、`templateVersion` 和复核归档边界完成会签前，不把文书草稿空壳当作正式法律结论。
 
 实现工作在会签完成前继续推进，但只作为解禁前置工作；不能改四处 501、不能改变两个开关默认关闭状态，也不能产出量刑、责任或犯罪结论。
 
