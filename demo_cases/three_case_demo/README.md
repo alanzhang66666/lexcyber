@@ -5,6 +5,7 @@
 ## 当前状态
 
 - 三个 JSON 包均通过结构、唯一 ID、引用和金额格式校验。
+- `baseline-scenarios.json` 冻结 A/B/C 的实体数量、逐案法源时点、正常路径、缺证/冲突路径，以及交给 T1 的 `datasetCaseId`、`t3BundleId`、`factsVersion`、`sourceVersion` 追踪字段。
 - “输入材料”记作 `case_material`；“法学标注”和“演示案例说明”只记录核验结论，不作为案件证据。
 - 法学终版清单逐项确认的事实已标记为 `confirmed`，待补信息保持 `candidate`，存在相反证据的字段保持 `conflicted`。
 - A、C 的候选罪名与排除路径已按终版清单更新；B 已补入案例 042 输入材料和法学标注，并与案例 009 组成帮信/掩隐对照。
@@ -17,6 +18,7 @@
 - 模板“已提供”不等于字段映射“已会签”。生成草稿只能使用已确认数据；任何未替换占位符、未选择条件分支或缺少必填字段都会阻断批准并进入人工复核。
 - 文档第六部分的最终宣告刑建议已逐主体登记为 `reviewed_disposition`。适配器直接重放已审阅的区间、确定刑期、罚金和追缴数额；起点、调节比例和法源仅作为审计说明保留，不再为无法唯一复算宣告刑而返回 `blocked`。
 - 公开检索、量刑及分析开关继续保持关闭，不能因为数据包更新而自动启用。
+- 案例包中的 `approved` 仅表示既有法学摘要允许内部基准回放，不等于部署级法源会签；当前法源目录和基准清单统一保持 `signoff_status=pending`、`public_eligible=false`，不得据此输出公开法律结论。
 
 ## 使用
 
@@ -36,7 +38,8 @@ sentencing_result = calculate_case_sentencing(case_b, "actor-b-huang")
 
 也可直接运行 `python scripts/validate_three_case_demo.py` 输出完整校验报告；导入契约由
 `contracts/schemas/collaboration-case-index.schema.json` 和
-`contracts/schemas/collaboration-case-bundle.schema.json` 冻结。验证顺序是 JSON Schema、跨文件身份与引用、法学门闩；任一步失败时退出码为 1，法学待核项保留为 warnings。
+`contracts/schemas/collaboration-case-bundle.schema.json` 冻结，T3 本轮基准契约由
+`contracts/schemas/three-case-baseline.schema.json` 冻结。验证顺序是 JSON Schema、跨文件身份与引用、实体/证据完整性、法源生效区间与会签门闩、正常/阻断场景及 T1 追踪字段；任一步失败时退出码为 1，法学待核项保留为 warnings。
 
 索引必须提供稳定的 `producer_id`、`dataset_id`、`revision` 和每案 `external_case_id`。其中
 `producer_id + external_case_id` 是协作身份，`dataset_id + revision` 是本次交付版本；不得使用标题、文件名或数组位置推导身份。

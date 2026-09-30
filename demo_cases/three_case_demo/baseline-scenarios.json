@@ -1,0 +1,410 @@
+{
+  "schema_version": "lexcyber.three-case-baseline.v1",
+  "dataset_id": "lexcyber-three-case-demo-2026-09-18",
+  "revision": "2026-09-30.1",
+  "public_release": {
+    "public_legal_conclusion": false,
+    "required_source_signoff": "signed_off",
+    "current_source_signoff": "pending"
+  },
+  "cases": [
+    {
+      "case_code": "A",
+      "dataset_case_id": "A",
+      "t3_bundle_id": "demo-case-a-helping",
+      "entity_counts": {
+        "actors": 4,
+        "events": 5,
+        "facts": 8,
+        "evidence": 11,
+        "relationships": 3
+      },
+      "source_bindings": [
+        {
+          "source_id": "cn-criminal-law-287-2-current",
+          "effective_from": "2015-11-01",
+          "effective_to": null,
+          "use_scope": "conduct_time",
+          "application_time": "2024-03-15/2024-08-20",
+          "applicable_to_conduct": true,
+          "signoff_status": "pending",
+          "public_eligible": false
+        },
+        {
+          "source_id": "cn-criminal-law-266-current",
+          "effective_from": "1997-10-01",
+          "effective_to": null,
+          "use_scope": "candidate_comparison",
+          "application_time": "2024-03-15/2024-08-20",
+          "applicable_to_conduct": true,
+          "signoff_status": "pending",
+          "public_eligible": false
+        },
+        {
+          "source_id": "cn-cybercrime-interpretation-2019-11-12",
+          "effective_from": "2019-11-01",
+          "effective_to": null,
+          "use_scope": "conduct_time",
+          "application_time": "2024-03-15/2024-08-20",
+          "applicable_to_conduct": true,
+          "signoff_status": "pending",
+          "public_eligible": false
+        },
+        {
+          "source_id": "cn-telefraud-opinion-2016-common-crime",
+          "effective_from": "2016-12-19",
+          "effective_to": null,
+          "use_scope": "candidate_comparison",
+          "application_time": "2024-03-15/2024-08-20",
+          "applicable_to_conduct": true,
+          "signoff_status": "pending",
+          "public_eligible": false
+        },
+        {
+          "source_id": "cn-sentencing-guidance-2024-2",
+          "effective_from": "2024-07-01",
+          "effective_to": "2025-06-30",
+          "use_scope": "sentencing_reference",
+          "application_time": "2026-09-18 review; audit context only",
+          "applicable_to_conduct": false,
+          "signoff_status": "pending",
+          "public_eligible": false
+        },
+        {
+          "source_id": "cn-helping-opinion-2025-4-9",
+          "effective_from": "2025-07-22",
+          "effective_to": null,
+          "use_scope": "current_review_audit_only",
+          "application_time": "2026-09-18 review; not applied to 2024 conduct",
+          "applicable_to_conduct": false,
+          "signoff_status": "pending",
+          "public_eligible": false
+        }
+      ],
+      "scenarios": [
+        {
+          "scenario_id": "baseline-a-normal",
+          "path_kind": "normal",
+          "module": "sentencing",
+          "actor_id": "actor-a-feng",
+          "mutations": [],
+          "expected": {
+            "module_status": "waiting_review",
+            "analysis_status": "calculated",
+            "human_review_required": true,
+            "public_legal_conclusion": false,
+            "blockers": []
+          }
+        },
+        {
+          "scenario_id": "baseline-a-missing-evidence",
+          "path_kind": "missing_evidence",
+          "module": "conviction",
+          "actor_id": "actor-a-feng",
+          "mutations": [
+            {
+              "operation": "remove_evidence",
+              "fact_id": "fact-a-knowledge",
+              "evidence_id": "ev-a-02"
+            }
+          ],
+          "expected": {
+            "module_status": "blocked",
+            "analysis_status": "blocked",
+            "human_review_required": true,
+            "public_legal_conclusion": false,
+            "blockers": [
+              {
+                "code": "EVIDENCE_MISSING",
+                "subject_id": "fact-a-knowledge",
+                "reason": "The required knowledge evidence was removed from the benchmark input."
+              }
+            ]
+          }
+        }
+      ],
+      "t1_mapping": {
+        "datasetCaseId": "A",
+        "t3BundleId": "demo-case-a-helping",
+        "factsVersionSource": "T1 FactsView.version",
+        "sourceVersionSource": "T1 ModuleStateView.sourceVersion",
+        "requiredResultFields": ["datasetCaseId", "t3BundleId", "factsVersion", "sourceVersion"]
+      }
+    },
+    {
+      "case_code": "B",
+      "dataset_case_id": "B",
+      "t3_bundle_id": "demo-case-b-proceeds",
+      "entity_counts": {
+        "actors": 5,
+        "events": 8,
+        "facts": 13,
+        "evidence": 17,
+        "relationships": 3
+      },
+      "source_bindings": [
+        {
+          "source_id": "cn-criminal-law-287-2-current",
+          "effective_from": "2015-11-01",
+          "effective_to": null,
+          "use_scope": "conduct_time",
+          "application_time": "case 009: 2024-05-08/2024-05-23",
+          "applicable_to_conduct": true,
+          "signoff_status": "pending",
+          "public_eligible": false
+        },
+        {
+          "source_id": "cn-criminal-law-312-current",
+          "effective_from": "2009-02-28",
+          "effective_to": null,
+          "use_scope": "conduct_time",
+          "application_time": "adapted case 042: 2024-06-15/2024-07-16",
+          "applicable_to_conduct": true,
+          "signoff_status": "pending",
+          "public_eligible": false
+        },
+        {
+          "source_id": "cn-criminal-law-266-current",
+          "effective_from": "1997-10-01",
+          "effective_to": null,
+          "use_scope": "candidate_comparison",
+          "application_time": "case 009 and adapted case 042 conduct in 2024",
+          "applicable_to_conduct": true,
+          "signoff_status": "pending",
+          "public_eligible": false
+        },
+        {
+          "source_id": "cn-cybercrime-interpretation-2019-11-12",
+          "effective_from": "2019-11-01",
+          "effective_to": null,
+          "use_scope": "conduct_time",
+          "application_time": "case 009: 2024-05-08/2024-05-23",
+          "applicable_to_conduct": true,
+          "signoff_status": "pending",
+          "public_eligible": false
+        },
+        {
+          "source_id": "cn-concealment-interpretation-2015-2021",
+          "effective_from": "2021-04-15",
+          "effective_to": "2025-08-25",
+          "use_scope": "conduct_time",
+          "application_time": "adapted case 042: 2024-06-15/2024-07-16",
+          "applicable_to_conduct": true,
+          "signoff_status": "pending",
+          "public_eligible": false
+        },
+        {
+          "source_id": "cn-concealment-interpretation-2025-1-12",
+          "effective_from": "2025-08-26",
+          "effective_to": null,
+          "use_scope": "current_review_audit_only",
+          "application_time": "2026-09-18 review; not applied to 2024 conduct",
+          "applicable_to_conduct": false,
+          "signoff_status": "pending",
+          "public_eligible": false
+        },
+        {
+          "source_id": "cn-sentencing-guidance-2024-2",
+          "effective_from": "2024-07-01",
+          "effective_to": "2025-06-30",
+          "use_scope": "sentencing_reference",
+          "application_time": "2026-09-18 review; audit context only",
+          "applicable_to_conduct": false,
+          "signoff_status": "pending",
+          "public_eligible": false
+        },
+        {
+          "source_id": "cn-helping-opinion-2025-4-9",
+          "effective_from": "2025-07-22",
+          "effective_to": null,
+          "use_scope": "current_review_audit_only",
+          "application_time": "2026-09-18 review; not applied to 2024 conduct",
+          "applicable_to_conduct": false,
+          "signoff_status": "pending",
+          "public_eligible": false
+        }
+      ],
+      "scenarios": [
+        {
+          "scenario_id": "baseline-b-normal",
+          "path_kind": "normal",
+          "module": "sentencing",
+          "actor_id": "actor-b-huang",
+          "mutations": [],
+          "expected": {
+            "module_status": "waiting_review",
+            "analysis_status": "calculated",
+            "human_review_required": true,
+            "public_legal_conclusion": false,
+            "blockers": []
+          }
+        },
+        {
+          "scenario_id": "baseline-b-conflicted-fact",
+          "path_kind": "conflicted_fact",
+          "module": "conviction",
+          "actor_id": "actor-b-chen",
+          "mutations": [
+            {
+              "operation": "use_conflicted_fact",
+              "fact_id": "fact-b-042-knowledge"
+            }
+          ],
+          "expected": {
+            "module_status": "blocked",
+            "analysis_status": "blocked",
+            "human_review_required": true,
+            "public_legal_conclusion": false,
+            "blockers": [
+              {
+                "code": "FACT_CONFLICTED",
+                "subject_id": "fact-b-042-knowledge",
+                "reason": "The loan-processing defence conflicts with the adapted knowledge inference."
+              }
+            ]
+          }
+        }
+      ],
+      "t1_mapping": {
+        "datasetCaseId": "B",
+        "t3BundleId": "demo-case-b-proceeds",
+        "factsVersionSource": "T1 FactsView.version",
+        "sourceVersionSource": "T1 ModuleStateView.sourceVersion",
+        "requiredResultFields": ["datasetCaseId", "t3BundleId", "factsVersion", "sourceVersion"]
+      }
+    },
+    {
+      "case_code": "C",
+      "dataset_case_id": "C",
+      "t3_bundle_id": "demo-case-c-unit-crossborder",
+      "entity_counts": {
+        "actors": 6,
+        "events": 5,
+        "facts": 10,
+        "evidence": 12,
+        "relationships": 6
+      },
+      "source_bindings": [
+        {
+          "source_id": "cn-criminal-law-287-2-current",
+          "effective_from": "2015-11-01",
+          "effective_to": null,
+          "use_scope": "conduct_time",
+          "application_time": "2020-10",
+          "applicable_to_conduct": true,
+          "signoff_status": "pending",
+          "public_eligible": false
+        },
+        {
+          "source_id": "cn-criminal-law-266-current",
+          "effective_from": "1997-10-01",
+          "effective_to": null,
+          "use_scope": "candidate_comparison",
+          "application_time": "2020-10",
+          "applicable_to_conduct": true,
+          "signoff_status": "pending",
+          "public_eligible": false
+        },
+        {
+          "source_id": "cn-criminal-law-6-7-current",
+          "effective_from": "1997-10-01",
+          "effective_to": null,
+          "use_scope": "conduct_time",
+          "application_time": "2020-10 domestic conduct and result connections",
+          "applicable_to_conduct": true,
+          "signoff_status": "pending",
+          "public_eligible": false
+        },
+        {
+          "source_id": "cn-cybercrime-interpretation-2019-11-12",
+          "effective_from": "2019-11-01",
+          "effective_to": null,
+          "use_scope": "conduct_time",
+          "application_time": "2020-10",
+          "applicable_to_conduct": true,
+          "signoff_status": "pending",
+          "public_eligible": false
+        },
+        {
+          "source_id": "cn-telefraud-opinion-2016-common-crime",
+          "effective_from": "2016-12-19",
+          "effective_to": null,
+          "use_scope": "candidate_comparison",
+          "application_time": "2020-10",
+          "applicable_to_conduct": true,
+          "signoff_status": "pending",
+          "public_eligible": false
+        },
+        {
+          "source_id": "cn-sentencing-guidance-2024-2",
+          "effective_from": "2024-07-01",
+          "effective_to": "2025-06-30",
+          "use_scope": "sentencing_reference",
+          "application_time": "2026-09-18 review; audit context only",
+          "applicable_to_conduct": false,
+          "signoff_status": "pending",
+          "public_eligible": false
+        },
+        {
+          "source_id": "cn-helping-opinion-2025-4-9",
+          "effective_from": "2025-07-22",
+          "effective_to": null,
+          "use_scope": "current_review_audit_only",
+          "application_time": "2026-09-18 review; not applied to 2020 conduct",
+          "applicable_to_conduct": false,
+          "signoff_status": "pending",
+          "public_eligible": false
+        }
+      ],
+      "scenarios": [
+        {
+          "scenario_id": "baseline-c-normal",
+          "path_kind": "normal",
+          "module": "sentencing",
+          "actor_id": "actor-c-jia",
+          "mutations": [],
+          "expected": {
+            "module_status": "waiting_review",
+            "analysis_status": "calculated",
+            "human_review_required": true,
+            "public_legal_conclusion": false,
+            "blockers": []
+          }
+        },
+        {
+          "scenario_id": "baseline-c-missing-evidence",
+          "path_kind": "missing_evidence",
+          "module": "conviction",
+          "actor_id": "actor-c-yi",
+          "mutations": [
+            {
+              "operation": "remove_evidence",
+              "fact_id": "fact-c-yi-knowledge",
+              "evidence_id": "ev-c-03"
+            }
+          ],
+          "expected": {
+            "module_status": "blocked",
+            "analysis_status": "blocked",
+            "human_review_required": true,
+            "public_legal_conclusion": false,
+            "blockers": [
+              {
+                "code": "EVIDENCE_MISSING",
+                "subject_id": "fact-c-yi-knowledge",
+                "reason": "The management risk-report evidence was removed from the benchmark input."
+              }
+            ]
+          }
+        }
+      ],
+      "t1_mapping": {
+        "datasetCaseId": "C",
+        "t3BundleId": "demo-case-c-unit-crossborder",
+        "factsVersionSource": "T1 FactsView.version",
+        "sourceVersionSource": "T1 ModuleStateView.sourceVersion",
+        "requiredResultFields": ["datasetCaseId", "t3BundleId", "factsVersion", "sourceVersion"]
+      }
+    }
+  ]
+}
