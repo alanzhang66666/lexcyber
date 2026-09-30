@@ -234,6 +234,26 @@ class FactsBaselineServiceTest {
     }
 
     @Test
+    void documentReferencesMustBelongToTheCurrentCase() {
+        CaseView otherCase = cases.create(alice,
+                new CaseCreate("other-facts-" + shortId(), "CN", null, Map.of()));
+        String otherDocumentId = UUID.randomUUID().toString();
+        jdbc.update("""
+                INSERT INTO app.documents(
+                    id, case_id, filename, content_type, size, role, storage_key, sha256, parse_status)
+                VALUES (?::uuid, ?::uuid, 'other.pdf', 'application/pdf', 1, 'input', 'other/key', 'sha256', 'completed')
+                """, otherDocumentId, otherCase.id());
+
+        ApiException error = assertThrows(ApiException.class, () -> baseline.replaceEntities(
+                aliceCase.id(), "facts",
+                List.of(Map.of("id", "cross-case", "key", "source", "value", "blocked",
+                        "sourceDocumentId", otherDocumentId))));
+
+        assertEquals(HttpStatus.CONFLICT, error.status());
+        assertEquals("DOCUMENT_NOT_IN_CASE", error.code());
+    }
+
+    @Test
     void unconfirmedItemsKeepTheirVerificationStatusInSnapshot() {
         baseline.replaceEntities(aliceCase.id(), "facts", List.of(
                 Map.of("id", "f1", "key", "k1", "value", "v1", "verificationStatus", "candidate"),

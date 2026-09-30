@@ -282,7 +282,7 @@ public class FactsBaselineService {
                     VALUES (?::uuid, ?::uuid, ?, ?, ?, ?::uuid, ?::jsonb, ?::jsonb, ?)
                     """, entityIdOrNew(item), caseId, str(item.get("externalId")),
                     str(item.get("type")), str(item.get("label")),
-                    existingDocumentOrNull(str(item.get("documentId"))),
+                    existingDocumentOrNull(caseId, str(item.get("documentId"))),
                     item.get("locator") == null ? null : writeJson(item.get("locator")),
                     writeJson(item.getOrDefault("attributes", Map.of())), str(item.get("verificationStatus")));
         }
@@ -331,7 +331,7 @@ public class FactsBaselineService {
                     str(item.get("key")), str(item.get("value")) == null ? "" : str(item.get("value")),
                     str(item.get("stage")),
                     existingEntityOrNull(caseId, "actor", str(item.get("actorId"))), str(item.get("locator")),
-                    existingDocumentOrNull(str(item.get("sourceDocumentId"))),
+                    existingDocumentOrNull(caseId, str(item.get("sourceDocumentId"))),
                     writeJson(item.getOrDefault("evidenceIds", List.of())),
                     str(item.get("verificationStatus")), str(item.get("sourceVersion")),
                     writeJson(item.getOrDefault("attributes", Map.of())));
@@ -387,7 +387,7 @@ public class FactsBaselineService {
                     VALUES (?::uuid, ?, ?, ?, ?, ?::uuid, ?, ?::uuid, ?::jsonb, ?, ?, ?::jsonb)
                     """, caseId, str(item.get("id")), key.trim(), str(item.get("value")),
                     str(item.get("stage")), resolveEntityRef(caseId, "actor", item.get("actorId")),
-                    str(item.get("locator")), resolveDocumentId(item.get("sourceDocumentId")),
+                    str(item.get("locator")), resolveDocumentId(caseId, item.get("sourceDocumentId")),
                     writeJson(resolveEvidenceRefs(caseId, item.get("evidenceIds"))),
                     str(item.get("verificationStatus")), str(item.get("sourceVersion")),
                     writeJson(item.getOrDefault("attributes", Map.of())));
@@ -430,7 +430,7 @@ public class FactsBaselineService {
                                                   document_id, locator, attributes, verification_status)
                     VALUES (?::uuid, ?, ?, ?, ?::uuid, ?::jsonb, ?::jsonb, ?)
                     """, caseId, str(item.get("id")), str(item.get("type")), str(item.get("label")),
-                    resolveDocumentId(item.get("documentId")),
+                    resolveDocumentId(caseId, item.get("documentId")),
                     item.get("locator") == null ? null : writeJson(item.get("locator")),
                     writeJson(item.getOrDefault("attributes", Map.of())), str(item.get("verificationStatus")));
         }
@@ -632,19 +632,41 @@ public class FactsBaselineService {
         return resolved;
     }
 
-    private String resolveDocumentId(Object raw) {
+    private String resolveDocumentId(String caseId, Object raw) {
         String value = str(raw);
         if (value == null || value.isBlank()) {
             return null;
         }
         String trimmed = value.trim();
         if (IdentityService.isUuid(trimmed)) {
-            return trimmed;
+            List<String> rows = jdbc.query(
+                    "SELECT id::text FROM app.documents WHERE id = ?::uuid AND case_id = ?::uuid",
+                    (rs, ignored) -> rs.getString(1), trimmed, caseId);
+            if (rows.isEmpty()) {
+                throw new ApiException(HttpStatus.CONFLICT, "DOCUMENT_NOT_IN_CASE",
+                        "文档不存在或不属于当前案件");
+            }
+            return rows.get(0);
         }
         List<String> rows = jdbc.query(
+                """
+                SELECT m.uuid_id::text
+                FROM app.legacy_id_map m
+                JOIN app.documents d ON d.id = m.uuid_id
+                WHERE m.legacy_id = ? AND m.entity_kind = 'document' AND d.case_id = ?::uuid
+                """,
+                (rs, ignored) -> rs.getString(1), trimmed, caseId);
+        if (!rows.isEmpty()) {
+            return rows.get(0);
+        }
+        List<String> mapped = jdbc.query(
                 "SELECT uuid_id::text FROM app.legacy_id_map WHERE legacy_id = ? AND entity_kind = 'document'",
                 (rs, ignored) -> rs.getString(1), trimmed);
-        return rows.isEmpty() ? null : rows.get(0);
+        if (!mapped.isEmpty()) {
+            throw new ApiException(HttpStatus.CONFLICT, "DOCUMENT_NOT_IN_CASE",
+                    "文档不存在或不属于当前案件");
+        }
+        return null;
     }
 
     /** clone 路径专用：实体 uuid 仍存在才回填，否则置 NULL（快照可引用此后被删的行）。 */
@@ -672,13 +694,13 @@ public class FactsBaselineService {
     }
 
     /** clone 路径专用：快照中的 documentId 仍指向现存文档才回填，否则置 NULL（不伪造引用）。 */
-    private String existingDocumentOrNull(String documentId) {
+    private String existingDocumentOrNull(String caseId, String documentId) {
         if (documentId == null || documentId.isBlank()) {
             return null;
         }
         List<String> rows = jdbc.query(
-                "SELECT id::text FROM app.documents WHERE id = ?::uuid",
-                (rs, ignored) -> rs.getString(1), documentId);
+                "SELECT id::text FROM app.documents WHERE id = ?::uuid AND case_id = ?::uuid",
+                (rs, ignored) -> rs.getString(1), documentId, caseId);
         return rows.isEmpty() ? null : documentId;
     }
 

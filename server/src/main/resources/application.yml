@@ -7,7 +7,9 @@ spring:
     password: ${DATABASE_PASSWORD}
   flyway:
     enabled: true
-    locations: ${SPRING_FLYWAY_LOCATIONS:classpath:db/migration}
+    locations: ${SPRING_FLYWAY_LOCATIONS:classpath:db/migration/app}
+    schemas: ${SPRING_FLYWAY_SCHEMAS:app}
+    default-schema: ${SPRING_FLYWAY_DEFAULT_SCHEMA:app}
   servlet:
     multipart:
       max-file-size: 50MB

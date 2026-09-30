@@ -108,7 +108,9 @@ paths:
       security: [{ serviceToken: [] }]
       responses:
         '201': { description: Registered; returns rulePackageId + contentHash. }
-        '409': { description: Duplicate rule_id+rule_version, unknown source_ids, or invalid family. }
+        '409':
+          description: >-
+            Duplicate rule_id+rule_version, unknown source_ids, or invalid family.
   /internal/v1/registry/templates:
     post:
       summary: Register a template package version (pending review)

@@ -7,6 +7,22 @@ if [[ ! -f .env.v03 ]]; then
   echo "missing .env.v03" >&2
   exit 1
 fi
+
+read_env_value() {
+  local key="$1"
+  awk -F= -v wanted="$key" '$1 == wanted { sub(/^[^=]*=/, ""); print; exit }' .env.v03
+}
+
+for key in POSTGRES_PASSWORD APP_DB_PASSWORD ENGINE_DB_PASSWORD ENGINE_SERVICE_TOKEN MINIO_ROOT_PASSWORD; do
+  value="$(read_env_value "$key")"
+  case "$value" in
+    ""|change-me*|dev-*change-me*)
+      echo "$key must be a generated secret in .env.v03" >&2
+      exit 1
+      ;;
+  esac
+done
+
 if [[ ! -f demo-account.env ]]; then
   echo "missing demo-account.env" >&2
   exit 1

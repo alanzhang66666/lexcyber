@@ -38,6 +38,13 @@ def _canonical_hash(payload: dict[str, Any]) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def _require_pending_status(item: dict[str, Any], field: str, error_code: str) -> None:
+    """Reject client-supplied approval states; registration is always pending."""
+    requested = item.get(field)
+    if requested not in (None, "pending"):
+        raise RegistryError(error_code, f"{field} must be pending at registration")
+
+
 class RegistryError(Exception):
     def __init__(self, code: str, message: str):
         super().__init__(message)
@@ -56,6 +63,7 @@ def register_legal_source(item: dict[str, Any]) -> dict[str, Any]:
         raise RegistryError("INVALID_LEGAL_SOURCE", f"missing fields: {missing}")
     if item["authority"] not in AUTHORITIES:
         raise RegistryError("INVALID_LEGAL_SOURCE", f"unknown authority {item['authority']}")
+    _require_pending_status(item, "verification_level", "LEGAL_SOURCE_SIGNOFF_REQUIRED")
     content_hash = item.get("content_hash") or _canonical_hash({
         k: item.get(k) for k in (
             "source_key", "title", "document_number", "article", "jurisdiction",
@@ -79,7 +87,7 @@ def register_legal_source(item: dict[str, Any]) -> dict[str, Any]:
                     item["source_version"], item["effective_from"], item.get("effective_to"),
                     item.get("repeal_date"), item.get("official_url"), item.get("excerpt"),
                     content_hash, item.get("provenance"),
-                    item.get("verification_level", "pending"), Jsonb(item.get("coverage") or {}),
+                    "pending", Jsonb(item.get("coverage") or {}),
                 ),
             ).fetchone()
         except IntegrityError as exc:
@@ -177,6 +185,7 @@ def register_rule_package(item: dict[str, Any]) -> dict[str, Any]:
         raise RegistryError("INVALID_RULE_PACKAGE", f"missing fields: {missing}")
     if item["family"] not in FAMILIES:
         raise RegistryError("INVALID_RULE_PACKAGE", f"unknown family {item['family']}")
+    _require_pending_status(item, "legal_review_status", "RULE_SIGNOFF_REQUIRED")
     content_hash = item.get("content_hash") or _canonical_hash({
         k: item.get(k) for k in ("rule_id", "rule_version", "family", "predicate",
                                  "outcome", "source_ids", "coverage", "required_evidence_kinds")
@@ -203,7 +212,7 @@ def register_rule_package(item: dict[str, Any]) -> dict[str, Any]:
                 """,
                 (
                     item["rule_id"], item["rule_version"], item["family"],
-                    item.get("legal_review_status", "pending"),
+                    "pending",
                     item.get("effective_from"), item.get("effective_to"),
                     Jsonb(source_ids), Jsonb(item["predicate"]), Jsonb(item["outcome"]),
                     Jsonb(item.get("required_evidence_kinds") or []),
@@ -221,6 +230,7 @@ def register_template(item: dict[str, Any]) -> dict[str, Any]:
     missing = [k for k in required if not item.get(k)]
     if missing:
         raise RegistryError("INVALID_TEMPLATE", f"missing fields: {missing}")
+    _require_pending_status(item, "legal_review_status", "TEMPLATE_SIGNOFF_REQUIRED")
     content_hash = item.get("content_hash") or _canonical_hash({
         k: item.get(k) for k in ("template_id", "template_version", "doc_type",
                                  "field_schema", "body_template")
@@ -236,7 +246,7 @@ def register_template(item: dict[str, Any]) -> dict[str, Any]:
             """,
             (
                 item["template_id"], item["template_version"], item["doc_type"],
-                item.get("legal_review_status", "pending"),
+                "pending",
                 Jsonb(item.get("field_schema") or {}), item["body_template"], content_hash,
             ),
             )
@@ -271,6 +281,33 @@ def signoff(subject_kind: str, subject_key: str, reviewer: str, role: str,
                      "legal_source": "signed_off"}[subject_kind] if decision == "approved" \
         else {"rule": "rejected", "template": "rejected", "legal_source": "disputed"}[subject_kind]
     with connection() as conn:
+        if subject_kind == "rule" and decision == "approved":
+            source_row = conn.execute(
+                """
+                SELECT source_ids
+                FROM engine.rule_package
+                WHERE rule_id || '@' || rule_version = %s
+                """,
+                (subject_key,),
+            ).fetchone()
+            if source_row is None:
+                raise RegistryError("SIGNOFF_TARGET_NOT_FOUND", f"no rule matches {subject_key}")
+            source_ids = [str(source_id) for source_id in (source_row[0] or [])]
+            if source_ids:
+                signed_off = conn.execute(
+                    """
+                    SELECT COUNT(*)
+                    FROM engine.legal_source
+                    WHERE source_id = ANY(%s::uuid[])
+                      AND verification_level = 'signed_off'
+                    """,
+                    (source_ids,),
+                ).fetchone()[0]
+                if signed_off != len(source_ids):
+                    raise RegistryError(
+                        "LEGAL_SOURCE_SIGNOFF_REQUIRED",
+                        "all referenced legal sources must be signed_off before rule approval",
+                    )
         conn.execute("SELECT set_config('engine.signoff_authorized', 'on', true)")
         cur = conn.execute(
             "INSERT INTO engine.signoff_record(subject_kind, subject_key, reviewer, role, decision, comment)"
@@ -295,8 +332,21 @@ def capabilities() -> dict[str, Any]:
     """每个模块的可用性 = 所需 family 全部存在 approved 规则包。"""
     with connection() as conn:
         rows = conn.execute(
-            "SELECT family, rule_id, rule_version FROM engine.rule_package"
-            " WHERE legal_review_status = 'approved' ORDER BY family, rule_id"
+            """
+            SELECT rp.family, rp.rule_id, rp.rule_version
+            FROM engine.rule_package rp
+            WHERE rp.legal_review_status = 'approved'
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM jsonb_array_elements_text(COALESCE(rp.source_ids, '[]'::jsonb)) source_ref
+                  WHERE NOT EXISTS (
+                      SELECT 1 FROM engine.legal_source ls
+                      WHERE ls.source_id = source_ref::uuid
+                        AND ls.verification_level = 'signed_off'
+                  )
+              )
+            ORDER BY rp.family, rp.rule_id
+            """
         ).fetchall()
         templates = conn.execute(
             "SELECT template_id, template_version, doc_type FROM engine.template_package"
@@ -360,13 +410,22 @@ def active_rules(family: str, as_of: date | None = None) -> list[dict[str, Any]]
     with connection() as conn:
         rows = conn.execute(
             """
-            SELECT rule_package_id, rule_id, rule_version, source_ids, predicate, outcome,
-                   required_evidence_kinds, coverage, content_hash
-            FROM engine.rule_package
-            WHERE family = %s AND legal_review_status = 'approved'
-              AND (effective_from IS NULL OR effective_from <= COALESCE(%s, current_date))
-              AND (effective_to IS NULL OR effective_to >= COALESCE(%s, current_date))
-            ORDER BY rule_id
+            SELECT rp.rule_package_id, rp.rule_id, rp.rule_version, rp.source_ids, rp.predicate, rp.outcome,
+                   rp.required_evidence_kinds, rp.coverage, rp.content_hash
+            FROM engine.rule_package rp
+            WHERE rp.family = %s AND rp.legal_review_status = 'approved'
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM jsonb_array_elements_text(COALESCE(rp.source_ids, '[]'::jsonb)) source_ref
+                  WHERE NOT EXISTS (
+                      SELECT 1 FROM engine.legal_source ls
+                      WHERE ls.source_id = source_ref::uuid
+                        AND ls.verification_level = 'signed_off'
+                  )
+              )
+              AND (rp.effective_from IS NULL OR rp.effective_from <= COALESCE(%s, current_date))
+              AND (rp.effective_to IS NULL OR rp.effective_to >= COALESCE(%s, current_date))
+            ORDER BY rp.rule_id
             """,
             (family, as_of, as_of),
         ).fetchall()

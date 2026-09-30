@@ -200,6 +200,26 @@ class ModelAccessServiceTest {
                 any(ModelAccessConfigUpdate.class), any(byte[].class), any(byte[].class), anyString());
     }
 
+    @Test
+    void updateRejectsBaseUrlOutsideAllowlistBeforeWriting() {
+        ModelAccessStore store = mock(ModelAccessStore.class);
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        ModelAccessService service = new ModelAccessService(
+                store, jdbc, objectMapper, new SecretBox("encryption-secret"),
+                "openai", "model", "https://api.example/v1", "", 45.0,
+                "https://api.example/v1,https://api.allowed/v1");
+
+        ApiException error = assertThrows(ApiException.class, () -> service.update(
+                ACCOUNT_ID,
+                new ModelAccessConfigUpdate(
+                        "openai", "model", "https://evil.example/v1", null, 45.0)));
+
+        assertEquals(HttpStatus.FORBIDDEN, error.status());
+        assertEquals("MODEL_ENDPOINT_NOT_ALLOWED", error.code());
+        verify(store, never()).upsert(
+                any(ModelAccessConfigUpdate.class), any(byte[].class), any(byte[].class), anyString());
+    }
+
     private ModelAccessService service(ModelAccessStore store, JdbcTemplate jdbc, SecretBox box,
                                        String environmentApiKey) {
         return new ModelAccessService(
@@ -211,7 +231,9 @@ class ModelAccessServiceTest {
                 "environment-model",
                 "https://environment.example/v1",
                 environmentApiKey,
-                17.5);
+                17.5,
+                "https://environment.example/v1,https://stored.example/v1,"
+                        + "https://old.example/v1,https://new.example/v1");
     }
 
     private ModelAccessConfigUpdate update(String apiKey) {

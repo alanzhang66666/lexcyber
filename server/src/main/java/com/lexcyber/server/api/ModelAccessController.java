@@ -6,6 +6,7 @@ import com.lexcyber.server.auth.AuthAccount;
 import com.lexcyber.server.auth.AuthService;
 import com.lexcyber.server.settings.ModelAccessConfigUpdate;
 import com.lexcyber.server.settings.ModelAccessConfigView;
+import com.lexcyber.server.settings.ModelAccessAuthorization;
 import com.lexcyber.server.settings.ModelAccessService;
 import jakarta.validation.Valid;
 import java.util.LinkedHashSet;
@@ -28,18 +29,22 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/v1/settings/model-access")
 public class ModelAccessController {
     private final AuthService auth;
+    private final ModelAccessAuthorization authorization;
     private final ModelAccessService models;
     private final ApiExceptionHandler errors = new ApiExceptionHandler();
 
-    public ModelAccessController(AuthService auth, ModelAccessService models) {
+    public ModelAccessController(
+            AuthService auth, ModelAccessAuthorization authorization, ModelAccessService models) {
         this.auth = auth;
+        this.authorization = authorization;
         this.models = models;
     }
 
     @GetMapping
     public ModelAccessConfigView get(
             @RequestHeader(value = "Authorization", required = false) String authorization) {
-        auth.require(authorization);
+        AuthAccount account = auth.require(authorization);
+        this.authorization.requireAdministrator(account);
         return models.get();
     }
 
@@ -48,6 +53,7 @@ public class ModelAccessController {
             @Valid @RequestBody ModelAccessConfigUpdate update,
             @RequestHeader(value = "Authorization", required = false) String authorization) {
         AuthAccount account = auth.require(authorization);
+        this.authorization.requireAdministrator(account);
         return models.update(account.id(), update);
     }
 

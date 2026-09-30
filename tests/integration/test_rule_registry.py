@@ -41,7 +41,7 @@ def _source(key: str, version: str, frm: str, to: str | None = None):
     return {
         "source_key": key, "title": "测试法源", "authority": "judicial_interpretation",
         "source_version": version, "effective_from": frm, "effective_to": to,
-        "verification_level": "verified", "coverage": {"covers": [f"cov.{key}"]},
+        "verification_level": "pending", "coverage": {"covers": [f"cov.{key}"]},
     }
 
 
@@ -61,6 +61,64 @@ def test_register_duplicate_rejected(subject_prefix):
     with pytest.raises(RegistryError) as err:
         registry.register_legal_source(_source(key, "v1", "2020-01-01"))
     assert err.value.code == "LEGAL_SOURCE_EXISTS"
+
+
+def test_registration_rejects_client_supplied_approval_status(subject_prefix):
+    with pytest.raises(RegistryError) as source_error:
+        registry.register_legal_source({
+            **_source(f"{subject_prefix}-status", "v1", "2020-01-01"),
+            "verification_level": "signed_off",
+        })
+    assert source_error.value.code == "LEGAL_SOURCE_SIGNOFF_REQUIRED"
+
+    with pytest.raises(RegistryError) as rule_error:
+        registry.register_rule_package({
+            **_rule(f"{subject_prefix}-status-rule", "1"),
+            "legal_review_status": "approved",
+        })
+    assert rule_error.value.code == "RULE_SIGNOFF_REQUIRED"
+
+    with pytest.raises(RegistryError) as template_error:
+        registry.register_template({
+            "template_id": f"{subject_prefix}-status-template",
+            "template_version": "1",
+            "doc_type": "memo",
+            "body_template": "正文",
+            "legal_review_status": "approved",
+        })
+    assert template_error.value.code == "TEMPLATE_SIGNOFF_REQUIRED"
+
+
+def test_rule_approval_requires_signed_off_sources(subject_prefix):
+    source_key = f"{subject_prefix}-source"
+    source_id = registry.register_legal_source(_source(source_key, "v1", "2020-01-01"))["sourceId"]
+    rule_id = f"{subject_prefix}-rule-source"
+    registry.register_rule_package(_rule(rule_id, "1", sources=[source_id]))
+
+    with pytest.raises(RegistryError) as error:
+        registry.signoff("rule", f"{rule_id}@1", "it-reviewer", "reviewer", "approved")
+    assert error.value.code == "LEGAL_SOURCE_SIGNOFF_REQUIRED"
+
+    registry.signoff("legal_source", f"{source_key}@v1", "it-reviewer", "reviewer", "approved")
+    registry.signoff("rule", f"{rule_id}@1", "it-reviewer", "reviewer", "approved")
+    assert any(row["ruleId"] == rule_id for row in registry.active_rules("compliance"))
+
+
+def test_capabilities_exclude_approved_rule_with_unsigned_source(subject_prefix):
+    source_key = f"{subject_prefix}-cap-source"
+    source_id = registry.register_legal_source(_source(source_key, "v1", "2020-01-01"))["sourceId"]
+    rule_id = f"{subject_prefix}-cap-rule"
+    registry.register_rule_package(_rule(rule_id, "1", sources=[source_id]))
+    with connection() as conn:
+        conn.execute("SELECT set_config('engine.signoff_authorized','on',true)")
+        conn.execute(
+            "UPDATE engine.rule_package SET legal_review_status='approved' WHERE rule_id=%s",
+            (rule_id,),
+        )
+
+    assert not any(row["ruleId"] == rule_id for row in registry.active_rules("compliance"))
+    capabilities = registry.capabilities()
+    assert rule_id not in capabilities["modules"]["compliance"]["approvedRules"]["compliance"]
 
 
 def test_signoff_required_for_approval(subject_prefix):

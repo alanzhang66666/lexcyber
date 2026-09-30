@@ -79,6 +79,7 @@ jobs:
       - name: Validate contracts
         run: |
           openapi-spec-validator contracts/public-api.yaml
+          openapi-spec-validator contracts/public-api-v2.yaml
           openapi-spec-validator contracts/internal-engine-api.yaml
           python scripts/check_openapi_snapshot.py
 

@@ -5,12 +5,15 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lexcyber.server.api.ApiException;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -47,6 +50,7 @@ public class ModelAccessService {
     private final String environmentApiBaseUrl;
     private final String environmentApiKey;
     private final double environmentTimeoutSeconds;
+    private final Set<String> allowedApiBaseUrls;
 
     /** Spring construction using the application.yml/environment placeholders. */
     @Autowired
@@ -59,9 +63,10 @@ public class ModelAccessService {
             @Value("${MODEL_NAME:stub-general-v1}") String modelName,
             @Value("${MODEL_API_BASE_URL:https://api.openai.com/v1}") String apiBaseUrl,
             @Value("${MODEL_API_KEY:}") String apiKey,
-            @Value("${MODEL_TIMEOUT_SECONDS:45}") String timeoutSeconds) {
+            @Value("${MODEL_TIMEOUT_SECONDS:45}") String timeoutSeconds,
+            @Value("${MODEL_API_BASE_URL_ALLOWLIST:}") String apiBaseUrlAllowlist) {
         this(store, jdbc, objectMapper, new SecretBox(encryptionKey),
-                provider, modelName, apiBaseUrl, apiKey, parseTimeout(timeoutSeconds));
+                provider, modelName, apiBaseUrl, apiKey, parseTimeout(timeoutSeconds), apiBaseUrlAllowlist);
     }
 
     /**
@@ -79,6 +84,21 @@ public class ModelAccessService {
             String apiBaseUrl,
             String apiKey,
             double timeoutSeconds) {
+        this(store, jdbc, objectMapper, secretBox, provider, modelName, apiBaseUrl, apiKey,
+                timeoutSeconds, "");
+    }
+
+    public ModelAccessService(
+            ModelAccessStore store,
+            JdbcTemplate jdbc,
+            ObjectMapper objectMapper,
+            SecretBox secretBox,
+            String provider,
+            String modelName,
+            String apiBaseUrl,
+            String apiKey,
+            double timeoutSeconds,
+            String apiBaseUrlAllowlist) {
         this.store = Objects.requireNonNull(store, "store");
         this.jdbc = Objects.requireNonNull(jdbc, "jdbc");
         this.objectMapper = Objects.requireNonNull(objectMapper, "objectMapper");
@@ -89,6 +109,7 @@ public class ModelAccessService {
         this.environmentApiKey = apiKey == null ? "" : apiKey;
         this.environmentTimeoutSeconds = validTimeout(timeoutSeconds)
                 ? timeoutSeconds : DEFAULT_TIMEOUT_SECONDS;
+        this.allowedApiBaseUrls = parseBaseUrlAllowlist(apiBaseUrlAllowlist, this.environmentApiBaseUrl);
     }
 
     /** Return the effective public configuration without returning key material. */
@@ -133,6 +154,13 @@ public class ModelAccessService {
         Objects.requireNonNull(accountId, "accountId");
         if (update == null) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_MODEL_CONFIG", "model config is required");
+        }
+        String requestedBaseUrl = canonicalBaseUrl(update.apiBaseUrl());
+        if (!allowedApiBaseUrls.contains(requestedBaseUrl)) {
+            throw new ApiException(
+                    HttpStatus.FORBIDDEN,
+                    "MODEL_ENDPOINT_NOT_ALLOWED",
+                    "model API base URL is not allowlisted");
         }
 
         Optional<ModelAccessStore.StoredConfig> beforeStored = store.findGlobal();
@@ -277,6 +305,27 @@ public class ModelAccessService {
 
     private static boolean validTimeout(double value) {
         return Double.isFinite(value) && value > 0;
+    }
+
+    private static Set<String> parseBaseUrlAllowlist(String configured, String environmentBaseUrl) {
+        if (configured == null || configured.isBlank()) {
+            return Set.of(canonicalBaseUrl(environmentBaseUrl));
+        }
+        return Arrays.stream(configured.split(","))
+                .map(ModelAccessService::canonicalBaseUrl)
+                .filter(value -> !value.isBlank())
+                .collect(Collectors.toUnmodifiableSet());
+    }
+
+    private static String canonicalBaseUrl(String value) {
+        if (value == null) {
+            return "";
+        }
+        String normalized = value.trim();
+        while (normalized.endsWith("/") && normalized.length() > "https://".length()) {
+            normalized = normalized.substring(0, normalized.length() - 1);
+        }
+        return normalized;
     }
 
     /** Effective configuration for the trusted internal engine path. */

@@ -42,7 +42,8 @@ echo '/swapfile none swap sw 0 0' >> /etc/fstab
 
 ```bash
 cd /opt/lexcyber
-# 先打开 demo-account.env 与 .env.v03，确认密码
+# 先准备 demo-account.env 与 .env.v03；五项基础密钥必须使用随机值，不能保留空值或 change-me
+# 可用 `openssl rand -hex 32` 生成密钥，并按需设置 MODEL_CONFIG_ADMIN_USERNAMES
 chmod +x start-on-ecs.sh deploy/*.sh
 ./start-on-ecs.sh
 ```

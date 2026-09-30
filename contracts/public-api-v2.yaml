@@ -28,6 +28,7 @@ paths:
       parameters: [{ $ref: '#/components/parameters/CaseId' }]
       responses:
         '200':
+          description: FactsVersion 历史列表。
           content:
             application/json:
               schema:
@@ -47,6 +48,7 @@ paths:
         - { $ref: '#/components/parameters/FactsVersionId' }
       responses:
         '200':
+          description: FactsVersion 明细及不可变 payload。
           content:
             application/json:
               schema: { $ref: '#/components/schemas/FactsVersionDetailView' }
@@ -66,6 +68,7 @@ paths:
           description: 基准版本 id；返回从 against 到 factsVersionId 的差异
       responses:
         '200':
+          description: 两个事实版本之间的差异。
           content:
             application/json:
               schema: { $ref: '#/components/schemas/FactsDiffView' }
@@ -125,6 +128,7 @@ paths:
       parameters: [{ $ref: '#/components/parameters/CaseId' }]
       responses:
         '200':
+          description: 当前可编辑的六类事实实体。
           content:
             application/json:
               schema: { $ref: '#/components/schemas/FactsEntitiesView' }
@@ -144,6 +148,7 @@ paths:
             schema: { $ref: '#/components/schemas/FactsEntitiesUpdate' }
       responses:
         '200':
+          description: 替换后的当前事实实体全集。
           content:
             application/json:
               schema: { $ref: '#/components/schemas/FactsEntitiesView' }
@@ -161,6 +166,7 @@ paths:
       parameters: [{ $ref: '#/components/parameters/CaseId' }]
       responses:
         '200':
+          description: 当前事实基线指针。
           content:
             application/json:
               schema: { $ref: '#/components/schemas/FactsHeadView' }
@@ -190,6 +196,7 @@ paths:
       parameters: [{ $ref: '#/components/parameters/ExecutionId' }]
       responses:
         '200':
+          description: 执行技术状态。
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ExecutionView' }
@@ -202,6 +209,7 @@ paths:
       parameters: [{ $ref: '#/components/parameters/ArtifactVersionId' }]
       responses:
         '200':
+          description: 工件版本及其依赖快照。
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ArtifactVersionView' }
@@ -216,6 +224,7 @@ paths:
         - { $ref: '#/components/parameters/ModuleName' }
       responses:
         '200':
+          description: 模块 latest、confirmed 和 stale 指针。
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ModuleHeadView' }
@@ -233,6 +242,7 @@ paths:
             schema: { $ref: '#/components/schemas/ReviewOpenRequest' }
       responses:
         '201':
+          description: 已创建复核记录。
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ReviewView' }
@@ -244,6 +254,7 @@ paths:
       parameters: [{ $ref: '#/components/parameters/ArtifactVersionId' }]
       responses:
         '200':
+          description: 该工件版本的复核历史。
           content:
             application/json:
               schema:
@@ -313,6 +324,7 @@ paths:
       parameters: [{ $ref: '#/components/parameters/DraftId' }]
       responses:
         '200':
+          description: 文书指针视图。
           content:
             application/json:
               schema: { $ref: '#/components/schemas/DraftHeadView' }
@@ -333,6 +345,7 @@ paths:
                 archiveProfile: { type: string, default: case.full.v1 }
       responses:
         '201':
+          description: 已创建案件归档 manifest。
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ArchiveView' }
@@ -352,6 +365,7 @@ paths:
         - { $ref: '#/components/parameters/ArchiveId' }
       responses:
         '200':
+          description: 案件归档 manifest。
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ArchiveView' }
