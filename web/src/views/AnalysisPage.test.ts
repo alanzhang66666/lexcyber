@@ -116,4 +116,38 @@ describe('AnalysisPage', () => {
     expect(getFactsHead).toHaveBeenCalledWith('srv-c')
     wrapper.unmount()
   })
+
+  it('shows a proactive notice when facts are not confirmed', async () => {
+    vi.spyOn(api, 'getCase').mockResolvedValue({
+      id: 'srv-nc', title: '未确认案', createdAt: 't', updatedAt: 't',
+    })
+    vi.spyOn(apiV2, 'getFactsHead').mockResolvedValue({
+      caseId: 'srv-nc', confirmedFactsVersionId: null, updatedAt: null,
+    })
+    const wrapper = await mountAnalysis('srv-nc')
+    expect(wrapper.text()).toContain('案件事实尚未确认')
+    wrapper.unmount()
+  })
+
+  it('offers retry when the sentencing task failed', async () => {
+    vi.spyOn(api, 'getCase').mockResolvedValue({
+      id: 'srv-f', title: '失败案', createdAt: 't', updatedAt: 't',
+    })
+    vi.spyOn(apiV2, 'getFactsHead').mockResolvedValue({
+      caseId: 'srv-f', confirmedFactsVersionId: null, updatedAt: null,
+    })
+    vi.spyOn(api, 'listReviews').mockResolvedValue({
+      items: [{ id: 'r1', caseId: 'srv-f', taskId: 'task-f', resultVersion: 1, status: 'pending', decision: 'none' }],
+      page: 0, size: 100, total: 1,
+    })
+    vi.spyOn(api, 'getTask').mockResolvedValue({
+      id: 'task-f', requestId: 'r', executionId: 'e', caseId: 'srv-f',
+      status: 'failed', currentStage: 'sentencing', result: null,
+      errorCode: 'ERR', error: 'boom', createdAt: 't', updatedAt: 't',
+    })
+    const wrapper = await mountAnalysis('srv-f')
+    expect(wrapper.text()).toContain('重放失败')
+    expect(wrapper.findAll('button').some((b) => b.text().includes('重试'))).toBe(true)
+    wrapper.unmount()
+  })
 })

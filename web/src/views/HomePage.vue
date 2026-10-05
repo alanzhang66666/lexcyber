@@ -94,6 +94,9 @@ onMounted(() => {
             </div>
           </article>
           <div class="home-float-hub">
+            <svg class="home-strips" viewBox="0 0 160 160" aria-hidden="true">
+              <circle class="home-strip-ring" cx="80" cy="80" r="64" />
+            </svg>
             <img :src="logoUrl" alt="" />
           </div>
           <article class="home-float home-float-review">
