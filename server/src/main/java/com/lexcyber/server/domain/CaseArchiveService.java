@@ -40,14 +40,33 @@ public class CaseArchiveService {
         if (factsRows.isEmpty() || !factsRows.get(0)) {
             gaps.add(new Gap("facts_not_confirmed", "事实基线未确认"));
         }
-        jdbc.query("""
-                SELECT module FROM app.module_head
-                WHERE case_id = ?::uuid AND NOT (confirmed_version_id IS NOT NULL AND NOT stale)
-                """, (rs, ignored) -> gaps.add(new Gap("module_not_confirmed", rs.getString(1))), caseId);
-        jdbc.query("""
-                SELECT dh.draft_id FROM app.draft_head dh
-                WHERE dh.case_id = ?::uuid AND NOT (dh.approved_version_id IS NOT NULL AND NOT dh.stale)
-                """, (rs, ignored) -> gaps.add(new Gap("draft_not_approved", rs.getString(1))), caseId);
+        // case.full.v1 requires every module, including a confirmed not_applicable
+        // compliance artifact, and an approved draft.
+        for (String module : List.of("compliance", "conviction", "sentencing")) {
+            List<String> confirmed = jdbc.query("""
+                    SELECT module FROM app.module_head
+                    WHERE case_id = ?::uuid AND module = ?
+                      AND confirmed_version_id IS NOT NULL AND NOT stale
+                    """, (rs, ignored) -> rs.getString(1), caseId, module);
+            if (confirmed.isEmpty()) {
+                gaps.add(new Gap("module_not_confirmed", module));
+            }
+        }
+        List<String> draftGaps = jdbc.query("""
+                SELECT dh.draft_id::text FROM app.draft_head dh
+                WHERE dh.case_id = ?::uuid
+                  AND NOT (dh.approved_version_id IS NOT NULL AND NOT dh.stale)
+                """, (rs, ignored) -> rs.getString(1), caseId);
+        if (draftGaps.isEmpty()) {
+            boolean hasDraft = Boolean.TRUE.equals(jdbc.queryForObject("""
+                    SELECT EXISTS (SELECT 1 FROM app.draft_head WHERE case_id = ?::uuid)
+                    """, Boolean.class, caseId));
+            if (!hasDraft) {
+                gaps.add(new Gap("draft_not_approved", "draft"));
+            }
+        } else {
+            draftGaps.forEach(draft -> gaps.add(new Gap("draft_not_approved", draft)));
+        }
         return gaps;
     }
 
@@ -118,6 +137,30 @@ public class CaseArchiveService {
         String manifestHash = FactsBaselineService.sha256(
                 caseId + "|" + factsVersionId + "|" + String.join(";", sorted));
 
+        // The case row lock serializes this lookup with insertion. A retry for an
+        // identical frozen state returns the immutable archive and does not consume
+        // another archive version.
+        List<Map<String, Object>> existingRows = jdbc.queryForList("""
+                SELECT archive_id, case_id, archive_version, archive_profile,
+                       facts_version_id, manifest_hash, created_at
+                FROM app.case_archive
+                WHERE case_id = ?::uuid AND manifest_hash = ?
+                """, caseId, manifestHash);
+        if (!existingRows.isEmpty()) {
+            Map<String, Object> existing = existingRows.get(0);
+            existing.put("created_at", jdbc.queryForObject("""
+                    SELECT created_at FROM app.case_archive WHERE archive_id = ?
+                    """, (rs, ignored) -> rs.getObject("created_at", OffsetDateTime.class),
+                    existing.get("archive_id")));
+            List<Map<String, Object>> existingItems = jdbc.queryForList("""
+                    SELECT artifact_version_id, role
+                    FROM app.case_archive_item
+                    WHERE archive_id = ?
+                    ORDER BY role, artifact_version_id
+                    """, existing.get("archive_id"));
+            return archiveResponse(existing, existingItems);
+        }
+
         Integer archiveVersion = jdbc.queryForObject(
                 "SELECT next_archive_version FROM app.cases WHERE id = ?::uuid",
                 Integer.class, caseId);
@@ -148,6 +191,22 @@ public class CaseArchiveService {
         result.put("factsVersionId", factsVersionId);
         result.put("manifestHash", manifestHash);
         result.put("createdAt", createdAt);
+        result.put("items", items.stream().map(item -> Map.of(
+                "artifactVersionId", item.get("artifact_version_id"),
+                "role", item.get("role"))).toList());
+        return result;
+    }
+
+    private Map<String, Object> archiveResponse(Map<String, Object> archive,
+                                                 List<Map<String, Object>> items) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("archiveId", archive.get("archive_id"));
+        result.put("caseId", archive.get("case_id"));
+        result.put("archiveVersion", archive.get("archive_version"));
+        result.put("archiveProfile", archive.get("archive_profile"));
+        result.put("factsVersionId", archive.get("facts_version_id"));
+        result.put("manifestHash", archive.get("manifest_hash"));
+        result.put("createdAt", archive.get("created_at"));
         result.put("items", items.stream().map(item -> Map.of(
                 "artifactVersionId", item.get("artifact_version_id"),
                 "role", item.get("role"))).toList());

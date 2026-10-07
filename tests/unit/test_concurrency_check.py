@@ -79,6 +79,18 @@ def test_require_all_turns_skip_into_failure(monkeypatch):
     assert check.main() == 1
 
 
+def test_ci_facts_contains_all_synthetic_rule_predicates():
+    facts = {item["key"]: item["value"] for item in check.ci_facts()}
+    assert facts == {
+        "ci_case_label": "concurrency-check",
+        "ci_confirmed_marker": "yes",
+        "ci_compliance_flag": True,
+        "ci_conviction_flag": True,
+        "ci_distinction_flag": True,
+        "ci_sentencing_flag": True,
+    }
+
+
 @pytest.mark.parametrize("race_result", [
     (201, {"caseId": "case", "factsVersionId": "facts-1",
            "items": [{"artifactVersionId": "wrong", "role": "conviction"}]}),
@@ -112,17 +124,24 @@ def test_archive_race_is_concurrent_and_rejects_invalid_outcome(monkeypatch, rac
         raise AssertionError((method, path))
 
     monkeypatch.setattr(check, "request", fake_request)
-    result = check.check_archive_interleave("http://java", "token", "case")
+    context = {
+        "targetArtifactId": "version-1", "targetVersion": 1,
+        "factsVersionId": "facts-1", "reviewId": "review-1",
+        "items": [{"artifactVersionId": "version-1", "role": "draft"}],
+    }
+    result = check.check_archive_interleave("http://java", "token", "case", context)
     assert result.startswith("FAIL archive-interleave")
     assert len(barrier_threads) == 2
 
 
 def test_archive_manifest_requires_single_confirmed_conviction_item():
+    expected = [{"artifactVersionId": artifact, "role": role} for artifact, role in (
+        ("compliance-v", "compliance"), ("conviction-v", "conviction"),
+        ("sentencing-v", "sentencing"), ("draft-v", "draft"))]
     assert check.verify_archive_manifest(
         {"caseId": "case", "factsVersionId": "facts",
-         "items": [{"artifactVersionId": "version", "role": "conviction"}]},
-        "case", "version", "facts")
+         "items": expected}, "case", "facts", expected)
     assert not check.verify_archive_manifest(
         {"caseId": "case", "factsVersionId": "facts",
-         "items": [{"artifactVersionId": "other", "role": "conviction"}]},
-        "case", "version", "facts")
+         "items": expected[:-1] + [{"artifactVersionId": "other", "role": "draft"}]},
+        "case", "facts", expected)

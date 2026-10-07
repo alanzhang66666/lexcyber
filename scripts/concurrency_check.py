@@ -82,6 +82,19 @@ def register(base: str) -> str:
     return str(body["token"])
 
 
+def ci_facts(*extra: dict[str, Any]) -> list[dict[str, Any]]:
+    """Facts predicates consumed by the CI synthetic rule/evaluator fixtures."""
+    return [
+        {"key": "ci_case_label", "value": "concurrency-check", "verificationStatus": "confirmed"},
+        {"key": "ci_confirmed_marker", "value": "yes", "verificationStatus": "confirmed"},
+        {"key": "ci_compliance_flag", "value": True, "verificationStatus": "confirmed"},
+        {"key": "ci_conviction_flag", "value": True, "verificationStatus": "confirmed"},
+        {"key": "ci_distinction_flag", "value": True, "verificationStatus": "confirmed"},
+        {"key": "ci_sentencing_flag", "value": True, "verificationStatus": "confirmed"},
+        *extra,
+    ]
+
+
 def setup_case(base: str, token: str) -> str:
     created = obj(*request(base, "POST", "/v1/cases", token=token, json_body={
         "title": f"concurrency-check-{int(time.time())}",
@@ -89,16 +102,25 @@ def setup_case(base: str, token: str) -> str:
     }), 201, "create case")
     case_id = str(created["id"])
     status, body = request(base, "PUT", f"/v2/cases/{case_id}/facts-entities/facts",
-                           token=token, json_body={"items": [
-                               {"key": "knowledge_of_crime", "value": "true",
-                                "verificationStatus": "confirmed"},
-                               {"key": "ci_conviction_flag", "value": "true",
-                                "verificationStatus": "confirmed"},
-                               {"key": "ci_distinction_flag", "value": "true",
-                                "verificationStatus": "confirmed"},
-                           ]})
+                           token=token, json_body={"items": ci_facts()})
     if status not in (200, 204):
         raise SystemExit(f"write facts {status} {body}")
+    for kind, items in {
+        "actors": [{"id": "ci-actor-1", "type": "person", "name": "CI fixture",
+                    "role": "subject", "verificationStatus": "confirmed"}],
+        "events": [{"id": "ci-event-1", "date": "2026-01-01", "stage": "fixture",
+                    "description": "synthetic CI event", "verificationStatus": "confirmed"}],
+        "evidence": [{"id": "ci-evidence-1", "type": "document", "label": "CI fixture evidence",
+                      "verificationStatus": "confirmed"}],
+        "amounts": [{"id": "ci-amount-1", "kind": "crime_amount", "label": "CI fixture amount",
+                     "value": "6", "currency": "CNY", "verificationStatus": "confirmed"}],
+        "jurisdiction-connections": [{"id": "ci-jurisdiction-1", "type": "territory",
+                                       "value": "CI", "verificationStatus": "confirmed"}],
+    }.items():
+        status, body = request(base, "PUT", f"/v2/cases/{case_id}/facts-entities/{kind}",
+                               token=token, json_body={"items": items})
+        if status not in (200, 204):
+            raise SystemExit(f"write {kind} {status} {body}")
     return case_id
 
 
@@ -113,16 +135,8 @@ def check_double_confirm(base: str, token: str, case_id: str) -> str:
              201, "create facts version 1")
     v1_id = str(v1.get("factsVersionId") or v1.get("id"))
     request(base, "PUT", f"/v2/cases/{case_id}/facts-entities/facts", token=token,
-            json_body={"items": [
-                {"key": "knowledge_of_crime", "value": "true",
-                 "verificationStatus": "confirmed"},
-                {"key": "ci_conviction_flag", "value": "true",
-                 "verificationStatus": "confirmed"},
-                {"key": "ci_distinction_flag", "value": "true",
-                 "verificationStatus": "confirmed"},
-                {"key": "concurrency_marker", "value": "v2",
-                 "verificationStatus": "candidate"},
-            ]})
+            json_body={"items": ci_facts(
+                {"key": "concurrency_marker", "value": "v2", "verificationStatus": "candidate"})})
     v2 = obj(*request(base, "POST", f"/v2/cases/{case_id}/facts-versions", token=token),
              201, "create facts version 2")
     v2_id = str(v2.get("factsVersionId") or v2.get("id"))
@@ -159,6 +173,78 @@ def wait_execution(base: str, token: str, execution_id: str, limit: int = 80) ->
                 return body
         time.sleep(1.5)
     raise SystemExit(f"execution {execution_id} did not reach terminal state")
+
+
+def prepare_archive_case(base: str, token: str, case_id: str) -> dict[str, Any]:
+    """Build the complete case.full.v1 fixture, leaving the draft review pending."""
+    modules: dict[str, dict[str, Any]] = {}
+    # double-publish leaves conviction's latest review pending; approve it before
+    # rendering the draft so the draft dependency snapshot is complete.
+    conviction_head = obj(*request(base, "GET", f"/v2/cases/{case_id}/modules/conviction", token=token),
+                          200, "conviction head")
+    conviction_id = str(conviction_head.get("latestVersionId"))
+    conviction = obj(*request(base, "GET", f"/v2/artifact-versions/{conviction_id}", token=token),
+                     200, "conviction artifact")
+    conviction_reviews = obj(*request(base, "GET", f"/v2/artifact-versions/{conviction_id}/reviews",
+                                      token=token), 200, "conviction reviews")
+    conviction_pending = [r for r in conviction_reviews.get("items", [])
+                          if r.get("status") == "pending"]
+    if len(conviction_pending) != 1:
+        raise RuntimeError(f"expected one pending conviction review: {conviction_reviews}")
+    decision = request(base, "POST", f"/v1/reviews/{conviction_pending[0]['reviewId']}/approve",
+                       token=token, json_body={"resultVersion": conviction["version"]})
+    if decision[0] != 200 or decision[1].get("status") != "approved":
+        raise RuntimeError(f"approve conviction review failed: {decision}")
+    modules["conviction"] = conviction
+
+    for module in ("compliance", "sentencing"):
+        dispatched = obj(*request(base, "POST", f"/v2/cases/{case_id}/modules/{module}/executions",
+                                 token=token), 202, f"dispatch {module}")
+        view = wait_execution(base, token, str(dispatched["executionId"]))
+        if str(view.get("state") or view.get("status")) != "completed":
+            raise RuntimeError(f"{module} execution did not complete: {view}")
+        head = obj(*request(base, "GET", f"/v2/cases/{case_id}/modules/{module}", token=token),
+                   200, f"{module} head")
+        artifact_id = str(head.get("latestVersionId"))
+        artifact = obj(*request(base, "GET", f"/v2/artifact-versions/{artifact_id}", token=token),
+                       200, f"{module} artifact")
+        if artifact.get("outcomeStatus") != "calculated":
+            raise RuntimeError(f"{module} artifact is not calculated: {artifact}")
+        opened = obj(*request(base, "POST", f"/v2/artifact-versions/{artifact_id}/reviews",
+                              token=token, json_body={"comment": "concurrency fixture review"}),
+                     201, f"open {module} review")
+        decision = request(base, "POST", f"/v1/reviews/{opened['reviewId']}/approve",
+                           token=token, json_body={"resultVersion": artifact["version"]})
+        if decision[0] != 200 or decision[1].get("status") != "approved":
+            raise RuntimeError(f"approve {module} review failed: {decision}")
+        modules[module] = artifact
+
+    rendered = obj(*request(base, "POST", f"/v2/cases/{case_id}/drafts/render", token=token,
+                            json_body={"docType": "ci.review_note"}), 201, "render draft")
+    wait_execution(base, token, str(rendered["executionId"]))
+    draft_id = str(rendered["draftId"])
+    draft_head = obj(*request(base, "GET", f"/v2/drafts/{draft_id}", token=token), 200, "draft head")
+    draft_artifact_id = str(draft_head["latestVersionId"])
+    draft = obj(*request(base, "GET", f"/v2/artifact-versions/{draft_artifact_id}", token=token),
+                200, "draft artifact")
+    if draft.get("outcomeStatus") != "calculated":
+        raise RuntimeError(f"draft artifact is not calculated: {draft}")
+    opened = obj(*request(base, "POST", f"/v2/artifact-versions/{draft_artifact_id}/reviews",
+                          token=token, json_body={"comment": "concurrency draft review"}),
+                 201, "open draft review")
+    facts = obj(*request(base, "GET", f"/v2/cases/{case_id}/facts-head", token=token),
+                200, "archive facts head")
+    return {
+        "factsVersionId": facts.get("confirmedFactsVersionId"),
+        "targetArtifactId": draft_artifact_id,
+        "targetVersion": draft["version"],
+        "reviewId": str(opened["reviewId"]),
+        "items": [{"artifactVersionId": str(item["artifactVersionId"]), "role": role}
+                  for role, item in (("compliance", modules["compliance"]),
+                                     ("conviction", modules["conviction"]),
+                                     ("sentencing", modules["sentencing"]),
+                                     ("draft", draft))],
+    }
 
 
 def check_double_publish(base: str, token: str, case_id: str,
@@ -222,33 +308,14 @@ def check_double_publish(base: str, token: str, case_id: str,
             f"version {version_before}→{version_after}")
 
 
-def check_archive_interleave(base: str, token: str, case_id: str) -> str:
+def check_archive_interleave(base: str, token: str, case_id: str,
+                             context: dict[str, Any]) -> str:
     """用例 3：复核未决时归档 + 批准后归档，全程无 5xx、行为确定。"""
-    head = obj(*request(base, "GET", f"/v2/cases/{case_id}/modules/conviction",
-                        token=token), 200, "module head")
-    latest = head.get("latestVersionId")
-    if not latest:
-        return "SKIP archive-interleave → 无定罪工件（需先跑通用例 2 或已派发）"
-    artifact = obj(*request(base, "GET", f"/v2/artifact-versions/{latest}", token=token),
-                   200, "artifact")
-    version = artifact.get("version")
-    facts_head = obj(*request(base, "GET", f"/v2/cases/{case_id}/facts-head", token=token),
-                     200, "facts head for archive")
-    confirmed_facts = facts_head.get("confirmedFactsVersionId")
+    version = context["targetVersion"]
+    confirmed_facts = context["factsVersionId"]
+    expected_items = context["items"]
 
-    listed_status, listed = request(base, "GET", f"/v2/artifact-versions/{latest}/reviews", token=token)
-    if listed_status != 200 or not isinstance(listed, dict):
-        return f"FAIL archive-interleave → list reviews {listed_status} {listed}"
-    pending = [item for item in listed.get("items", [])
-               if isinstance(item, dict) and item.get("status") == "pending"]
-    if pending:
-        review_id = str(pending[0].get("reviewId") or pending[0].get("id"))
-    else:
-        opened = request(base, "POST", f"/v2/artifact-versions/{latest}/reviews",
-                         token=token, json_body={"comment": "concurrency interleave"})
-        if opened[0] != 201:
-            return f"FAIL archive-interleave → open review {opened[0]} {opened[1]}"
-        review_id = str((opened[1] or {}).get("reviewId") or (opened[1] or {}).get("id"))
+    review_id = context["reviewId"]
 
     pending_archive = request(base, "POST", f"/v2/cases/{case_id}/archives",
                               token=token, json_body={"archiveProfile": "case.full.v1"})
@@ -289,7 +356,7 @@ def check_archive_interleave(base: str, token: str, case_id: str) -> str:
         if race_error.get("code") != "ARCHIVE_PRECONDITION_FAILED":
             return f"FAIL archive-interleave → race archive 409 has wrong code: {race_body}"
     elif race_status == 201:
-        if not verify_archive_manifest(race_body, case_id, latest, confirmed_facts):
+        if not verify_archive_manifest(race_body, case_id, confirmed_facts, expected_items):
             return f"FAIL archive-interleave → race archive manifest invalid: {race_body}"
     else:
         return f"FAIL archive-interleave → race archive unexpected {race_status} {race_body}"
@@ -302,30 +369,30 @@ def check_archive_interleave(base: str, token: str, case_id: str) -> str:
     archive_id = final_archive[1].get("archiveId")
     if not archive_id or not final_archive[1].get("manifestHash"):
         return f"FAIL archive-interleave → archive response lacks manifest: {final_archive[1]}"
-    if not verify_archive_manifest(final_archive[1], case_id, latest, confirmed_facts):
+    if not verify_archive_manifest(final_archive[1], case_id, confirmed_facts, expected_items):
         return f"FAIL archive-interleave → archive items/facts invalid: {final_archive[1]}"
     manifest_status, manifest = request(
         base, "GET", f"/v2/cases/{case_id}/archives/{archive_id}", token=token)
     if manifest_status != 200 or not isinstance(manifest, dict) \
             or manifest.get("archiveId") != archive_id \
             or manifest.get("manifestHash") != final_archive[1].get("manifestHash") \
-            or not verify_archive_manifest(manifest, case_id, latest, confirmed_facts):
+            or not verify_archive_manifest(manifest, case_id, confirmed_facts, expected_items):
         return f"FAIL archive-interleave → manifest verification {manifest_status} {manifest}"
     return (f"PASS archive-interleave → pending 409, approve/archive race {race_status}, "
             "final archive 201 and manifest verified")
 
 
-def verify_archive_manifest(body: Any, case_id: str, artifact_id: str,
-                            facts_version_id: Any) -> bool:
-    """Validate the case-full manifest shape for the isolated conviction case."""
+def verify_archive_manifest(body: Any, case_id: str, facts_version_id: Any,
+                            expected_items: list[dict[str, str]]) -> bool:
+    """Validate the complete case.full.v1 manifest."""
     if not isinstance(body, dict) or body.get("caseId") != case_id:
         return False
     if body.get("factsVersionId") != facts_version_id:
         return False
     items = body.get("items")
-    return isinstance(items, list) and len(items) == 1 and items[0] == {
-        "artifactVersionId": artifact_id, "role": "conviction"
-    }
+    return isinstance(items, list) and sorted(items, key=lambda item: (item.get("role", ""),
+                                                                         item.get("artifactVersionId", ""))) == sorted(
+        expected_items, key=lambda item: (item.get("role", ""), item.get("artifactVersionId", "")))
 
 
 def main() -> int:
@@ -347,15 +414,27 @@ def main() -> int:
 
     results = [check_double_confirm(args.base_url, token, case_id)]
 
+    archive_context = None
     if args.engine_url and args.java_url and args.service_token:
-        results.append(check_double_publish(args.base_url, token, case_id,
-                                            args.engine_url, args.java_url,
-                                            args.service_token))
+        publish_result = check_double_publish(args.base_url, token, case_id,
+                                               args.engine_url, args.java_url,
+                                               args.service_token)
+        results.append(publish_result)
+        if publish_result.startswith("PASS"):
+            try:
+                archive_context = prepare_archive_case(args.base_url, token, case_id)
+            except Exception as exc:
+                results.append(f"FAIL archive fixture preparation → {exc}")
+        else:
+            results.append("FAIL archive fixture preparation → double-publish prerequisite failed")
     else:
         results.append("SKIP double-publish → 需 --engine-url/--java-url/--service-token"
                        "（容器网内执行）")
 
-    results.append(check_archive_interleave(args.base_url, token, case_id))
+    if archive_context is None:
+        results.append("SKIP archive-interleave → requires completed module/draft fixture")
+    else:
+        results.append(check_archive_interleave(args.base_url, token, case_id, archive_context))
 
     failed = False
     for line in results:

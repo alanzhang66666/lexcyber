@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import datetime
+import os
 import uuid
 
 import pytest
@@ -29,6 +30,8 @@ def _db_available() -> bool:
 @pytest.fixture(autouse=True)
 def _require_db():
     if not _db_available():
+        if os.getenv("LEXCYBER_REQUIRE_INTEGRATION_DB") == "1":
+            pytest.fail("engine postgres unavailable; CI requires real registry integration tests")
         pytest.skip("engine postgres unavailable")
 
 
