@@ -23,7 +23,7 @@ async function load() {
     resultDate.value = requestedDate
   } catch (caught) {
     hits.value = []
-    resultDate.value = '' 
+    resultDate.value = ''
     if (caught instanceof ApiError && caught.status === 501) {
       error.value = '法源检索尚未开放。'
     } else {
