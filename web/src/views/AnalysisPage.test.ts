@@ -150,4 +150,65 @@ describe('AnalysisPage', () => {
     expect(wrapper.findAll('button').some((b) => b.text().includes('重试'))).toBe(true)
     wrapper.unmount()
   })
+
+  it('shows every rule while mixed blocked results never expose a calculated term', async () => {
+    vi.spyOn(api, 'getCase').mockResolvedValue({ id: 'srv-mixed', title: '混合结果案', createdAt: 't', updatedAt: 't' })
+    vi.spyOn(apiV2, 'getFactsHead').mockResolvedValue({ caseId: 'srv-mixed', confirmedFactsVersionId: null, updatedAt: null })
+    vi.spyOn(api, 'listReviews').mockResolvedValue({
+      items: [{ id: 'r-mixed', caseId: 'srv-mixed', taskId: 'task-mixed', resultVersion: 1, status: 'pending', decision: 'none' }],
+      page: 0, size: 100, total: 1,
+    })
+    vi.spyOn(api, 'getTask').mockResolvedValue({
+      id: 'task-mixed', requestId: 'r', executionId: 'e', caseId: 'srv-mixed', status: 'waiting_review',
+      currentStage: 'sentencing', result: { resultId: 'res-mixed', version: 1, type: 'workflow.output' },
+      errorCode: null, error: null, createdAt: 't', updatedAt: 't',
+    })
+    vi.spyOn(api, 'getTaskResult').mockResolvedValue({
+      resultId: 'res-mixed', version: 1, type: 'workflow.output', contentHash: 'h',
+      content: {
+        schema_version: 'sentencing.v2', status: 'blocked', human_review_required: true,
+        blockers: [{ code: 'OVERALL', message: '总体阻断' }],
+        results: [
+          { ruleId: 'rule-calculated', ruleVersion: '1.0.0', status: 'calculated', term_months: 12, steps: [{ id: 'base', after_months: 12 }], blockers: [] },
+          { ruleId: 'rule-blocked', ruleVersion: '1.0.0', status: 'blocked', term_months: null, steps: [], blockers: [{ code: 'MISSING', message: '缺少事实' }] },
+        ],
+      },
+    })
+    const wrapper = await mountAnalysis('srv-mixed')
+    expect(wrapper.text()).toContain('rule-calculated')
+    expect(wrapper.text()).toContain('rule-blocked')
+    expect(wrapper.text()).not.toContain('计算完成')
+    expect(wrapper.text()).not.toContain('12 个月')
+    wrapper.unmount()
+  })
+
+  it('shows each successful multi-rule term in its own auditable row', async () => {
+    vi.spyOn(api, 'getCase').mockResolvedValue({ id: 'srv-rules', title: '多规则案', createdAt: 't', updatedAt: 't' })
+    vi.spyOn(apiV2, 'getFactsHead').mockResolvedValue({ caseId: 'srv-rules', confirmedFactsVersionId: null, updatedAt: null })
+    vi.spyOn(api, 'listReviews').mockResolvedValue({
+      items: [{ id: 'r-rules', caseId: 'srv-rules', taskId: 'task-rules', resultVersion: 1, status: 'pending', decision: 'none' }],
+      page: 0, size: 100, total: 1,
+    })
+    vi.spyOn(api, 'getTask').mockResolvedValue({
+      id: 'task-rules', requestId: 'r', executionId: 'e', caseId: 'srv-rules', status: 'waiting_review',
+      currentStage: 'sentencing', result: { resultId: 'res-rules', version: 1, type: 'workflow.output' },
+      errorCode: null, error: null, createdAt: 't', updatedAt: 't',
+    })
+    vi.spyOn(api, 'getTaskResult').mockResolvedValue({
+      resultId: 'res-rules', version: 1, type: 'workflow.output', contentHash: 'h',
+      content: {
+        schema_version: 'sentencing.v2', status: 'calculated', human_review_required: true, blockers: [],
+        results: [
+          { ruleId: 'rule-base', ruleVersion: '1.0.0', status: 'calculated', term_months: 12, fine: { amount: 1000 }, steps: [{ id: 'base', after_months: 12 }], blockers: [] },
+          { ruleId: 'rule-adjusted', ruleVersion: '2.0.0', status: 'calculated', term_months: 8, fine: { amount: 500 }, steps: [{ id: 'adjustment', after_months: 8 }], blockers: [] },
+        ],
+      },
+    })
+    const wrapper = await mountAnalysis('srv-rules')
+    expect(wrapper.text()).toContain('rule-base')
+    expect(wrapper.text()).toContain('rule-adjusted')
+    expect(wrapper.text()).toContain('刑期 12 个月')
+    expect(wrapper.text()).toContain('刑期 8 个月')
+    wrapper.unmount()
+  })
 })

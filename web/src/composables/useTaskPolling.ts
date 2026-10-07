@@ -15,44 +15,56 @@ export function useTaskPolling(taskId: () => string, intervalMs = 1500) {
   const resultLoading = ref(false)
   const error = ref('')
   let timer: number | undefined
+  let requestGeneration = 0
 
-  function stop() {
+  function stop(invalidate = true) {
+    if (invalidate) requestGeneration += 1
     if (timer !== undefined) {
       window.clearInterval(timer)
       timer = undefined
     }
   }
 
-  async function loadResult() {
-    const current = task.value
+  async function loadResult(current: TaskView, generation: number) {
     if (!current?.result) return
 
     resultLoading.value = true
     try {
-      result.value = await api.getTaskResult(current.id)
+      const loaded = await api.getTaskResult(current.id)
+      if (generation === requestGeneration && taskId() === current.id) {
+        result.value = loaded
+      }
     } catch (caught) {
-      error.value = caught instanceof Error ? caught.message : '结果读取失败。'
+      if (generation === requestGeneration && taskId() === current.id) {
+        error.value = caught instanceof Error ? caught.message : '结果读取失败。'
+      }
     } finally {
-      resultLoading.value = false
+      if (generation === requestGeneration) resultLoading.value = false
     }
   }
 
   async function refresh() {
     const id = taskId()
     if (!id) return
+    const generation = ++requestGeneration
 
-    loading.value = !task.value
+    loading.value = !task.value || task.value.id !== id
     try {
-      task.value = await api.getTask(id)
+      const loaded = await api.getTask(id)
+      if (generation !== requestGeneration || taskId() !== id) return
+      task.value = loaded
       error.value = ''
-      if (task.value.result && ['completed', 'waiting_review'].includes(task.value.status)) {
-        await loadResult()
+      if (loaded.result && ['completed', 'waiting_review'].includes(loaded.status)) {
+        await loadResult(loaded, generation)
       }
-      if (isTaskSettled(task.value.status)) stop()
+      if (generation !== requestGeneration || taskId() !== id) return
+      if (isTaskSettled(loaded.status)) stop(false)
     } catch (caught) {
-      error.value = caught instanceof Error ? caught.message : '任务读取失败。'
+      if (generation === requestGeneration && taskId() === id) {
+        error.value = caught instanceof Error ? caught.message : '任务读取失败。'
+      }
     } finally {
-      loading.value = false
+      if (generation === requestGeneration) loading.value = false
     }
   }
 

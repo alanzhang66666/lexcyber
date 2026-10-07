@@ -26,6 +26,7 @@ def _payload(artifacts=None):
     return {"case_id": "c1", "input_snapshot_ref": "facts_version:fv-3",
             "metadata": {"taskType": "draft.render", "docType": "indictment",
                          "factsSnapshot": SNAPSHOT,
+                         "artifactVersions": {"conviction": "11111111-1111-1111-1111-111111111111"},
                          "artifacts": artifacts or {"conviction": {"status": "calculated"}}}}
 
 
@@ -40,6 +41,25 @@ def test_rendered(monkeypatch):
     assert body["template"]["contentHash"] == "th1"
     assert body["dependency_snapshot"]["facts_version_id"] == "fv-3"
     assert body["human_review_required"] is True
+    assert body["dependency_snapshot"]["artifacts"] == [
+        {"module": "conviction", "artifactVersionId": "11111111-1111-1111-1111-111111111111"}]
+
+
+def test_missing_input_version_fails_closed(monkeypatch):
+    monkeypatch.setattr(document_render.registry, "active_template", lambda dt: TEMPLATE)
+    payload = _payload()
+    del payload["metadata"]["artifactVersions"]
+    with pytest.raises(ModuleAnalysisError) as err:
+        render(payload)
+    assert err.value.code == "ARTIFACT_SNAPSHOT_MISSING"
+
+
+def test_blocked_upstream_never_produces_body(monkeypatch):
+    monkeypatch.setattr(document_render.registry, "active_template", lambda dt: TEMPLATE)
+    body = render(_payload({"conviction": {"status": "blocked"}}))["final_output"]
+    assert body["status"] == "blocked"
+    assert body["body"] is None
+    assert {"path": "artifacts.conviction", "reason": "upstream_blocked"} in body["unresolved"]
 
 
 def test_unresolved_blocks_no_body(monkeypatch):

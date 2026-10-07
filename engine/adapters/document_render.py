@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import re
 from typing import Any
+from uuid import UUID
 
 from engine.adapters.module_analysis import ModuleAnalysisError
 from engine.rules import registry
@@ -42,15 +43,28 @@ def render(payload: dict[str, Any]) -> dict[str, Any]:
             "TEMPLATE_UNAVAILABLE",
             f"doc_type {doc_type} 无已会签模板")
 
+    artifacts = metadata.get("artifacts") or {}
+    version_ids = metadata.get("artifactVersions") or {}
+    if not isinstance(artifacts, dict) or not isinstance(version_ids, dict) or artifacts.keys() != version_ids.keys():
+        raise ModuleAnalysisError("ARTIFACT_SNAPSHOT_MISSING", "上游内容必须绑定具体工件版本")
+    try:
+        frozen_artifacts = [{"module": name, "artifactVersionId": str(UUID(str(version_ids[name])))}
+                            for name in sorted(artifacts)]
+    except (ValueError, TypeError, AttributeError) as exc:
+        raise ModuleAnalysisError("ARTIFACT_SNAPSHOT_INVALID", "上游工件版本必须为 UUID") from exc
+
     view = build_view(snapshot)
     view["case_id"] = payload.get("case_id")
     view["doc_type"] = doc_type
-    view["artifacts"] = metadata.get("artifacts") or {}
+    view["artifacts"] = artifacts
     input_ref = payload.get("input_snapshot_ref") or ""
     facts_version_id = (input_ref[len("facts_version:"):]
                         if input_ref.startswith("facts_version:") else None)
 
     unresolved: list[dict[str, Any]] = []
+    for name, artifact in artifacts.items():
+        if not isinstance(artifact, dict) or artifact.get("status") == "blocked":
+            unresolved.append({"path": f"artifacts.{name}", "reason": "upstream_blocked"})
 
     def substitute(match: re.Match) -> str:
         path = match.group(1).strip()
@@ -93,7 +107,7 @@ def render(payload: dict[str, Any]) -> dict[str, Any]:
             "template": {"templateId": template["templateId"],
                          "templateVersion": template["templateVersion"],
                          "contentHash": template["contentHash"]},
-            "artifacts": sorted((metadata.get("artifacts") or {}).keys()),
+            "artifacts": frozen_artifacts,
         },
         "human_review_required": True,
     }

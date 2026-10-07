@@ -229,7 +229,15 @@ public class TaskService {
             if (docType == null) {
                 throw new ApiException(HttpStatus.BAD_REQUEST, "DOC_TYPE_MISSING", "draft.render 需要 metadata.docType");
             }
-            UUID streamId = publications.ensureStreamLocked(caseId, "draft", "draft:" + docType);
+            String draftId = stringOrNull(metadata.get("draftId"));
+            if (draftId == null) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "DRAFT_ID_MISSING", "draft.render 需要文书 UUID");
+            }
+            UUID streamId = jdbc.queryForObject("""
+                    SELECT h.artifact_stream_id FROM app.draft_head h
+                    JOIN app.case_drafts d ON d.id = h.draft_id
+                    WHERE h.case_id = ?::uuid AND h.draft_id = ?::uuid AND d.draft_type = ?
+                    """, UUID.class, caseId, draftId, docType);
             String ref = factsVersionId == null ? null : "facts_version:" + factsVersionId;
             return new ExecutionBinding(streamId, ref);
         }

@@ -104,6 +104,31 @@ describe('module-content-v2 严格读取', () => {
     expect(result!.interval).toBeNull()
   })
 
+  it('保留总体 blocked 与全部逐规则阻断，不把首条刑期当成成功结果', () => {
+    const result = toSentencingResultV2({
+      schema_version: 'sentencing.v2',
+      status: 'blocked',
+      results: [
+        {
+          ruleId: 'rule-calculated', ruleVersion: '1.0.0', status: 'calculated', term_months: 12,
+          steps: [{ id: 'base', after_months: 12 }], blockers: [],
+        },
+        {
+          ruleId: 'rule-blocked', ruleVersion: '2.0.0', status: 'blocked', term_months: null,
+          steps: [], blockers: [{ code: 'MISSING_FACT', path: 'facts.x', message: '缺少事实' }],
+        },
+      ],
+      blockers: [{ code: 'OVERALL_BLOCKED', message: '总体阻断' }],
+      human_review_required: true,
+    })
+    expect(result?.status).toBe('blocked')
+    expect(result?.ruleResults).toHaveLength(2)
+    expect(result?.ruleResults?.[1].status).toBe('blocked')
+    expect(result?.blockers?.map((item) => item.code)).toEqual(['OVERALL_BLOCKED', 'MISSING_FACT'])
+    expect(result?.interval).toBeNull()
+    expect(result?.steps).toEqual([])
+  })
+
   it('draft.v2 → 正文与未解析项', () => {
     const rendered = toV2Draft({
       schema_version: 'draft.v2', status: 'rendered', doc_type: 'indictment-assist', body: '正文',

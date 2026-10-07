@@ -271,6 +271,7 @@ paths:
                       type: object
                       properties:
                         streamId: { type: string, format: uuid }
+                        draftId: { type: string, format: uuid }
                         docType: { type: string }
                         latestVersionId: { type: string, format: uuid, nullable: true }
                         updatedAt: { type: string, nullable: true }

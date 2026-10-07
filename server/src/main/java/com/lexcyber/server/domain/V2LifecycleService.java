@@ -243,12 +243,16 @@ public class V2LifecycleService {
         }
         UUID factsVersionId = baseline.requireConfirmedVersionId(caseId);
         Object factsPayload = baseline.versionDetail(caseId, factsVersionId).get("payload");
+        UUID draftId = ensureRenderedDraft(ownerAccountId, caseId, docType);
+        ModuleInputs inputs = confirmedModuleInputs(caseId);
         Map<String, Object> metadata = new LinkedHashMap<>();
         metadata.put("taskType", TaskPolicies.DRAFT_RENDER);
         metadata.put("docType", docType);
+        metadata.put("draftId", draftId.toString());
         metadata.put("factsVersionId", factsVersionId.toString());
         metadata.put("factsSnapshot", factsPayload);
-        metadata.put("artifacts", latestModulePayloads(caseId));
+        metadata.put("artifacts", inputs.payloads());
+        metadata.put("artifactVersions", inputs.versionIds());
         TaskView task = tasks.createModuleTask(
                 new TaskCreate("draft:" + docType, caseId, null, metadata));
         Map<String, Object> view = new LinkedHashMap<>();
@@ -256,32 +260,60 @@ public class V2LifecycleService {
         view.put("executionId", task.executionId());
         view.put("status", task.status());
         view.put("docType", docType);
+        view.put("draftId", draftId);
         return view;
     }
 
-    /** 各模块流最新已发布版本 payload（渲染模板取上游结论用；无则空）。 */
-    private Map<String, Object> latestModulePayloads(String caseId) {
-        List<Map<String, Object>> rows = jdbc.queryForList("""
-                SELECT DISTINCT ON (s.kind) s.kind, v.payload::text AS payload
-                FROM app.artifact_version v
-                JOIN app.artifact_stream s ON s.artifact_stream_id = v.artifact_stream_id
-                WHERE s.case_id = ?::uuid AND s.kind IN ('compliance','conviction','sentencing')
-                ORDER BY s.kind, v.version DESC
-                """, caseId);
-        Map<String, Object> out = new LinkedHashMap<>();
-        for (Map<String, Object> r : rows) {
-            out.put(String.valueOf(r.get("kind")), parseJson(r.get("payload")));
-        }
-        return out;
+    private UUID ensureRenderedDraft(UUID ownerAccountId, String caseId, String docType) {
+        UUID draftId = jdbc.queryForObject("""
+                INSERT INTO app.case_drafts(id, case_id, draft_type, render_doc_type, updated_by)
+                VALUES (?, ?::uuid, ?, ?, ?)
+                ON CONFLICT (case_id, render_doc_type) WHERE render_doc_type IS NOT NULL
+                DO UPDATE SET render_doc_type = EXCLUDED.render_doc_type
+                RETURNING id
+                """, UUID.class, UUID.randomUUID(), caseId, docType, docType, ownerAccountId);
+        UUID streamId = new ArtifactPublicationService(jdbc, new StalePropagationService(jdbc))
+                .ensureStreamLocked(caseId, "draft", "draft:" + draftId);
+        jdbc.update("""
+                INSERT INTO app.draft_head(draft_id, case_id, artifact_stream_id)
+                VALUES (?, ?::uuid, ?) ON CONFLICT (draft_id) DO NOTHING
+                """, draftId, caseId, streamId);
+        return draftId;
     }
 
-    /** 案件下全部 draft 流（draft:{docType}）及其最新工件版本指针，供渲染结果发现。 */
+    /** Freeze payloads and their exact IDs together; pending/stale results are not draft inputs. */
+    private ModuleInputs confirmedModuleInputs(String caseId) {
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+                SELECT s.kind, v.artifact_version_id, v.payload::text AS payload
+                FROM app.module_head h
+                JOIN app.artifact_stream s ON s.artifact_stream_id = h.artifact_stream_id
+                JOIN app.artifact_version v ON v.artifact_version_id = h.confirmed_version_id
+                WHERE h.case_id = ?::uuid AND NOT h.stale
+                  AND s.latest_version_id = h.confirmed_version_id
+                  AND v.outcome_status <> 'blocked'
+                ORDER BY s.kind
+                """, caseId);
+        Map<String, Object> out = new LinkedHashMap<>();
+        Map<String, String> versions = new LinkedHashMap<>();
+        for (Map<String, Object> r : rows) {
+            out.put(String.valueOf(r.get("kind")), parseJson(r.get("payload")));
+            versions.put(String.valueOf(r.get("kind")), r.get("artifact_version_id").toString());
+        }
+        return new ModuleInputs(out, versions);
+    }
+
+    private record ModuleInputs(Map<String, Object> payloads, Map<String, String> versionIds) {}
+
+    /** UUID draft streams expose the descriptor's docType, independently of scope syntax. */
     @Transactional(readOnly = true)
     public Map<String, Object> listDraftStreams(UUID ownerAccountId, String caseId) {
         caseId = cases.requireOwned(ownerAccountId, caseId).id();
         List<Map<String, Object>> rows = jdbc.queryForList("""
-                SELECT s.artifact_stream_id, s.scope_key, s.latest_version_id, s.updated_at
+                SELECT s.artifact_stream_id, d.id AS draft_id, d.draft_type,
+                       s.latest_version_id, s.updated_at
                 FROM app.artifact_stream s
+                JOIN app.draft_head h ON h.artifact_stream_id = s.artifact_stream_id
+                JOIN app.case_drafts d ON d.id = h.draft_id
                 WHERE s.case_id = ?::uuid AND s.kind = 'draft'
                 ORDER BY s.scope_key
                 """, caseId);
@@ -289,7 +321,8 @@ public class V2LifecycleService {
         for (Map<String, Object> r : rows) {
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("streamId", r.get("artifact_stream_id"));
-            item.put("docType", String.valueOf(r.get("scope_key")).replaceFirst("^draft:", ""));
+            item.put("draftId", r.get("draft_id"));
+            item.put("docType", r.get("draft_type"));
             item.put("latestVersionId", r.get("latest_version_id"));
             item.put("updatedAt", r.get("updated_at"));
             items.add(item);

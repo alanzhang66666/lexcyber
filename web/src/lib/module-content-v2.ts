@@ -2,6 +2,7 @@ import type {
   AmountEntry,
   Blocker,
   SentencingResult,
+  SentencingRuleResult,
   SentencingStep,
   VerificationStatus,
 } from '../api-types'
@@ -200,12 +201,8 @@ function fineText(fine: unknown): string | undefined {
   return String(fine)
 }
 
-/** 把 sentencing.v2 payload 映射为 SentencingResultPanel 的展示类型（严格键名）。 */
-export function toSentencingResultV2(content: Rec): SentencingResult | null {
-  const payload = toV2Sentencing(content)
-  if (!payload) return null
-  const result = payload.results[0]
-  const steps: SentencingStep[] = (result?.steps ?? []).map((s): SentencingStep => {
+function toRuleResult(result: V2SentencingComputation): SentencingRuleResult {
+  const steps: SentencingStep[] = result.steps.map((s): SentencingStep => {
     const id = str(s.id)
     const operation = str(s.operation)
     const label = [id, operation].filter(Boolean).join(' · ') || undefined
@@ -220,25 +217,44 @@ export function toSentencingResultV2(content: Rec): SentencingResult | null {
     const sources = strArray(s.source_ids)
     return { label, detail: reason ?? (sources.length ? sources.join('、') : undefined), value }
   })
-  const intervalParts: string[] = []
-  if (result?.termMonths !== null && result?.termMonths !== undefined) {
-    intervalParts.push(`${result.termMonths} 个月`)
-  }
-  const fine = fineText(result?.fine)
-  if (fine) intervalParts.push(fine)
-  const blockers: Blocker[] = [...payload.blockers, ...(result?.blockers ?? [])].map((b) => ({
-    code: b.code,
-    path: b.path,
-    message: b.message ?? b.reason,
-  }))
+  const fine = fineText(result.fine)
   return {
-    ruleVersion: result ? `${result.ruleId}@${result.ruleVersion}` : null,
-    parameters: [],
+    ruleId: result.ruleId || null,
+    ruleVersion: result.ruleVersion || null,
+    status: result.status || null,
+    termMonths: result.termMonths,
+    fine: fine ?? null,
     steps,
+    blockers: result.blockers.map((b) => ({ code: b.code, path: b.path, message: b.message ?? b.reason })),
+  }
+}
+
+/** 把 sentencing.v2 payload 映射为 SentencingResultPanel 的展示类型（严格键名）。 */
+export function toSentencingResultV2(content: Rec): SentencingResult | null {
+  const payload = toV2Sentencing(content)
+  if (!payload) return null
+  const ruleResults = payload.results.map(toRuleResult)
+  const blockers: Blocker[] = [...payload.blockers, ...ruleResults.flatMap((result) => result.blockers ?? [])]
+  const blocked = payload.status === 'blocked' || blockers.length > 0
+  const first = ruleResults[0]
+  const intervalParts: string[] = []
+  if (!blocked && ruleResults.length <= 1 && first?.termMonths !== null && first?.termMonths !== undefined) {
+    intervalParts.push(`${first.termMonths} 个月`)
+    if (first.fine) intervalParts.push(first.fine)
+  }
+  if (payload.status === 'blocked' && blockers.length === 0) {
+    blockers.push({ message: '量刑结果整体被阻断，未输出刑期。' })
+  }
+  return {
+    status: payload.status || null,
+    ruleVersion: first ? `${first.ruleId}@${first.ruleVersion}` : null,
+    parameters: [],
+    steps: blocked ? [] : (first?.steps ?? []),
     interval: intervalParts.length ? intervalParts.join('；') : null,
     missing: [],
     amounts: [],
     blockers,
+    ruleResults,
   }
 }
 

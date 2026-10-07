@@ -463,7 +463,19 @@ export type SentencingStep = {
   value?: string | null
 }
 
+/** sentencing.v2 的逐规则结果，保留审计所需的规则状态与计算明细。 */
+export type SentencingRuleResult = {
+  ruleId?: string | null
+  ruleVersion?: string | null
+  status?: string | null
+  termMonths?: number | null
+  fine?: string | null
+  steps?: SentencingStep[]
+  blockers?: Blocker[]
+}
+
 export type SentencingResult = {
+  status?: string | null
   ruleVersion?: string | null
   parameters?: SentencingParameter[]
   steps?: SentencingStep[]
@@ -471,6 +483,7 @@ export type SentencingResult = {
   missing?: string[]
   amounts?: AmountEntry[]
   blockers?: Blocker[]
+  ruleResults?: SentencingRuleResult[]
 }
 
 /* ── 协作导入（case-import.v1；独立于案件工作链路）── */

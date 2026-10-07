@@ -11,7 +11,7 @@ import BlockedNotice from './BlockedNotice.vue'
 const props = defineProps<{ result: SentencingResult }>()
 const emit = defineEmits<{ locate: [documentId: string | undefined, locator: string] }>()
 
-const blocked = computed(() => Boolean(props.result.blockers?.length))
+const blocked = computed(() => props.result.status === 'blocked' || Boolean(props.result.blockers?.length))
 const hasDetail = computed(() => Boolean(
   props.result.parameters?.length
   || props.result.steps?.length
@@ -29,7 +29,31 @@ const hasDetail = computed(() => Boolean(
 
     <BlockedNotice v-if="blocked" :blockers="result.blockers!" />
 
-    <template v-else>
+    <section v-if="result.ruleResults?.length" class="sent-section rule-results">
+      <h3>逐规则结果</h3>
+      <article v-for="(rule, i) in result.ruleResults" :key="`${rule.ruleId}@${rule.ruleVersion}-${i}`" class="rule-result">
+        <div class="rule-result-heading">
+          <span class="mono">{{ rule.ruleId || '未命名规则' }}<template v-if="rule.ruleVersion">@{{ rule.ruleVersion }}</template></span>
+          <span>{{ rule.status || '未知状态' }}</span>
+        </div>
+        <template v-if="!blocked">
+          <p v-if="rule.termMonths !== null && rule.termMonths !== undefined" class="rule-term">刑期 {{ rule.termMonths }} 个月</p>
+          <p v-if="rule.fine" class="rule-term">{{ rule.fine }}</p>
+          <ol v-if="rule.steps?.length" class="rule-steps">
+            <li v-for="(step, j) in rule.steps" :key="j">
+              <span>{{ step.label || '步骤' }}</span>
+              <span v-if="step.detail">{{ step.detail }}</span>
+              <code v-if="step.value">{{ step.value }}</code>
+            </li>
+          </ol>
+        </template>
+        <ul v-if="blocked && rule.blockers?.length" class="rule-blockers">
+          <li v-for="(item, j) in rule.blockers" :key="j">{{ item.message || item.code || item.path || '待确认项' }}</li>
+        </ul>
+      </article>
+    </section>
+
+    <template v-if="!blocked">
       <section v-if="result.parameters?.length" class="sent-section">
         <h3>量刑参数</h3>
         <dl class="data-list inline-data">
@@ -40,7 +64,7 @@ const hasDetail = computed(() => Boolean(
         </dl>
       </section>
 
-      <section v-if="result.steps?.length" class="sent-section">
+        <section v-if="result.steps?.length && (result.ruleResults?.length || 0) <= 1" class="sent-section">
         <h3>计算步骤</h3>
         <ol class="step-list">
           <li v-for="(s, i) in result.steps" :key="i" class="chain-step">
@@ -54,7 +78,7 @@ const hasDetail = computed(() => Boolean(
         </ol>
       </section>
 
-      <section v-if="result.interval" class="sent-section">
+      <section v-if="result.interval && (result.ruleResults?.length || 0) <= 1" class="sent-section">
         <h3>刑期区间</h3>
         <div class="result-meta">
           <span>参考区间（待人工核验，非系统预测）</span>
@@ -106,6 +130,50 @@ const hasDetail = computed(() => Boolean(
   margin: 0;
   color: var(--lc-brand-900);
   font-size: 13px;
+}
+.rule-results {
+  gap: 8px;
+}
+.rule-result {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--lc-line);
+  border-radius: 8px;
+}
+.rule-result-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--lc-muted);
+  font-size: 12px;
+}
+.rule-blockers {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--lc-risk);
+  font-size: 12px;
+}
+.rule-term {
+  margin: 0;
+  color: var(--lc-ink);
+  font-size: 13px;
+}
+.rule-steps {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 20px;
+  color: var(--lc-muted);
+  font-size: 12px;
+}
+.rule-steps li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.rule-steps code {
+  color: var(--lc-ink);
 }
 .step-list {
   margin: 0;
