@@ -82,6 +82,13 @@ def analyze(payload: dict[str, Any], task_type: str) -> dict[str, Any]:
     if conduct_date or judgment_date:
         divergence = _resolve_sources(fired_sources, conduct_date, judgment_date)
 
+    if module == "conviction" and not _has_confirmed_jurisdiction_connection(snapshot):
+        blockers.append({
+            "code": "JURISDICTION_CONNECTION_UNCONFIRMED",
+            "path": "entities.jurisdictionConnections",
+            "message": "定罪研判需要至少一个 verificationStatus 为 confirmed 的管辖连接点",
+        })
+
     status = "blocked" if blockers else ("calculated" if any(r["fired"] for r in rule_results)
                                          else "not_applicable")
     result_payload = {
@@ -127,6 +134,20 @@ def _snapshot_date(view: dict[str, Any], key: str) -> datetime.date | None:
         return datetime.date(int(match.group(1)), int(match.group(2)), int(match.group(3)))
     except ValueError:
         return None
+
+
+def _has_confirmed_jurisdiction_connection(snapshot: dict[str, Any]) -> bool:
+    entities = snapshot.get("entities")
+    if not isinstance(entities, dict):
+        return False
+    connections = entities.get("jurisdictionConnections")
+    if not isinstance(connections, list):
+        return False
+    return any(
+        isinstance(connection, dict)
+        and connection.get("verificationStatus") == "confirmed"
+        for connection in connections
+    )
 
 
 def _resolve_sources(source_ids: set[str], conduct: datetime.date | None,

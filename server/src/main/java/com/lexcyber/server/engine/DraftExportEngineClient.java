@@ -23,8 +23,10 @@ public class DraftExportEngineClient {
     public DraftExportEngineClient(RestClient.Builder builder,
                                    @Value("${engine.base-url}") String baseUrl,
                                    @Value("${engine.service-token}") String token) {
+        // The cleartext Uvicorn endpoint does not support HTTP/2 (h2c) upgrade.
         var requestFactory = new JdkClientHttpRequestFactory(
-                HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build());
+                HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1)
+                        .connectTimeout(Duration.ofSeconds(5)).build());
         requestFactory.setReadTimeout(Duration.ofSeconds(30));
         this.client = builder.baseUrl(baseUrl).requestFactory(requestFactory).build();
         this.token = token;
@@ -35,6 +37,7 @@ public class DraftExportEngineClient {
             var response = client.post()
                     .uri("/internal/v1/draft-exports/docx")
                     .header("X-Service-Token", token)
+                    .contentType(MediaType.APPLICATION_JSON)
                     .body(payload)
                     .retrieve()
                     .toEntity(byte[].class);

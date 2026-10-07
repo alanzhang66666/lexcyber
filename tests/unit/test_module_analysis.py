@@ -12,7 +12,7 @@ SNAPSHOT = {
         {"key": "conduct_date", "value": "2024-03-01", "verificationStatus": "confirmed"},
         {"key": "judgment_date", "value": "2026-02-01", "verificationStatus": "confirmed"},
     ],
-    "entities": {},
+    "entities": {"jurisdictionConnections": [{"verificationStatus": "confirmed"}]},
 }
 
 APPROVED_RULE = {
@@ -83,3 +83,52 @@ def test_predicate_error_blocks_not_crashes(monkeypatch):
     body = out["final_output"]
     assert body["status"] == "blocked"
     assert body["blockers"][0]["code"] == "PREDICATE_INVALID"
+
+
+@pytest.mark.parametrize("connections", [
+    [],
+    None,
+    [{"verification_status": "confirmed"}],
+    [{"verificationStatus": "candidate"}],
+    [{"verificationStatus": "rejected"}],
+    [{"verificationStatus": "unrecognized"}],
+    [{"verificationStatus": "candidate"}, {"id": "malformed"}],
+])
+def test_conviction_requires_confirmed_jurisdiction_connection(monkeypatch, connections):
+    monkeypatch.setattr(module_analysis.registry, "active_rules",
+                        lambda fam: [APPROVED_RULE])
+    monkeypatch.setattr(module_analysis, "_resolve_sources", lambda *a, **k: [])
+    payload = _payload("conviction.analyze")
+    payload["metadata"]["factsSnapshot"] = {
+        **SNAPSHOT,
+        "entities": {"jurisdictionConnections": connections},
+    }
+
+    body = analyze(payload, "conviction.analyze")["final_output"]
+
+    assert body["status"] == "blocked"
+    assert {
+        "code": "JURISDICTION_CONNECTION_UNCONFIRMED",
+        "path": "entities.jurisdictionConnections",
+        "message": "定罪研判需要至少一个 verificationStatus 为 confirmed 的管辖连接点",
+    } in body["blockers"]
+
+
+def test_conviction_accepts_any_confirmed_jurisdiction_connection(monkeypatch):
+    monkeypatch.setattr(module_analysis.registry, "active_rules",
+                        lambda fam: [APPROVED_RULE])
+    monkeypatch.setattr(module_analysis, "_resolve_sources", lambda *a, **k: [])
+    payload = _payload("conviction.analyze")
+    payload["metadata"]["factsSnapshot"] = {
+        **SNAPSHOT,
+        "entities": {"jurisdictionConnections": [
+            {"verificationStatus": "candidate"},
+            {"verificationStatus": "confirmed"},
+        ]},
+    }
+
+    body = analyze(payload, "conviction.analyze")["final_output"]
+
+    assert body["status"] == "calculated"
+    assert not any(item["code"] == "JURISDICTION_CONNECTION_UNCONFIRMED"
+                   for item in body["blockers"])

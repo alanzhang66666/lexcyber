@@ -343,6 +343,43 @@ def run_lifecycle(token):
         assert error.get("code") == "DRAFT_EXPORT_BLOCKED", error
     print("PASS manual DOCX exact historical version, UTF-8/XML text and incomplete export denial", flush=True)
 
+    # Confirming the entire facts version must not mark a candidate connection
+    # verified. Exercise both absence and candidate state through the real engine.
+    jurisdiction_case = request("POST", "/v1/cases", token=token, expected=201, payload={
+        "title": "CI unverified jurisdiction fixture", "jurisdiction": "CI",
+        "metadata": {"purpose": "LEXCYBER_CI_FIXTURES"},
+    })
+    jurisdiction_case_id = _id(jurisdiction_case, "id", "caseId")
+    request("PUT", f"/v2/cases/{jurisdiction_case_id}/facts-entities/facts", token=token,
+            payload={"items": facts})
+    previous_facts = None
+    for connections in ([], [{**jurisdiction[0], "verificationStatus": "candidate"}]):
+        request("PUT", f"/v2/cases/{jurisdiction_case_id}/facts-entities/jurisdiction-connections",
+                token=token, payload={"items": connections})
+        facts_version = request("POST", f"/v2/cases/{jurisdiction_case_id}/facts-versions",
+                                token=token, expected=201)
+        facts_id = _id(facts_version, "factsVersionId")
+        request("POST", f"/v2/cases/{jurisdiction_case_id}/facts-versions/{facts_id}/confirm",
+                token=token, payload={"expectedConfirmedFactsVersionId": previous_facts})
+        previous_facts = facts_id
+        dispatched = request("POST", f"/v2/cases/{jurisdiction_case_id}/modules/conviction/executions",
+                             token=token, expected=202)
+        wait_execution(token, _id(dispatched, "executionId"))
+        head = request("GET", f"/v2/cases/{jurisdiction_case_id}/modules/conviction", token=token)
+        artifact_id = _id(head, "latestVersionId")
+        artifact = request("GET", f"/v2/artifact-versions/{artifact_id}", token=token)
+        assert artifact["outcomeStatus"] == "blocked" and artifact["payload"]["status"] == "blocked", artifact
+        assert any(item.get("code") == "JURISDICTION_CONNECTION_UNCONFIRMED"
+                   for item in artifact["payload"]["blockers"]), artifact
+        review = request("POST", f"/v2/artifact-versions/{artifact_id}/reviews", token=token,
+                         expected=201, payload={"comment": "CI blocked jurisdiction fixture"})
+        error = request("POST", f"/v1/reviews/{_id(review, 'reviewId')}/approve", token=token,
+                        expected=409, payload={"resultVersion": artifact["version"]})
+        assert error.get("code") == "MODULE_BLOCKED", error
+        assert not request("GET", f"/v2/cases/{jurisdiction_case_id}/modules/conviction",
+                           token=token)["effectivelyConfirmed"]
+    print("PASS absent/candidate jurisdiction blocks conviction and cannot be approved", flush=True)
+
 
 def main():
     global BASE

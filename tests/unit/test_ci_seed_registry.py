@@ -67,7 +67,7 @@ def test_fixture_inputs_drive_all_real_adapters(monkeypatch):
             "actors": [{"id": "actor-1"}], "events": [{"id": "event-1"}],
             "evidence": [{"id": "evidence-1"}],
             "amounts": [{"kind": "crime_amount", "value": "6", "verificationStatus": "confirmed"}],
-            "jurisdictionConnections": [{"id": "jurisdiction-1"}],
+            "jurisdictionConnections": [{"id": "jurisdiction-1", "verificationStatus": "confirmed"}],
         },
     }
     base = {"case_id": "case-ci", "input_snapshot_ref": "facts_version:00000000-0000-0000-0000-000000000002",
