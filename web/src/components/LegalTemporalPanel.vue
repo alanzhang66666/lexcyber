@@ -57,7 +57,22 @@ function pathBlocked(path: Rec): boolean {
   return path.status === 'blocked' || blockers(path).length > 0
 }
 function blockers(path: Rec): Rec[] {
-  return records(path.blockers)
+  const items = [...records(path.blockers)]
+  for (const rule of pathRules(path)) {
+    items.push(...records(rule.blockers))
+    const evidence = ruleEvidence(rule)
+    items.push(...records(evidence?.blockers))
+    for (const kind of list(evidence?.missingKinds ?? evidence?.missingRequiredKinds)) {
+      items.push({ code: 'RULE_EVIDENCE_MISSING', message: `缺少必需证据类型 ${kind}` })
+    }
+    for (const kind of list(evidence?.unconfirmedKinds)) {
+      items.push({ code: 'RULE_EVIDENCE_UNCONFIRMED', message: `以下证据类型待核实 ${kind}` })
+    }
+    if (rule.status === 'blocked' && !items.length) {
+      items.push({ code: 'RULE_BLOCKED', message: '规则分支已阻断' })
+    }
+  }
+  return items
 }
 function blockerText(item: Rec): string {
   return text(item.message) ?? text(item.reason) ?? text(item.code) ?? text(item.path) ?? '待确认项'
@@ -168,7 +183,7 @@ function sourceWarning(source: Rec): string | undefined {
       <article v-for="path in paths" :key="`${path.point}-${path.as_of_date}`" class="temporal-path">
         <header class="temporal-path-heading">
           <div><p class="eyebrow">法律时点路径</p><h3>{{ pathLabel(path) }}</h3></div>
-          <span class="subtle-chip" :class="pathBlocked(path) ? 'temporal-blocked' : 'temporal-calculated'">{{ labelStatus(path.status) }}</span>
+          <span class="subtle-chip" :class="pathBlocked(path) ? 'temporal-blocked' : 'temporal-calculated'">{{ labelStatus(pathBlocked(path) ? 'blocked' : path.status) }}</span>
         </header>
         <dl class="data-list inline-data temporal-meta">
           <div><dt>适用日期</dt><dd class="mono">{{ text(path.as_of_date) ?? '—' }}</dd></div>
@@ -235,7 +250,7 @@ function sourceWarning(source: Rec): string | undefined {
 .temporal-evidence-line { margin: 0; color: #8f1736; font-size: 12px; line-height: 1.5; }
 .temporal-blocked { color: #8f1736; background: var(--lc-risk-soft); border-color: var(--lc-risk); }
 .temporal-calculated { color: var(--lc-brand-800); background: var(--lc-brand-100); }
-.temporal-blockers { margin: 0; }
+.temporal-blockers { margin: 0; display: grid; gap: 6px; }
 .temporal-blockers p { margin: 6px 0 0; }
 .temporal-selection { margin: 0; display: grid; gap: 3px; }
 .temporal-evidence { margin: 0; }

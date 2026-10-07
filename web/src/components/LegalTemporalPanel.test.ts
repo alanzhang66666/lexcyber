@@ -23,7 +23,7 @@ const twoPathPayload = {
       point: 'conduct',
       as_of_date: '2025-06-01',
       status: 'calculated',
-      results: [{ ruleId: 'fraud', ruleVersion: '2024.1', status: 'calculated', outcome: '行为时点分支', term_months: 12, fine: { amount: 3000 }, evidence_checks: { requiredKinds: ['服务记录'], missingKinds: ['服务记录'] } }],
+      results: [{ ruleId: 'fraud', ruleVersion: '2024.1', status: 'calculated', outcome: '行为时点分支', term_months: 12, fine: { amount: 3000 }, evidence_checks: { requiredKinds: [], missingKinds: [] } }],
       dependency_snapshot: { source_versions: [{ sourceId: 'law-1', sourceVersion: '2024.1' }] },
     },
     {
@@ -50,7 +50,6 @@ describe('LegalTemporalPanel', () => {
     expect(text).toContain('刑期 12 个月')
     expect(text).toContain('罚金 3000 元')
     expect(text).toContain('行为时点分支')
-    expect(text).toContain('缺少必需证据类型 服务记录')
   })
 
   it('hides numbers for a blocked path and explains that a calculated path is not selected', () => {
@@ -78,6 +77,27 @@ describe('LegalTemporalPanel', () => {
     const wrapper = mount(LegalTemporalPanel, { props: { content } })
     expect(wrapper.text()).toContain('该路径已阻断，暂不显示计算数字')
     expect(wrapper.text()).not.toContain('刑期 12 个月')
+  })
+
+  it('defensively blocks a calculated path when nested evidence is missing', () => {
+    const content = {
+      status: 'calculated',
+      temporal_paths: [{
+        point: 'conduct', as_of_date: '2025-06-01', status: 'calculated',
+        results: [{
+          ruleId: 'evidence-rule', ruleVersion: '1', status: 'calculated', term_months: 12, fine: { amount: 900 },
+          evidence_checks: { requiredKinds: ['服务记录'], missingKinds: ['服务记录'], unconfirmedKinds: [] },
+        }],
+      }],
+    }
+    const wrapper = mount(LegalTemporalPanel, { props: { content } })
+    const text = wrapper.text()
+    expect(text).toContain('该路径已阻断，暂不显示计算数字')
+    expect(text).toContain('缺少必需证据类型 服务记录')
+    expect(text).toContain('已阻断')
+    expect(text).not.toContain('已计算')
+    expect(text).not.toContain('刑期 12 个月')
+    expect(text).not.toContain('罚金 900 元')
   })
 
   it('shows only the source key selected by a path', () => {
@@ -126,9 +146,11 @@ describe('LegalTemporalPanel', () => {
         point: 'conduct', as_of_date: '2025-01-01', status: 'calculated',
         rules: [
           { ruleId: 'legacy-hit', ruleVersion: '1', fired: true, outcome: '命中分支' },
-          { ruleId: 'legacy-blocked', ruleVersion: '1', fired: true, evidence_checks: { unconfirmedKinds: ['聊天记录'], blockers: [{ code: 'RULE_EVIDENCE_UNCONFIRMED' }] } },
           { ruleId: 'legacy-idle', ruleVersion: '1', fired: false, outcome: '不应作为结论' },
         ],
+      }, {
+        point: 'judgment', as_of_date: '2026-01-01', status: 'calculated',
+        rules: [{ ruleId: 'legacy-blocked', ruleVersion: '1', fired: true, evidence_checks: { unconfirmedKinds: ['聊天记录'], blockers: [{ code: 'RULE_EVIDENCE_UNCONFIRMED' }] } }],
       }],
     }
     const wrapper = mount(LegalTemporalPanel, { props: { content } })

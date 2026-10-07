@@ -130,10 +130,13 @@ class EngineResultServiceTest {
 
     @Test
     void publicationPreservesBothLegalVersionsAndDeduplicatesPointReferences() {
+        prepareComplianceCallback();
         UUID resultId = UUID.randomUUID();
         addDispatch(currentExecution, resultId, 1);
         String content = """
-                {"text":"versioned sources","dependency_snapshot":{
+                {"schema_version":"case.compliance.v2","status":"calculated",
+                 "text":"versioned sources","dependency_snapshot":{
+                  "as_of_date":"2026-01-01",
                   "rules":[
                     {"ruleId":"same-rule","ruleVersion":"1","family":"compliance"},
                     {"ruleId":"same-rule","ruleVersion":"1"}
@@ -152,6 +155,11 @@ class EngineResultServiceTest {
         UUID version = jdbc.queryForObject(
                 "SELECT artifact_version_id FROM app.artifact_version WHERE execution_id = ?",
                 UUID.class, currentExecution);
+        assertEquals("compliance", jdbc.queryForObject("""
+                SELECT s.kind FROM app.artifact_stream s JOIN app.artifact_version v
+                  ON v.artifact_stream_id = s.artifact_stream_id
+                WHERE v.artifact_version_id = ?
+                """, String.class, version));
         assertEquals(4, jdbc.queryForObject(
                 "SELECT COUNT(*) FROM app.artifact_external_dependency WHERE artifact_version_id = ?",
                 Integer.class, version));
@@ -175,9 +183,14 @@ class EngineResultServiceTest {
 
     @Test
     void malformedExplicitLegalVersionCannotPublishAnArtifact() {
+        prepareComplianceCallback();
         UUID resultId = UUID.randomUUID();
         addDispatch(currentExecution, resultId, 1);
-        String content = "{\"dependency_snapshot\":{\"source_versions\":[{\"sourceId\":\"source\",\"sourceVersion\":\"\"}]}}";
+        String content = """
+                {"schema_version":"case.compliance.v2","status":"calculated",
+                 "dependency_snapshot":{"as_of_date":"2026-01-01",
+                   "source_versions":[{"sourceId":"source","sourceVersion":""}]}}
+                """;
 
         ResponseStatusException error = assertThrows(ResponseStatusException.class,
                 () -> service.accept(envelope(currentExecution, resultId, content, true)));
@@ -332,6 +345,17 @@ class EngineResultServiceTest {
         } finally {
             executor.shutdownNow();
         }
+    }
+
+    private void prepareComplianceCallback() {
+        // The shared fixture is a document.parse task. These tests must reach
+        // module publication, where legal source dependencies are persisted.
+        jdbc.update("UPDATE app.documents SET parse_task_id = NULL WHERE id = ?", documentId);
+        jdbc.update("""
+                UPDATE app.tasks SET metadata_json =
+                  '{"taskType":"compliance.analyze","asOfDate":"2026-01-01","factsSnapshot":{"items":[],"entities":{}}}'::jsonb
+                WHERE id = ?
+                """, taskId);
     }
 
     private Future<Map<String, Object>> submitAccept(ExecutorService executor, CyclicBarrier start,
