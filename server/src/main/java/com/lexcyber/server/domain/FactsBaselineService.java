@@ -1026,13 +1026,13 @@ public class FactsBaselineService {
                   AND (
                     EXISTS (SELECT 1 FROM app.case_fact f WHERE f.case_id = e.case_id
                            AND (f.evidence_ids @> jsonb_build_array(e.evidence_id::text)
-                                OR (e.external_id IS NOT NULL AND f.evidence_ids @> jsonb_build_array(e.external_id)))
+                                OR (e.external_id IS NOT NULL AND f.evidence_ids @> jsonb_build_array(e.external_id))))
                     OR EXISTS (SELECT 1 FROM app.case_amount a WHERE a.case_id = e.case_id
                            AND (a.evidence_ids @> jsonb_build_array(e.evidence_id::text)
-                                OR (e.external_id IS NOT NULL AND a.evidence_ids @> jsonb_build_array(e.external_id)))
+                                OR (e.external_id IS NOT NULL AND a.evidence_ids @> jsonb_build_array(e.external_id))))
                     OR EXISTS (SELECT 1 FROM app.case_jurisdiction_connection j WHERE j.case_id = e.case_id
                            AND (j.evidence_ids @> jsonb_build_array(e.evidence_id::text)
-                                OR (e.external_id IS NOT NULL AND j.evidence_ids @> jsonb_build_array(e.external_id)))
+                                OR (e.external_id IS NOT NULL AND j.evidence_ids @> jsonb_build_array(e.external_id))))
                   )
                 """, (rs, ignored) -> rs.getString(1), caseId,
                 retained.toArray(String[]::new));
