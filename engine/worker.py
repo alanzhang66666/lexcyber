@@ -14,6 +14,7 @@ from engine.adapters.sentencing import SentencingInputError, SentencingUnavailab
 from engine.contracts import ExecutionView
 from engine.document_parse import DocumentParseError
 from engine.rules.evaluator import AmountAggregationError
+from engine.rules.registry import RegistryError
 from engine.settings import settings
 from engine.store import complete_execution, get_execution, mark_running, record_callback_failure
 from engine.workflow import build_runner
@@ -96,6 +97,11 @@ def run_execution(payload: dict[str, Any]) -> dict[str, Any]:
                  "draft.render": "draft_render"}.get(_task_type(payload), "module")
         if complete_execution(execution_id, "failed", stage, fencing_token, None, exc.code, str(exc),
                               retryable=False, owner=owner):
+            _notify_application(execution_id)
+        raise
+    except RegistryError as exc:
+        if complete_execution(execution_id, "failed", running_stage, fencing_token, None,
+                              exc.code, str(exc), retryable=exc.code != "INVALID_AS_OF_DATE", owner=owner):
             _notify_application(execution_id)
         raise
     except AmountAggregationError as exc:

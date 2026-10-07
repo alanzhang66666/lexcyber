@@ -160,7 +160,7 @@ def wait_execution(token, execution_id):
 def run_lifecycle(token):
     """Exercise the v2 facts → modules → draft → archive chain through nginx."""
     case = request("POST", "/v1/cases", token=token, expected=201, payload={
-        "title": "CI synthetic lifecycle fixture", "jurisdiction": "CI",
+        "title": "CI synthetic lifecycle fixture", "jurisdiction": "CI", "asOfDate": "2026-01-01",
         "metadata": {"purpose": "LEXCYBER_CI_FIXTURES"},
     })
     case_id = _id(case, "id", "caseId")
@@ -346,7 +346,7 @@ def run_lifecycle(token):
     # Confirming the entire facts version must not mark a candidate connection
     # verified. Exercise both absence and candidate state through the real engine.
     jurisdiction_case = request("POST", "/v1/cases", token=token, expected=201, payload={
-        "title": "CI unverified jurisdiction fixture", "jurisdiction": "CI",
+        "title": "CI unverified jurisdiction fixture", "jurisdiction": "CI", "asOfDate": "2026-01-01",
         "metadata": {"purpose": "LEXCYBER_CI_FIXTURES"},
     })
     jurisdiction_case_id = _id(jurisdiction_case, "id", "caseId")
@@ -381,7 +381,7 @@ def run_lifecycle(token):
     print("PASS absent/candidate jurisdiction blocks conviction and cannot be approved", flush=True)
 
     component_case = request("POST", "/v1/cases", token=token, expected=201, payload={
-        "title": "CI amount components fixture", "jurisdiction": "CI",
+        "title": "CI amount components fixture", "jurisdiction": "CI", "asOfDate": "2026-01-01",
         "metadata": {"purpose": "LEXCYBER_CI_FIXTURES"},
     })
     component_case_id = _id(component_case, "id", "caseId")
@@ -446,6 +446,40 @@ def run_lifecycle(token):
     print("PASS amount component deduplication, repeated canonical UUID roundtrip and atomic graph rejection", flush=True)
 
 
+    # Analysis date is a frozen input, and changing it must not restore old results.
+    undated = request("POST", "/v1/cases", token=token, expected=201,
+                      payload={"title": "CI missing analysis date", "jurisdiction": "CI"})
+    undated_id = _id(undated, "id", "caseId")
+    missing_date = request("POST", f"/v2/cases/{undated_id}/modules/compliance/executions",
+                           token=token, expected=409)
+    assert missing_date["code"] == "AS_OF_DATE_REQUIRED", missing_date
+    request("PUT", f"/v2/cases/{undated_id}/analysis-date", token=token, expected=400,
+            payload={"asOfDate": "2026-02-30", "expectedAsOfDate": None})
+    filled = request("PUT", f"/v2/cases/{undated_id}/analysis-date", token=token,
+                     payload={"asOfDate": "2026-01-01", "expectedAsOfDate": None})
+    assert filled["asOfDate"] == "2026-01-01", filled
+    request("PUT", f"/v2/cases/{undated_id}/analysis-date", token=token, expected=409,
+            payload={"asOfDate": "2026-02-01", "expectedAsOfDate": None})
+    request("PUT", f"/v2/cases/{undated_id}/analysis-date", expected=401,
+            payload={"asOfDate": "2026-01-01"})
+    request("PUT", f"/v2/cases/{case_id}/analysis-date", token=other["token"], expected=404,
+            payload={"asOfDate": "2026-01-02", "expectedAsOfDate": "2026-01-01"})
+    assert component_artifact["payload"]["dependency_snapshot"]["as_of_date"] == "2026-01-01"
+    request("POST", f"/v2/cases/{component_case_id}/modules/conviction/confirm", token=token)
+    before_date_head = request("GET", f"/v2/cases/{component_case_id}/modules/conviction", token=token)
+    changed = request("PUT", f"/v2/cases/{component_case_id}/analysis-date", token=token,
+                      payload={"asOfDate": "2026-01-02", "expectedAsOfDate": "2026-01-01"})
+    assert changed["asOfDate"] == "2026-01-02", changed
+    after_date_head = request("GET", f"/v2/cases/{component_case_id}/modules/conviction", token=token)
+    assert after_date_head["confirmedVersionId"] == before_date_head["confirmedVersionId"]
+    assert after_date_head["effectivelyConfirmed"] is False
+    request("POST", f"/v2/cases/{component_case_id}/modules/conviction/confirm", token=token, expected=409)
+    # Earlier artifact payload and already-created archive stay immutable.
+    unchanged_artifact = request("GET", f"/v2/artifact-versions/{_id(head, 'latestVersionId')}", token=token)
+    assert unchanged_artifact["payload"] == component_artifact["payload"]
+    print("PASS explicit analysis date binding, missing-date gate, CAS and stale old-date confirmation", flush=True)
+
+
 def main():
     global BASE
     parser = argparse.ArgumentParser()
@@ -460,7 +494,7 @@ def main():
             "password": secrets.token_urlsafe(24), "displayName": "CI capability gate",
         })
         gate_case = request("POST", "/v1/cases", token=gate_session["token"], expected=201,
-                            payload={"title": "CI capability gate", "jurisdiction": "CI"})
+                            payload={"title": "CI capability gate", "jurisdiction": "CI", "asOfDate": "2026-01-01"})
         request("POST", f"/v2/cases/{gate_case['id']}/modules/compliance/executions",
                 token=gate_session["token"], expected=501)
         seed_path = Path(__file__).resolve().with_name("ci_seed_registry.py")

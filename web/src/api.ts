@@ -337,6 +337,12 @@ export const api = {
     return request<CaseView>(`/v1/cases/${encodeURIComponent(caseId)}`)
   },
 
+  updateCaseAnalysisDate(caseId: string, asOfDate: string, expectedAsOfDate: string | null) {
+    return request<CaseView>(`/v2/cases/${encodeURIComponent(caseId)}/analysis-date`, {
+      method: 'PUT', body: JSON.stringify({ asOfDate, expectedAsOfDate }),
+    })
+  },
+
   uploadDocument(caseId: string, file: File, role: DocumentRole, idempotencyKey?: string) {
     const form = new FormData()
     form.append('file', file)

@@ -14,6 +14,10 @@ import java.security.MessageDigest;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.OffsetDateTime;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.time.format.ResolverStyle;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -74,8 +78,13 @@ public class TaskService {
     private TaskView createInternal(TaskCreate request, boolean moduleDispatch) {
         Map<String, Object> metadata = normalizeJson(
                 request.metadata() == null ? Map.of() : request.metadata());
+        String caseId = ids.caseIdOrNull(request.caseId());
         if (moduleDispatch) {
             TaskPolicies.requireKnown(metadata);
+            if (isLegalV2TaskType(TaskPolicies.taskType(metadata))) {
+                LocalDate asOfDate = requireStructuredV2AsOfDate(metadata);
+                requireCurrentAsOfDate(caseId, asOfDate);
+            }
             metadata.put("_dispatchOrigin", "v2");
         } else {
             metadata.remove("_dispatchOrigin");
@@ -85,7 +94,6 @@ public class TaskService {
         UUID requestId = UUID.randomUUID();
         UUID executionId = UUID.randomUUID();
         UUID resultId = UUID.randomUUID();
-        String caseId = ids.caseIdOrNull(request.caseId());
         String taskType = TaskPolicies.taskType(metadata);
         UUID factsVersionId = requireConfirmedFacts(taskType, caseId);
         ExecutionBinding binding = bindExecution(taskType, caseId, metadata, factsVersionId);
@@ -181,6 +189,8 @@ public class TaskService {
         String taskType = TaskPolicies.taskType(metadata);
         boolean v2 = isStructuredV2Metadata(metadata);
         if (v2) {
+            LocalDate frozenAsOfDate = requireStructuredV2AsOfDate(metadata);
+            requireCurrentAsOfDate(caseId, frozenAsOfDate);
             requireV2Capability(metadata, taskType);
         } else {
             TaskPolicies.requireSupported(metadata, sentencingEnabled);
@@ -218,6 +228,13 @@ public class TaskService {
                 || TaskPolicies.DRAFT_RENDER.equals(taskType));
     }
 
+    private boolean isLegalV2TaskType(String taskType) {
+        return TaskPolicies.COMPLIANCE_ANALYZE.equals(taskType)
+                || TaskPolicies.CONVICTION_ANALYZE.equals(taskType)
+                || TaskPolicies.SENTENCING_CALCULATE.equals(taskType)
+                || TaskPolicies.DRAFT_RENDER.equals(taskType);
+    }
+
     private void requireV2Capability(Map<String, Object> metadata, String taskType) {
         if (capabilities == null) {
             throw new ApiException(HttpStatus.NOT_IMPLEMENTED, "MODULE_EXECUTION_UNAVAILABLE",
@@ -234,6 +251,37 @@ public class TaskService {
         if (module == null || !capabilities.moduleAvailable(module)) {
             throw new ApiException(HttpStatus.NOT_IMPLEMENTED, "MODULE_EXECUTION_UNAVAILABLE",
                     "模块执行能力不可用");
+        }
+    }
+
+    private static final DateTimeFormatter FULL_ISO_DATE =
+            DateTimeFormatter.ISO_LOCAL_DATE.withResolverStyle(ResolverStyle.STRICT);
+
+    /** Legal V2 dispatches must carry the exact case-date snapshot used by Engine. */
+    private LocalDate requireStructuredV2AsOfDate(Map<String, Object> metadata) {
+        String raw = stringOrNull(metadata.get("asOfDate"));
+        if (raw == null || raw.isBlank()) {
+            throw new ApiException(HttpStatus.CONFLICT, "AS_OF_DATE_REQUIRED", "V2 任务必须包含案件基准日期");
+        }
+        try {
+            LocalDate parsed = LocalDate.parse(raw, FULL_ISO_DATE);
+            if (!parsed.toString().equals(raw)) {
+                throw new DateTimeParseException("non-canonical ISO date", raw, 0);
+            }
+            return parsed;
+        } catch (DateTimeParseException ex) {
+            throw new ApiException(HttpStatus.CONFLICT, "AS_OF_DATE_INVALID", "V2 任务基准日期必须是完整 ISO 日期", ex);
+        }
+    }
+
+    private void requireCurrentAsOfDate(String caseId, LocalDate frozen) {
+        if (caseId == null || caseId.isBlank()) {
+            throw new ApiException(HttpStatus.CONFLICT, "DEPENDENCY_STALE", "V2 任务缺少案件基准日期");
+        }
+        LocalDate current = jdbc.queryForObject(
+                "SELECT as_of_date FROM app.cases WHERE id = ?::uuid FOR UPDATE", LocalDate.class, caseId);
+        if (!frozen.equals(current)) {
+            throw new ApiException(HttpStatus.CONFLICT, "DEPENDENCY_STALE", "案件基准日期已变更，必须重新派发");
         }
     }
 

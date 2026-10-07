@@ -9,7 +9,7 @@ from uuid import UUID
 import dramatiq
 from fastapi import Depends, FastAPI, Header, HTTPException, Response, status
 
-from engine.adapters.sources import SourceSearchUnavailable
+from engine.adapters.sources import SourceDateError, SourceSearchUnavailable
 from engine.adapters.sources import search as search_sources_adapter
 from engine.adapters.t1_contract import build_t1_case_create, build_t1_fact_view, build_t1_module_state
 from engine.contracts import (
@@ -24,6 +24,7 @@ from engine.contracts import (
 from engine.docx_export import DOCX_MIME, DocxExportError, DocxExportRequest, render_docx
 from engine.import_package import ImportPackageValidationError, load_import_package
 from engine.object_store import fetch_object_bytes
+from engine.rules.registry import RegistryError
 from engine.settings import settings
 from engine.store import claim_enqueue, create_execution, get_execution, mark_enqueued, release_enqueue
 
@@ -179,6 +180,8 @@ def search_sources(payload: SourceSearchRequest) -> SourceSearchResponse:
         items = search_sources_adapter(payload.model_dump())
     except SourceSearchUnavailable as exc:
         raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail=exc.code) from exc
+    except (RegistryError, SourceDateError) as exc:
+        raise HTTPException(status_code=400, detail={"code": exc.code, "message": str(exc)}) from exc
     return SourceSearchResponse.model_validate({"items": items})
 
 

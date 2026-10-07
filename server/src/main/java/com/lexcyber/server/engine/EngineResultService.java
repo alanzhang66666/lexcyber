@@ -195,6 +195,13 @@ public class EngineResultService {
         String blockersJson = writeJson(content.getOrDefault("blockers", List.of()));
         Map<String, Object> dep = content.get("dependency_snapshot") instanceof Map<?, ?> m
                 ? (Map<String, Object>) m : Map.of();
+        if (metadata.get("factsSnapshot") instanceof Map<?, ?>
+                && List.of("case.compliance.v2", "case.conviction.v2", "sentencing.v2", "draft.v2").contains(schemaVersion)) {
+            Object frozenDate = metadata.get("asOfDate");
+            if (frozenDate == null || !java.util.Objects.equals(frozenDate, dep.get("as_of_date"))) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "analysis date snapshot mismatch");
+            }
+        }
         UUID factsVersionId = dep.get("facts_version_id") == null ? null
                 : UUID.fromString(String.valueOf(dep.get("facts_version_id")));
 

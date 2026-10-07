@@ -17,6 +17,7 @@ import com.lexcyber.server.domain.ModuleConfirmationService;
 import com.lexcyber.server.domain.ModuleStateService;
 import com.lexcyber.server.domain.ModuleStateUpdate;
 import com.lexcyber.server.domain.StalePropagationService;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -37,6 +38,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 /** Owner-scoped review SQL. Uses Testcontainers Postgres, or TEST_JDBC_URL when Docker-in-Docker is unavailable. */
 class ReviewServiceTest {
     private static final String EXTERNAL_JDBC = System.getenv("TEST_JDBC_URL");
+    private static final LocalDate FIXED_AS_OF_DATE = LocalDate.of(2026, 9, 6);
     private static PostgreSQLContainer<?> postgres;
 
     private ReviewService reviews;
@@ -84,8 +86,8 @@ class ReviewServiceTest {
         bobName = "bob_" + UUID.randomUUID().toString().replace("-", "").substring(0, 8);
         alice = insertAccount(aliceName);
         bob = insertAccount(bobName);
-        aliceCase = cases.create(alice, new CaseCreate("alice-case", "CN", null, Map.of()));
-        bobCase = cases.create(bob, new CaseCreate("bob-case", "CN", null, Map.of()));
+        aliceCase = cases.create(alice, new CaseCreate("alice-case", "CN", FIXED_AS_OF_DATE, Map.of()));
+        bobCase = cases.create(bob, new CaseCreate("bob-case", "CN", FIXED_AS_OF_DATE, Map.of()));
     }
 
     @Test
@@ -202,7 +204,7 @@ class ReviewServiceTest {
         UUID upstream = insertConfirmedModuleVersion(aliceCase.id(), "compliance");
         jdbc.update("INSERT INTO app.artifact_artifact_dependency(artifact_version_id, depends_on_artifact_version_id) VALUES (?, ?)",
                 draftVersion, upstream);
-        jdbc.update("UPDATE app.artifact_version SET schema_version = 'draft.v2', dependency_snapshot = '{\"artifacts\":[\"compliance\"]}'::jsonb WHERE artifact_version_id = ?", draftVersion);
+        jdbc.update("UPDATE app.artifact_version SET schema_version = 'draft.v2', dependency_snapshot = '{\"as_of_date\":\"2026-09-06\",\"artifacts\":[\"compliance\"]}'::jsonb WHERE artifact_version_id = ?", draftVersion);
         Map<String, Object> opened = reviews.open(alice, aliceCase.id(),
                 new ReviewOpen("draft", draft.id(), null, null, null, 1, null, null));
 

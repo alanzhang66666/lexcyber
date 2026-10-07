@@ -49,6 +49,11 @@ public class EngineSourceClient {
                     .toList();
             return new SourceSearchResponse(items);
         } catch (RestClientResponseException ex) {
+            if (ex.getStatusCode().value() == 400) {
+                throw new ApiException(HttpStatus.BAD_REQUEST,
+                        request.asOfDate() == null ? "AS_OF_DATE_REQUIRED" : "AS_OF_DATE_INVALID",
+                        "法源检索需要有效且明确的基准日期");
+            }
             if (ex.getStatusCode().value() == 501) {
                 throw new ApiException(HttpStatus.NOT_IMPLEMENTED, "SOURCE_SEARCH_UNAVAILABLE", "法源检索尚未接通");
             }

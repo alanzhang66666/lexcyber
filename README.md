@@ -36,11 +36,16 @@ Copy-Item .env.v03.example .env.v03
 docker compose --env-file .env.v03 up --build
 ```
 
-Open `http://127.0.0.1:18080`. The console submits a generic stub task, polls
-its state, displays the result reference, and can approve or reject a
-development review. The default `WORKFLOW_PROFILE=stub` needs no external model
-key. `.env.v03` is gitignored; put real `MODEL_*` values there only when you
-need a live model call.
+Open `http://127.0.0.1:18080` and register or log in before using the console.
+After signing in, open `/tasks` to submit a generic stub task and poll its
+state. The result reference identifies the stored result; reviews require a
+session and an owned case. The curl example below accepts a caseless generic
+stub task without login. The default `WORKFLOW_PROFILE=stub` needs no external model
+key. `.env.v03` is gitignored. For a live model call, replace the stub settings
+with your provider's `MODEL_PROVIDER`, `MODEL_NAME`, `MODEL_API_BASE_URL` and
+`MODEL_API_KEY`. For an OpenAI-compatible endpoint, use `MODEL_PROVIDER=openai`.
+The model-probe and local-closeout commands below require these real settings;
+they are separate from the offline demo.
 
 ```powershell
 curl.exe http://127.0.0.1:18080/healthz
@@ -54,6 +59,13 @@ Use `GET /v1/tasks/{id}` for lifecycle and `GET /v1/tasks/{id}/result` for the
 immutable Stub content. Caseless stub tasks stay public so this path still works
 without a session. Reviews require Bearer and are scoped to cases the account
 owns (`GET /v1/reviews`); see [`docs/archive/t1-api-01-increment.md`](docs/archive/t1-api-01-increment.md).
+
+For legal module execution, fill the analysis date when creating the case.
+For an existing undated case, set it in the case workspace before dispatching.
+Executions bind this date, and retries retain it. Changing the date preserves
+historical versions and invalidates confirmed modules and approved drafts;
+run and review new results under the new date. Source searches also require
+an explicit analysis date. Missing dates never default to today.
 
 ## T1 on main
 

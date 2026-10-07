@@ -37,6 +37,10 @@ def render(payload: dict[str, Any]) -> dict[str, Any]:
         raise ModuleAnalysisError(
             "FACTS_SNAPSHOT_MISSING",
             "文书渲染缺少不可变事实快照（metadata.factsSnapshot）")
+    try:
+        as_of_date = registry.require_as_of_date(metadata)
+    except registry.RegistryError as exc:
+        raise ModuleAnalysisError(exc.code, str(exc)) from exc
 
     template = registry.active_template(str(doc_type))
     if template is None:
@@ -112,6 +116,7 @@ def render(payload: dict[str, Any]) -> dict[str, Any]:
         "unresolved": unresolved,
         "dependency_snapshot": {
             "facts_version_id": facts_version_id,
+            "as_of_date": as_of_date.isoformat(),
             "template": {"templateId": template["templateId"],
                          "templateVersion": template["templateVersion"],
                          "contentHash": template["contentHash"]},

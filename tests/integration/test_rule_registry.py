@@ -48,13 +48,16 @@ def _source(key: str, version: str, frm: str, to: str | None = None):
     }
 
 
-def _rule(rid: str, version: str, family: str = "compliance", sources=None, covers=None):
+def _rule(rid: str, version: str, family: str = "compliance", sources=None, covers=None,
+          effective_from=None, effective_to=None):
     return {
         "rule_id": rid, "rule_version": version, "family": family,
         "predicate": {"all": [{"path": "facts.f1.value", "op": "eq", "value": True}]},
         "outcome": {"conclusion": "ok"},
         "source_ids": sources or [],
         "coverage": {"covers": covers or [f"cov.{rid}"]},
+        "effective_from": effective_from,
+        "effective_to": effective_to,
     }
 
 
@@ -78,7 +81,25 @@ def test_signoff_required_for_approval(subject_prefix):
     # signoff 路径批准
     out = registry.signoff("rule", f"{rid}@1", "it-reviewer", "reviewer", "approved")
     assert out["decision"] == "approved"
-    assert any(r["ruleId"] == rid for r in registry.active_rules("compliance"))
+    assert any(r["ruleId"] == rid for r in registry.active_rules("compliance", "2026-01-01"))
+
+
+def test_active_rules_selects_approved_packages_by_explicit_date(subject_prefix):
+    old = f"{subject_prefix}-old"
+    new = f"{subject_prefix}-new"
+    registry.register_rule_package(_rule(old, "1", effective_from="2020-01-01", effective_to="2024-12-31"))
+    registry.register_rule_package(_rule(new, "1", effective_from="2025-01-01"))
+    registry.signoff("rule", f"{old}@1", "it-reviewer", "reviewer", "approved")
+    registry.signoff("rule", f"{new}@1", "it-reviewer", "reviewer", "approved")
+    assert {r["ruleId"] for r in registry.active_rules("compliance", "2024-06-01")} & {old, new} == {old}
+    assert {r["ruleId"] for r in registry.active_rules("compliance", "2025-06-01")} & {old, new} == {new}
+
+
+@pytest.mark.parametrize("as_of", [None, "2025-1-01", "2025-02-30"])
+def test_active_rules_rejects_missing_or_invalid_explicit_date(as_of):
+    with pytest.raises(RegistryError) as err:
+        registry.active_rules("compliance", as_of)
+    assert err.value.code == "INVALID_AS_OF_DATE"
 
 
 def test_rejected_needs_signoff(subject_prefix):
@@ -90,7 +111,7 @@ def test_rejected_needs_signoff(subject_prefix):
                 "UPDATE engine.rule_package SET legal_review_status='rejected' WHERE rule_id=%s",
                 (rid,))
     registry.signoff("rule", f"{rid}@1", "it-reviewer", "reviewer", "rejected")
-    assert not any(r["ruleId"] == rid for r in registry.active_rules("compliance"))
+    assert not any(r["ruleId"] == rid for r in registry.active_rules("compliance", "2026-01-01"))
 
 
 def test_approved_immutable_and_supersede(subject_prefix):
@@ -106,7 +127,7 @@ def test_approved_immutable_and_supersede(subject_prefix):
         conn.execute("SELECT set_config('engine.signoff_authorized','on',true)")
         conn.execute(
             "UPDATE engine.rule_package SET legal_review_status='superseded' WHERE rule_id=%s", (rid,))
-    assert not any(r["ruleId"] == rid for r in registry.active_rules("compliance"))
+    assert not any(r["ruleId"] == rid for r in registry.active_rules("compliance", "2026-01-01"))
 
 
 def test_unknown_source_binding_rejected(subject_prefix):

@@ -11,7 +11,7 @@ from engine.adapters.case_bundle import (
 )
 from engine.adapters.consistency import validate_result_consistency
 from engine.adapters.sentencing import calculate_case_sentencing, calculate_sentencing
-from engine.adapters.sources import search_legal_sources
+from engine.adapters.sources import SourceDateError, search_legal_sources
 from engine.adapters.t1_contract import (
     T1ContractError,
     build_t1_case_create,
@@ -266,9 +266,15 @@ def test_source_search_is_version_and_date_aware():
 
 
 def test_source_search_fails_clearly_outside_three_case_coverage():
-    result = search_legal_sources("海商法共同海损")
+    result = search_legal_sources("海商法共同海损", as_of_date="2026-01-01")
     assert result["status"] == "unsupported_query"
     assert result["documents"] == []
+
+
+def test_source_search_requires_explicit_valid_date():
+    with pytest.raises(SourceDateError) as err:
+        search_legal_sources("海商法共同海损")
+    assert err.value.code == "INVALID_AS_OF_DATE"
 
 
 def test_case_sentencing_still_fails_closed_for_an_unapproved_rule():

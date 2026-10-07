@@ -120,6 +120,7 @@ public class ModuleConfirmationService {
      */
     @Transactional
     public UUID confirm(String caseId, String module, UUID actorId) {
+        LegalAnalysisContext.lockCase(jdbc, caseId);
         List<Map<String, Object>> heads = jdbc.queryForList("""
                 SELECT artifact_stream_id, confirmed_version_id
                 FROM app.module_head WHERE case_id = ?::uuid AND module = ?
@@ -162,6 +163,7 @@ public class ModuleConfirmationService {
             }
         }
         // 可批准性：不是 blocked（§4.8.3）
+        LegalAnalysisContext.requireCurrent(jdbc, caseId, latest);
         String outcome = jdbc.queryForObject(
                 "SELECT outcome_status FROM app.artifact_version WHERE artifact_version_id = ?",
                 String.class, latest);

@@ -61,7 +61,7 @@ class TaskRetryLifecycleTest {
         jdbc.update("INSERT INTO app.accounts(id, username, username_normalized, display_name, password_hash) VALUES (?, ?, ?, ?, ?)",
                 owner, "retry_" + owner, owner.toString(), "Retry", "hash");
         caseId = UUID.randomUUID().toString();
-        jdbc.update("INSERT INTO app.cases(id, owner_account_id, title, jurisdiction, metadata_json) VALUES (?::uuid, ?, 'retry', 'CN', '{}'::jsonb)",
+        jdbc.update("INSERT INTO app.cases(id, owner_account_id, title, jurisdiction, as_of_date, metadata_json) VALUES (?::uuid, ?, 'retry', 'CN', '2026-09-06', '{}'::jsonb)",
                 caseId, owner);
         factsVersion = UUID.randomUUID();
         jdbc.update("INSERT INTO app.facts_head(case_id) VALUES (?::uuid)", caseId);
@@ -107,6 +107,27 @@ class TaskRetryLifecycleTest {
     }
 
     @Test
+    void malformedFrozenDateRejectsRetryBeforeOutboxWrite() {
+        UUID taskId = createV2Task();
+        jdbc.update("UPDATE app.tasks SET status='failed', metadata_json = jsonb_set(metadata_json, '{asOfDate}', '\"2026-02-30\"'::jsonb) WHERE id=?", taskId);
+        ApiException error = assertThrows(ApiException.class, () -> tasks.retry(taskId));
+        assertEquals("AS_OF_DATE_INVALID", error.code());
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM app.task_dispatch_outbox WHERE task_id=?", Integer.class, taskId));
+    }
+
+    @Test
+    void changedCaseDateRejectsRetryWithoutRebindingFrozenDate() {
+        UUID taskId = createV2Task();
+        jdbc.update("UPDATE app.tasks SET status='failed' WHERE id=?", taskId);
+        jdbc.update("UPDATE app.cases SET as_of_date='2026-09-07' WHERE id=?::uuid", caseId);
+        ApiException error = assertThrows(ApiException.class, () -> tasks.retry(taskId));
+        assertEquals("DEPENDENCY_STALE", error.code());
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM app.task_dispatch_outbox WHERE task_id=?", Integer.class, taskId));
+        assertEquals("2026-09-06", jdbc.queryForObject(
+                "SELECT metadata_json->>'asOfDate' FROM app.tasks WHERE id=?", String.class, taskId));
+    }
+
+    @Test
     void invalidStateAndLegacyGateRemainConflicts() {
         UUID taskId = createV2Task();
         assertThrows(org.springframework.web.server.ResponseStatusException.class, () -> tasks.retry(taskId));
@@ -131,7 +152,7 @@ class TaskRetryLifecycleTest {
         new ModuleConfirmationService(jdbc).confirm(caseId, "conviction", owner);
         UUID taskId = tasks.createModuleTask(new TaskCreate("module:sentencing", caseId, null,
                 Map.of("taskType", TaskPolicies.SENTENCING_CALCULATE, "module", "sentencing",
-                        "factsVersionId", factsVersion.toString(), "factsSnapshot", Map.of("items", java.util.List.of()),
+                        "asOfDate", "2026-09-06", "factsVersionId", factsVersion.toString(), "factsSnapshot", Map.of("items", java.util.List.of()),
                         "artifactVersions", Map.of("conviction", conviction.toString())))).id();
         jdbc.update("UPDATE app.tasks SET status='failed' WHERE id=?", taskId);
         tasks.retry(taskId);
@@ -154,7 +175,7 @@ class TaskRetryLifecycleTest {
     private UUID createV2Task() {
         TaskView task = tasks.createModuleTask(new TaskCreate("module:compliance", caseId, null,
                 Map.of("taskType", TaskPolicies.COMPLIANCE_ANALYZE, "module", "compliance",
-                        "factsVersionId", factsVersion.toString(), "factsSnapshot", Map.of("facts", "frozen"))));
+                        "asOfDate", "2026-09-06", "factsVersionId", factsVersion.toString(), "factsSnapshot", Map.of("facts", "frozen"))));
         return task.id();
     }
 

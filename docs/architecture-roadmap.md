@@ -41,6 +41,11 @@
 
 本节记录进行中的工作，不替代下面的历史实测，也不证明全部功能已完成验证。
 
+- 续查 INV-LEGAL-002：v2 派发未绑定 `cases.as_of_date`，`active_rules` 实际回退到数据库当天日期；同一任务跨日可选不同规则。现冻结 `metadata.asOfDate` 与输入哈希/outbox，Engine 严格解析并传参，删除 `current_date`/检索 `date.today()` 回退；输出依赖记录日期。缺失/无效日期明确阻断且不可重试。案例既有未填日期可通过带 expected-date CAS 的 `/v2/cases/{id}/analysis-date` 补填；变更保留历史与批准指针、使模块/文书失效。确认/批准持案件锁后重验日期，旧日期完成保存历史但不可批准；V22 前向迁移使历史未绑定日期的 v2 确认/批准失效。未改已应用迁移或法学规则。
+- 日期修复本地 Python 224 项、Ruff、前端 126 项及实际 Vue 页面类型检查、TypeScript/Vite build、三个 OpenAPI 通过；Java test-compile 通过，新增数据库/真实 Compose 日期拒绝、CAS、依赖追溯与旧日期批准拒绝，以及 12 项注册表数据库检查，待本次提交完整 CI。
+- 本次审计还发现 `vue-tsc --noEmit` 在空根 references 配置下漏检页面；改为明确检查 `tsconfig.app.json`，修正文书刷新按钮把点击事件当 caseId 的实际缺陷并加点击验收。默认 env 演示改为完全 stub，文档说明注册/登录后 `/tasks` 入口与真实模型前置；修复六处已归档文档链接。
+- 未扩张旧 prompt 数据库模型：追溯证明 PromptRegistry 只由未挂载到当前图的 worker 节点调用，当前 reserved 任务均直接进入 Engine adapter。该遗留副作用与现役路径不同，本轮未创建第二套 schema 或把旧库脚本当现役启动前置。
+
 ## 阶段状态
 
 | 阶段 | 内容 | 状态 |

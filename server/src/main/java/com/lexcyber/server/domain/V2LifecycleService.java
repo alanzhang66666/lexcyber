@@ -199,7 +199,11 @@ public class V2LifecycleService {
      */
     @Transactional
     public Map<String, Object> dispatchModuleExecution(UUID ownerAccountId, String caseId, String module) {
-        caseId = cases.lockOwned(ownerAccountId, caseId).id();
+        CaseView caseView = cases.lockOwned(ownerAccountId, caseId);
+        caseId = caseView.id();
+        if (caseView.asOfDate() == null) {
+            throw new ApiException(HttpStatus.CONFLICT, "AS_OF_DATE_REQUIRED", "案件必须先设置基准日期");
+        }
         String taskType = switch (module) {
             case "compliance" -> TaskPolicies.COMPLIANCE_ANALYZE;
             case "conviction" -> TaskPolicies.CONVICTION_ANALYZE;
@@ -217,6 +221,7 @@ public class V2LifecycleService {
         metadata.put("module", module);
         metadata.put("factsVersionId", factsVersionId.toString());
         metadata.put("factsSnapshot", factsPayload);
+        metadata.put("asOfDate", caseView.asOfDate().toString());
         if (ModulePolicies.SENTENCING.equals(module)) {
             UUID convictionVersionId = moduleConfirmation.requireEffectiveConviction(caseId);
             metadata.put("artifactVersions", Map.of("conviction", convictionVersionId.toString()));
@@ -240,7 +245,11 @@ public class V2LifecycleService {
      */
     @Transactional
     public Map<String, Object> dispatchDraftRender(UUID ownerAccountId, String caseId, String docType) {
-        caseId = cases.lockOwned(ownerAccountId, caseId).id();
+        CaseView caseView = cases.lockOwned(ownerAccountId, caseId);
+        caseId = caseView.id();
+        if (caseView.asOfDate() == null) {
+            throw new ApiException(HttpStatus.CONFLICT, "AS_OF_DATE_REQUIRED", "案件必须先设置基准日期");
+        }
         if (docType == null || docType.isBlank()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "DOC_TYPE_MISSING", "需要 docType");
         }
@@ -258,6 +267,7 @@ public class V2LifecycleService {
         metadata.put("draftId", draftId.toString());
         metadata.put("factsVersionId", factsVersionId.toString());
         metadata.put("factsSnapshot", factsPayload);
+        metadata.put("asOfDate", caseView.asOfDate().toString());
         metadata.put("artifacts", inputs.payloads());
         metadata.put("artifactVersions", inputs.versionIds());
         TaskView task = tasks.createModuleTask(

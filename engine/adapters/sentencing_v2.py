@@ -34,6 +34,10 @@ def calculate_v2(payload: dict[str, Any]) -> dict[str, Any]:
         raise ModuleAnalysisError(
             "FACTS_SNAPSHOT_MISSING",
             "量刑执行缺少不可变事实快照（metadata.factsSnapshot）")
+    try:
+        as_of_date = registry.require_as_of_date(metadata)
+    except registry.RegistryError as exc:
+        raise ModuleAnalysisError(exc.code, str(exc)) from exc
     input_ref = payload.get("input_snapshot_ref") or ""
     facts_version_id = (input_ref[len("facts_version:"):]
                         if input_ref.startswith("facts_version:") else None)
@@ -44,7 +48,10 @@ def calculate_v2(payload: dict[str, Any]) -> dict[str, Any]:
             "CONVICTION_NOT_CONFIRMED",
             "量刑执行缺少派发时冻结的有效定罪工件版本")
 
-    rules = registry.active_rules("sentencing")
+    try:
+        rules = registry.active_rules("sentencing", as_of_date)
+    except registry.RegistryError as exc:
+        raise ModuleAnalysisError(exc.code, str(exc)) from exc
     if not rules:
         raise ModuleAnalysisError("MODULE_RULES_UNAVAILABLE",
                                   "无已会签量刑规则包")
@@ -96,6 +103,7 @@ def calculate_v2(payload: dict[str, Any]) -> dict[str, Any]:
         "blockers": blockers,
         "dependency_snapshot": {
             "facts_version_id": facts_version_id,
+            "as_of_date": as_of_date.isoformat(),
             "artifacts": [{"module": "conviction",
                             "artifactVersionId": conviction_version_id}],
             "rules": [{"ruleId": r["ruleId"], "ruleVersion": r["ruleVersion"],

@@ -45,9 +45,9 @@ def test_fixture_inputs_drive_all_real_adapters(monkeypatch):
     for item, normalized in zip(raw_rules, rules):
         by_family.setdefault(item["family"], []).append(normalized)
     monkeypatch.setattr(module_analysis.registry, "active_rules",
-                        lambda family: by_family.get(family, []))
+                        lambda family, *_: by_family.get(family, []))
     monkeypatch.setattr(sentencing_v2.registry, "active_rules",
-                        lambda family: by_family.get(family, []))
+                        lambda family, *_: by_family.get(family, []))
     template = fixture._template()
     monkeypatch.setattr(document_render.registry, "active_template", lambda _: {
         "templateId": template["template_id"], "templateVersion": template["template_version"],
@@ -71,7 +71,7 @@ def test_fixture_inputs_drive_all_real_adapters(monkeypatch):
         },
     }
     base = {"case_id": "case-ci", "input_snapshot_ref": "facts_version:00000000-0000-0000-0000-000000000002",
-            "metadata": {"factsSnapshot": snapshot,
+            "metadata": {"asOfDate": "2026-01-01", "factsSnapshot": snapshot,
                          "artifactVersions": {"conviction": "00000000-0000-0000-0000-000000000003"}}}
     compliance = module_analysis.analyze({**base, "metadata": {**base["metadata"]}}, "compliance.analyze")["final_output"]
     conviction = module_analysis.analyze({**base, "metadata": {**base["metadata"]}}, "conviction.analyze")["final_output"]

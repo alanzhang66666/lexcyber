@@ -42,6 +42,7 @@ public class DraftApprovalService {
      */
     @Transactional
     public UUID approve(String caseId, UUID draftId, UUID actorId) {
+        LegalAnalysisContext.lockCase(jdbc, caseId);
         List<Map<String, Object>> heads = jdbc.queryForList("""
                 SELECT artifact_stream_id, approved_version_id
                 FROM app.draft_head WHERE draft_id = ? AND case_id = ?::uuid
@@ -79,6 +80,7 @@ public class DraftApprovalService {
         if (latest == null) {
             throw new ApiException(HttpStatus.CONFLICT, "DRAFT_NOT_APPROVABLE", "文书尚无工件版本");
         }
+        LegalAnalysisContext.requireCurrent(jdbc, caseId, latest);
         String outcome = jdbc.queryForObject(
                 "SELECT outcome_status FROM app.artifact_version WHERE artifact_version_id = ?",
                 String.class, latest);

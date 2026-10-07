@@ -364,7 +364,7 @@ onBeforeUnmount(() => { loadGeneration += 1 })
       <section class="panel">
         <div class="panel-heading">
           <div><p class="section-index">01</p><h2>文书列表</h2></div>
-          <button class="button button-quiet" type="button" :disabled="loading" @click="loadDrafts">刷新</button>
+          <button class="button button-quiet" type="button" :disabled="loading" @click="loadDrafts()">刷新</button>
         </div>
 
         <form class="form-stack create-row" @submit.prevent="create">

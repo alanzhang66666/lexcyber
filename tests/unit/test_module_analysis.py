@@ -26,7 +26,7 @@ APPROVED_RULE = {
 
 def _payload(task_type="compliance.analyze"):
     return {"case_id": "case-1", "input_snapshot_ref": "facts_version:fv-9",
-            "metadata": {"taskType": task_type, "factsSnapshot": SNAPSHOT}}
+            "metadata": {"taskType": task_type, "asOfDate": "2026-01-01", "factsSnapshot": SNAPSHOT}}
 
 
 def test_missing_snapshot_fails_closed(monkeypatch):
@@ -39,8 +39,18 @@ def test_missing_snapshot_fails_closed(monkeypatch):
     assert err.value.code == "FACTS_SNAPSHOT_MISSING"
 
 
+@pytest.mark.parametrize("value", [None, "2026-1-1", "2026-02-30"])
+def test_missing_or_invalid_as_of_date_fails_closed(monkeypatch, value):
+    monkeypatch.setattr(module_analysis.registry, "active_rules", lambda *args: pytest.fail("rules must not load"))
+    payload = _payload()
+    payload["metadata"]["asOfDate"] = value
+    with pytest.raises(ModuleAnalysisError) as err:
+        analyze(payload, "compliance.analyze")
+    assert err.value.code == "INVALID_AS_OF_DATE"
+
+
 def test_no_approved_rules_fails_closed(monkeypatch):
-    monkeypatch.setattr(module_analysis.registry, "active_rules", lambda fam: [])
+    monkeypatch.setattr(module_analysis.registry, "active_rules", lambda fam, *_: [])
     with pytest.raises(ModuleAnalysisError) as err:
         analyze(_payload(), "compliance.analyze")
     assert err.value.code == "MODULE_RULES_UNAVAILABLE"
@@ -48,7 +58,7 @@ def test_no_approved_rules_fails_closed(monkeypatch):
 
 def test_compliance_payload_shape(monkeypatch):
     monkeypatch.setattr(module_analysis.registry, "active_rules",
-                        lambda fam: [APPROVED_RULE] if fam == "compliance" else [])
+                        lambda fam, *_: [APPROVED_RULE] if fam == "compliance" else [])
     monkeypatch.setattr(module_analysis, "_resolve_sources", lambda *a, **k: [])
     out = analyze(_payload(), "compliance.analyze")
     body = out["final_output"]
@@ -63,7 +73,7 @@ def test_compliance_payload_shape(monkeypatch):
 def test_conviction_pulls_distinction_family(monkeypatch):
     calls = []
 
-    def fake_active(fam):
+    def fake_active(fam, *_):
         calls.append(fam)
         return [APPROVED_RULE]
 
@@ -77,7 +87,7 @@ def test_conviction_pulls_distinction_family(monkeypatch):
 def test_predicate_error_blocks_not_crashes(monkeypatch):
     bad_rule = dict(APPROVED_RULE, predicate={"all": []})
     monkeypatch.setattr(module_analysis.registry, "active_rules",
-                        lambda fam: [bad_rule])
+                        lambda fam, *_: [bad_rule])
     monkeypatch.setattr(module_analysis, "_resolve_sources", lambda *a, **k: [])
     out = analyze(_payload(), "compliance.analyze")
     body = out["final_output"]
@@ -96,7 +106,7 @@ def test_predicate_error_blocks_not_crashes(monkeypatch):
 ])
 def test_conviction_requires_confirmed_jurisdiction_connection(monkeypatch, connections):
     monkeypatch.setattr(module_analysis.registry, "active_rules",
-                        lambda fam: [APPROVED_RULE])
+                        lambda fam, *_: [APPROVED_RULE])
     monkeypatch.setattr(module_analysis, "_resolve_sources", lambda *a, **k: [])
     payload = _payload("conviction.analyze")
     payload["metadata"]["factsSnapshot"] = {
@@ -116,7 +126,7 @@ def test_conviction_requires_confirmed_jurisdiction_connection(monkeypatch, conn
 
 def test_conviction_accepts_any_confirmed_jurisdiction_connection(monkeypatch):
     monkeypatch.setattr(module_analysis.registry, "active_rules",
-                        lambda fam: [APPROVED_RULE])
+                        lambda fam, *_: [APPROVED_RULE])
     monkeypatch.setattr(module_analysis, "_resolve_sources", lambda *a, **k: [])
     payload = _payload("conviction.analyze")
     payload["metadata"]["factsSnapshot"] = {

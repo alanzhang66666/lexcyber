@@ -81,6 +81,47 @@ class CaseDocumentServiceTest {
     }
 
     @Test
+    void analysisDateFillReplayConflictAndOwnerIsolation() {
+        CaseView created = cases.create(alice, new CaseCreate("date-context", "CN", null, Map.of()));
+        LocalDate date = LocalDate.parse("2024-03-01");
+        assertEquals(date, cases.updateAnalysisDate(alice, created.id(),
+                new CaseAnalysisDateUpdate(date, null)).asOfDate());
+        assertEquals(date, cases.updateAnalysisDate(alice, created.id(),
+                new CaseAnalysisDateUpdate(date, null)).asOfDate());
+        assertEquals(1L, jdbc.queryForObject("""
+                SELECT COUNT(*) FROM app.business_audit
+                WHERE action = 'case.analysis_date_changed' AND resource_id = ?
+                """, Long.class, created.id()));
+        ApiException conflict = assertThrows(ApiException.class, () -> cases.updateAnalysisDate(alice,
+                created.id(), new CaseAnalysisDateUpdate(date.plusDays(1), null)));
+        assertEquals("ANALYSIS_DATE_CONFLICT", conflict.code());
+        ApiException hidden = assertThrows(ApiException.class, () -> cases.updateAnalysisDate(bob,
+                created.id(), new CaseAnalysisDateUpdate(date.plusDays(1), date)));
+        assertEquals(HttpStatus.NOT_FOUND, hidden.status());
+        assertEquals(date, cases.requireOwned(alice, created.id()).asOfDate());
+    }
+
+    @Test
+    void analysisDateChangePreservesApprovedModuleVersionAndRejectsItsReconfirmation() {
+        LocalDate before = LocalDate.parse("2024-03-01");
+        CaseView created = cases.create(alice, new CaseCreate("dated-result", "CN", before, Map.of()));
+        ArtifactPublicationService publication = new ArtifactPublicationService(jdbc, new StalePropagationService(jdbc));
+        UUID stream = publication.ensureStreamLocked(created.id(), "compliance", "module:compliance");
+        var artifact = publication.publish(new ArtifactPublicationService.PublishRequest(
+                created.id(), "compliance", "module:compliance", "case.compliance.v2", "calculated",
+                "{}", "[]", "{\"as_of_date\":\"2024-03-01\"}", null, List.of(), List.of(), null, null, null));
+        ModuleConfirmationService confirmation = new ModuleConfirmationService(jdbc);
+        confirmation.confirm(created.id(), "compliance", alice);
+        cases.updateAnalysisDate(alice, created.id(), new CaseAnalysisDateUpdate(before.plusDays(1), before));
+        assertEquals(artifact.artifactVersionId(), jdbc.queryForObject(
+                "SELECT confirmed_version_id FROM app.module_head WHERE artifact_stream_id = ?", UUID.class, stream));
+        assertFalse(confirmation.isEffectivelyConfirmed(created.id(), "compliance"));
+        ApiException stale = assertThrows(ApiException.class,
+                () -> confirmation.confirm(created.id(), "compliance", alice));
+        assertEquals("DEPENDENCY_STALE", stale.code());
+    }
+
+    @Test
     void createListGetAndUploadPersistAcrossReload() {
         CaseView created = cases.create(alice, new CaseCreate("测试案例 001", "CN", LocalDate.parse("2026-09-06"),
                 Map.of("datasetCaseId", "001", "isDevelopmentSample", true)));

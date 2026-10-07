@@ -7,7 +7,8 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import date
+import re
+from datetime import date, datetime
 from typing import Any
 
 from psycopg import IntegrityError
@@ -42,6 +43,27 @@ class RegistryError(Exception):
     def __init__(self, code: str, message: str):
         super().__init__(message)
         self.code = code
+
+
+_ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def parse_explicit_date(value: date | str | None, field: str = "asOfDate") -> date:
+    """Parse a required legal-analysis date; never substitute the wall clock."""
+    if isinstance(value, datetime):
+        raise RegistryError("INVALID_AS_OF_DATE", f"{field} must be a date without time")
+    if isinstance(value, date):
+        return value
+    if not isinstance(value, str) or not _ISO_DATE.fullmatch(value):
+        raise RegistryError("INVALID_AS_OF_DATE", f"{field} must be an ISO date (YYYY-MM-DD)")
+    try:
+        return date.fromisoformat(value)
+    except ValueError as exc:
+        raise RegistryError("INVALID_AS_OF_DATE", f"{field} must be a valid ISO date (YYYY-MM-DD)") from exc
+
+
+def require_as_of_date(metadata: dict[str, Any]) -> date:
+    return parse_explicit_date(metadata.get("asOfDate"), "metadata.asOfDate")
 
 
 # ---------------------------------------------------------------------------
@@ -353,10 +375,11 @@ def active_template(doc_type: str) -> dict[str, Any] | None:
     }
 
 
-def active_rules(family: str, as_of: date | None = None) -> list[dict[str, Any]]:
+def active_rules(family: str, as_of: date | str | None = None) -> list[dict[str, Any]]:
     """产出路径专用：只读 approved 且在有效期内的规则包（INV-RULE-002）。"""
     if family not in FAMILIES:
         raise RegistryError("INVALID_FAMILY", f"unknown family {family}")
+    as_of = parse_explicit_date(as_of)
     with connection() as conn:
         rows = conn.execute(
             """
@@ -364,8 +387,8 @@ def active_rules(family: str, as_of: date | None = None) -> list[dict[str, Any]]
                    required_evidence_kinds, coverage, content_hash
             FROM engine.rule_package
             WHERE family = %s AND legal_review_status = 'approved'
-              AND (effective_from IS NULL OR effective_from <= COALESCE(%s, current_date))
-              AND (effective_to IS NULL OR effective_to >= COALESCE(%s, current_date))
+              AND (effective_from IS NULL OR effective_from <= %s)
+              AND (effective_to IS NULL OR effective_to >= %s)
             ORDER BY rule_id
             """,
             (family, as_of, as_of),
@@ -378,9 +401,9 @@ def active_rules(family: str, as_of: date | None = None) -> list[dict[str, Any]]
     } for r in rows]
 
 
-def coverage_check(family: str, needed_keys: list[str]) -> dict[str, Any]:
+def coverage_check(family: str, needed_keys: list[str], as_of: date | str | None = None) -> dict[str, Any]:
     """INV-LEGAL-007：覆盖边界外的查询返回明确缺口，不返回近似结果。"""
-    active = active_rules(family)
+    active = active_rules(family, as_of)
     covered: set[str] = set()
     for rule in active:
         cov = rule.get("coverage") or {}

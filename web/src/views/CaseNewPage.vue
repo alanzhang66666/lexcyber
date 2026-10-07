@@ -51,11 +51,11 @@ async function submit() {
           <input v-model="jurisdiction" placeholder="例如：CN" />
         </label>
         <label>
-          <span>基准日期</span>
-          <input v-model="asOfDate" type="date" />
+          <span>法律分析基准日期 <b>*</b></span>
+          <input v-model="asOfDate" type="date" required />
         </label>
         <p v-if="error" class="notice notice-error" role="alert">{{ error }}</p>
-        <button class="button button-primary" type="submit" :disabled="submitting || !title.trim()">
+        <button class="button button-primary" type="submit" :disabled="submitting || !title.trim() || !asOfDate">
           {{ submitting ? '正在创建…' : '创建案件' }}
         </button>
       </form>

@@ -98,7 +98,7 @@ def ci_facts(*extra: dict[str, Any]) -> list[dict[str, Any]]:
 def setup_case(base: str, token: str) -> str:
     created = obj(*request(base, "POST", "/v1/cases", token=token, json_body={
         "title": f"concurrency-check-{int(time.time())}",
-        "jurisdiction": "CN", "metadata": {"purpose": "concurrency-check"},
+        "jurisdiction": "CN", "asOfDate": "2026-01-01", "metadata": {"purpose": "concurrency-check"},
     }), 201, "create case")
     case_id = str(created["id"])
     status, body = request(base, "PUT", f"/v2/cases/{case_id}/facts-entities/facts",

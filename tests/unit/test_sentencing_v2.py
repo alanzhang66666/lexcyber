@@ -46,12 +46,12 @@ SNAPSHOT = {
 
 def _payload():
     return {"case_id": "c1", "input_snapshot_ref": "facts_version:fv-7",
-            "metadata": {"taskType": "sentencing.calculate", "factsSnapshot": SNAPSHOT,
+            "metadata": {"taskType": "sentencing.calculate", "asOfDate": "2026-01-01", "factsSnapshot": SNAPSHOT,
                          "artifactVersions": {"conviction": "cv-3"}}}
 
 
 def test_calculated_with_steps_and_clamp(monkeypatch):
-    monkeypatch.setattr(sentencing_v2.registry, "active_rules", lambda fam: [RULE])
+    monkeypatch.setattr(sentencing_v2.registry, "active_rules", lambda fam, *_: [RULE])
     out = calculate_v2(_payload())
     body = out["final_output"]
     assert body["schema_version"] == "sentencing.v2"
@@ -69,7 +69,7 @@ def test_calculated_with_steps_and_clamp(monkeypatch):
 
 
 def test_no_tier_fires_blocked(monkeypatch):
-    monkeypatch.setattr(sentencing_v2.registry, "active_rules", lambda fam: [RULE])
+    monkeypatch.setattr(sentencing_v2.registry, "active_rules", lambda fam, *_: [RULE])
     snap = {"items": [{"key": "charge", "value": "assist", "verificationStatus": "confirmed"}],
             "entities": {"amounts": [{"kind": "inflow", "value": "100",
                                       "verificationStatus": "confirmed"}]}}
@@ -82,7 +82,7 @@ def test_no_tier_fires_blocked(monkeypatch):
 
 
 def test_predicate_miss_is_not_applicable(monkeypatch):
-    monkeypatch.setattr(sentencing_v2.registry, "active_rules", lambda fam: [RULE])
+    monkeypatch.setattr(sentencing_v2.registry, "active_rules", lambda fam, *_: [RULE])
     snap = {"items": [{"key": "charge", "value": "concealment",
                         "verificationStatus": "confirmed"}], "entities": {}}
     payload = _payload()
@@ -92,7 +92,7 @@ def test_predicate_miss_is_not_applicable(monkeypatch):
 
 
 def test_no_rules_fails_closed(monkeypatch):
-    monkeypatch.setattr(sentencing_v2.registry, "active_rules", lambda fam: [])
+    monkeypatch.setattr(sentencing_v2.registry, "active_rules", lambda fam, *_: [])
     with pytest.raises(ModuleAnalysisError) as err:
         calculate_v2(_payload())
     assert err.value.code == "MODULE_RULES_UNAVAILABLE"
@@ -104,6 +104,14 @@ def test_missing_snapshot_fails_closed():
     with pytest.raises(ModuleAnalysisError) as err:
         calculate_v2(payload)
     assert err.value.code == "FACTS_SNAPSHOT_MISSING"
+
+
+def test_missing_as_of_date_fails_closed():
+    payload = _payload()
+    del payload["metadata"]["asOfDate"]
+    with pytest.raises(ModuleAnalysisError) as err:
+        calculate_v2(payload)
+    assert err.value.code == "INVALID_AS_OF_DATE"
 
 
 def test_missing_confirmed_conviction_fails_closed():

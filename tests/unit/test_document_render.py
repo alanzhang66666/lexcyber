@@ -24,7 +24,7 @@ SNAPSHOT = {
 
 def _payload(artifacts=None):
     return {"case_id": "c1", "input_snapshot_ref": "facts_version:fv-3",
-            "metadata": {"taskType": "draft.render", "docType": "indictment",
+            "metadata": {"taskType": "draft.render", "asOfDate": "2026-01-01", "docType": "indictment",
                          "factsSnapshot": SNAPSHOT,
                          "artifactVersions": {"conviction": "11111111-1111-1111-1111-111111111111"},
                          "artifacts": artifacts or {"conviction": {"status": "calculated"}}}}
@@ -84,10 +84,19 @@ def test_no_template_fails_closed(monkeypatch):
 
 def test_missing_doc_type():
     payload = _payload()
-    payload["metadata"] = {"taskType": "draft.render", "factsSnapshot": SNAPSHOT}
+    payload["metadata"] = {"taskType": "draft.render", "asOfDate": "2026-01-01", "factsSnapshot": SNAPSHOT}
     with pytest.raises(ModuleAnalysisError) as err:
         render(payload)
     assert err.value.code == "DOC_TYPE_MISSING"
+
+
+def test_missing_as_of_date_fails_closed(monkeypatch):
+    monkeypatch.setattr(document_render.registry, "active_template", lambda dt: TEMPLATE)
+    payload = _payload()
+    del payload["metadata"]["asOfDate"]
+    with pytest.raises(ModuleAnalysisError) as err:
+        render(payload)
+    assert err.value.code == "INVALID_AS_OF_DATE"
 
 
 def test_chinese_placeholder_in_template_blocks_body(monkeypatch):

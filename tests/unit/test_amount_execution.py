@@ -41,9 +41,9 @@ def test_real_corpus_adapters_use_parent_total_once(monkeypatch, parent_value, s
               "predicate": r["predicate"], "outcome": r["outcome"],
               "sourceIds": [], "contentHash": "test"} for r in corpus["rules"]]
     monkeypatch.setattr(module_analysis.registry, "active_rules",
-                        lambda family: [r for r in rules if r["family"] == family])
+                        lambda family, *_: [r for r in rules if r["family"] == family])
     payload = {"case_id": str(uuid4()), "input_snapshot_ref": "facts_version:" + str(uuid4()),
-               "metadata": {"factsSnapshot": _snapshot(parent_value),
+               "metadata": {"asOfDate": "2026-01-01", "factsSnapshot": _snapshot(parent_value),
                             "artifactVersions": {"conviction": str(uuid4())}}}
     conviction = module_analysis.analyze(payload, "conviction.analyze")["final_output"]
     severity = next(r for r in conviction["rules"]

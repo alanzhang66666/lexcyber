@@ -35,6 +35,10 @@ def analyze(payload: dict[str, Any], task_type: str) -> dict[str, Any]:
         raise ModuleAnalysisError(
             "FACTS_SNAPSHOT_MISSING",
             "模块执行缺少不可变事实快照（metadata.factsSnapshot）")
+    try:
+        as_of_date = registry.require_as_of_date(metadata)
+    except registry.RegistryError as exc:
+        raise ModuleAnalysisError(exc.code, str(exc)) from exc
     input_ref = payload.get("input_snapshot_ref") or ""
     facts_version_id = _ref_value(input_ref, "facts_version")
 
@@ -44,7 +48,10 @@ def analyze(payload: dict[str, Any], task_type: str) -> dict[str, Any]:
     rules: list[dict[str, Any]] = []
     missing: list[str] = []
     for fam in families:
-        active = registry.active_rules(fam)
+        try:
+            active = registry.active_rules(fam, as_of_date)
+        except registry.RegistryError as exc:
+            raise ModuleAnalysisError(exc.code, str(exc)) from exc
         if not active:
             missing.append(fam)
         rules.extend({"family": fam, **r} for r in active)
@@ -101,6 +108,7 @@ def analyze(payload: dict[str, Any], task_type: str) -> dict[str, Any]:
         "rules": rule_results,
         "dependency_snapshot": {
             "facts_version_id": facts_version_id,
+            "as_of_date": as_of_date.isoformat(),
             "rules": [{"ruleId": r["ruleId"], "ruleVersion": r["ruleVersion"],
                        "family": r["family"], "contentHash": r["contentHash"]}
                       for r in rules],

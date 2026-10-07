@@ -91,7 +91,7 @@ class V2RenderLifecycleTest {
                 new ModuleConfirmationService(jdbc), new DraftApprovalService(jdbc));
 
         owner = insertAccount("render_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12));
-        caseView = cases.create(owner, new CaseCreate("render-case", "CN", null, Map.of()));
+        caseView = cases.create(owner, new CaseCreate("render-case", "CN", java.time.LocalDate.of(2026, 9, 6), Map.of()));
         Map<String, Object> draftFacts = lifecycle.createFactsVersion(owner, caseView.id());
         factsVersion = (UUID) draftFacts.get("factsVersionId");
         lifecycle.confirmFactsVersion(owner, caseView.id(), factsVersion, null);
@@ -130,6 +130,19 @@ class V2RenderLifecycleTest {
     }
 
     @Test
+    void dispatchRequiresCaseDateBeforeCreatingTaskOrDraft() {
+        jdbc.update("UPDATE app.cases SET as_of_date = NULL WHERE id = ?::uuid", caseView.id());
+        ApiException error = assertThrows(ApiException.class,
+                () -> lifecycle.dispatchModuleExecution(owner, caseView.id(), "compliance"));
+        assertEquals("AS_OF_DATE_REQUIRED", error.code());
+        assertEquals(0, jdbc.queryForObject(
+                "SELECT COUNT(*) FROM app.tasks WHERE case_id = ?::uuid", Integer.class, caseView.id()));
+        assertEquals(0, jdbc.queryForObject(
+                "SELECT COUNT(*) FROM app.task_dispatch_outbox WHERE task_id IN "
+                        + "(SELECT id FROM app.tasks WHERE case_id = ?::uuid)", Integer.class, caseView.id()));
+    }
+
+    @Test
     void sentencingRequiresEffectiveConvictionAndFreezesItsArtifactDependency() throws Exception {
         ApiException missingConviction = assertThrows(ApiException.class,
                 () -> lifecycle.dispatchModuleExecution(owner, caseView.id(), "sentencing"));
@@ -148,12 +161,13 @@ class V2RenderLifecycleTest {
         JsonNode dispatch = MAPPER.readTree(jdbc.queryForObject(
                 "SELECT payload_json::text FROM app.task_dispatch_outbox WHERE task_id = ? AND execution_id = ?",
                 String.class, taskId, executionId));
+        assertEquals("2026-09-06", dispatch.get("metadata").get("asOfDate").asText());
         assertEquals(convictionV1.toString(), dispatch.get("metadata").get("artifactVersions")
                 .get("conviction").asText());
 
         String content = MAPPER.writeValueAsString(Map.of(
                 "schema_version", "sentencing.v2", "status", "calculated",
-                "dependency_snapshot", Map.of("facts_version_id", factsVersion.toString(),
+                "dependency_snapshot", Map.of("as_of_date", "2026-09-06", "facts_version_id", factsVersion.toString(),
                         "artifacts", List.of(Map.of("module", "conviction",
                                 "artifactVersionId", convictionV1.toString()))),
                 "results", List.of()));
@@ -218,6 +232,7 @@ class V2RenderLifecycleTest {
                 "schema_version", "draft.v2",
                 "status", "calculated",
                 "dependency_snapshot", Map.of(
+                        "as_of_date", "2026-09-06",
                         "facts_version_id", factsVersion.toString(),
                         "artifacts", List.of(Map.of(
                                 "module", "compliance", "artifactVersionId", complianceV1.toString()))),
@@ -333,7 +348,7 @@ class V2RenderLifecycleTest {
                 String.class, taskId, executionId));
         String content = MAPPER.writeValueAsString(Map.of(
                 "schema_version", "draft.v2", "status", "calculated",
-                "dependency_snapshot", Map.of("facts_version_id", factsVersion.toString(),
+                "dependency_snapshot", Map.of("as_of_date", "2026-09-06", "facts_version_id", factsVersion.toString(),
                         "artifacts", List.of(Map.of("module", "compliance", "artifactVersionId", complianceV1.toString()))),
                 "body", "rendered with frozen V1"));
         ResultEnvelope callback = new ResultEnvelope(executionId, taskId, requestId,

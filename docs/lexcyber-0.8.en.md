@@ -113,7 +113,7 @@ flowchart LR
 | Documents | `DocumentService` | `/v1/cases/{id}/documents`, `/v1/documents/{id}` |
 | Facts | `FactService` | `/v1/cases/{id}/facts`, `.../confirm` |
 | Tasks | `TaskService` / `TaskPolicies` | `/v1/tasks`, status, `/result`, `/retry` |
-| Reviews | `ReviewService` | `/v1/reviews` (Bearer + owned case; see [t1-api-01-increment.md](t1-api-01-increment.md)) |
+| Reviews | `ReviewService` | `/v1/reviews` (Bearer + owned case; see [t1-api-01-increment.md](archive/t1-api-01-increment.md)) |
 | Search gate | `SourceSearchController` / `EngineSourceClient` | `POST /v1/sources/search` → 501 today |
 | Engine bridge | `EngineDispatcher`, `EngineResultCallbackController` | Internal HTTP + `X-Service-Token` |
 
@@ -268,7 +268,12 @@ docker compose --env-file .env.v03 up --build
 curl.exe http://127.0.0.1:18080/healthz
 ```
 
-Default `WORKFLOW_PROFILE=stub` still accepts a caseless stub task with no session. A real `model.probe` needs `MODEL_*` in `.env.v03`. Credentials stay in process env:
+The default `WORKFLOW_PROFILE=stub` and `MODEL_PROVIDER=stub` need no external model key.
+Register or log in to use the browser console, then open `/tasks` for a generic task.
+The public API also accepts caseless generic stub tasks without a session.
+A real `model.probe` and the closeout command below need real `MODEL_PROVIDER`,
+`MODEL_NAME`, `MODEL_API_BASE_URL` and `MODEL_API_KEY` settings in `.env.v03`.
+Use `MODEL_PROVIDER=openai` for an OpenAI-compatible endpoint. Credentials stay in process env:
 
 ```powershell
 $env:LEXCYBER_USERNAME = "<local username>"
@@ -276,7 +281,7 @@ $env:LEXCYBER_PASSWORD = "<local password>"
 python scripts/t1_local_closeout.py
 ```
 
-Samples: [`LexCyber_T1接口交接样例.md`](../LexCyber_T1接口交接样例.md). Do not commit `.env.v03` or API keys.
+Samples: [`LexCyber_T1接口交接样例.md`](archive/LexCyber_T1接口交接样例.md). Do not commit `.env.v03` or API keys.
 
 ---
 
@@ -287,4 +292,4 @@ Samples: [`LexCyber_T1接口交接样例.md`](../LexCyber_T1接口交接样例.m
 3. Treat unconfirmed sentencing ratios as production rules
 4. Show placeholder “Lin” excerpts as real parse or sentence output
 
-Public retrieval remains pending legal signoff: [`t1-retrieval-boundary.md`](t1-retrieval-boundary.md).
+Public retrieval remains pending legal signoff: [`t1-retrieval-boundary.md`](archive/t1-retrieval-boundary.md).

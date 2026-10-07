@@ -40,6 +40,17 @@ describe('DocumentsPage', () => {
     wrapper.unmount()
   })
 
+  it('refreshes drafts for the actual case rather than the click event', async () => {
+    vi.spyOn(api, 'getCase').mockResolvedValue({ id: 'case-refresh', title: '刷新案件', createdAt: 't', updatedAt: 't' })
+    const list = vi.spyOn(api, 'listCaseDrafts').mockResolvedValue({ items: [] })
+    const wrapper = await mountPage('case-refresh')
+    list.mockClear()
+    await wrapper.findAll('button').find(item => item.text() === '刷新')!.trigger('click')
+    await flushPromises()
+    expect(list).toHaveBeenCalledExactlyOnceWith('case-refresh')
+    wrapper.unmount()
+  })
+
   it('blocks submit when the body contains 【待补充】', async () => {
     vi.spyOn(api, 'getCase').mockResolvedValue({ id: 't1-case-9', title: '交接样例案', createdAt: 't', updatedAt: 't' })
     vi.spyOn(api, 'listCaseDrafts').mockResolvedValue({

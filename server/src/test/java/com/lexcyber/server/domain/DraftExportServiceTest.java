@@ -13,6 +13,7 @@ import com.lexcyber.server.api.ApiException;
 import com.lexcyber.server.engine.DraftExportEngineClient;
 import com.lexcyber.server.storage.InMemoryObjectStorage;
 import com.lexcyber.server.storage.ObjectStorage;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -29,6 +30,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 
 class DraftExportServiceTest {
     private static final String EXTERNAL_JDBC = System.getenv("TEST_JDBC_URL");
+    private static final LocalDate FIXED_AS_OF_DATE = LocalDate.of(2026, 9, 6);
     private static PostgreSQLContainer<?> postgres;
 
     private JdbcTemplate jdbc;
@@ -74,9 +76,9 @@ class DraftExportServiceTest {
         exports = new DraftExportService(jdbc, cases, objectMapper, engine, storage);
         alice = insertAccount("export-alice-" + UUID.randomUUID());
         bob = insertAccount("export-bob-" + UUID.randomUUID());
-        aliceCase = cases.create(alice, new CaseCreate("export-a", "CN", null, Map.of()));
-        aliceOtherCase = cases.create(alice, new CaseCreate("export-a-other", "CN", null, Map.of()));
-        bobCase = cases.create(bob, new CaseCreate("export-b", "CN", null, Map.of()));
+        aliceCase = cases.create(alice, new CaseCreate("export-a", "CN", FIXED_AS_OF_DATE, Map.of()));
+        aliceOtherCase = cases.create(alice, new CaseCreate("export-a-other", "CN", FIXED_AS_OF_DATE, Map.of()));
+        bobCase = cases.create(bob, new CaseCreate("export-b", "CN", FIXED_AS_OF_DATE, Map.of()));
     }
 
     @Test
@@ -111,7 +113,7 @@ class DraftExportServiceTest {
         UUID rendered = publication.publish(new ArtifactPublicationService.PublishRequest(
                 aliceCase.id(), "draft", "draft:" + descriptor.id(), "draft.v2", "calculated",
                 "{\"doc_type\":\"rendered-opinion\",\"body\":\"渲染正文\",\"unresolved\":[]}",
-                "[]", "{}", null, List.of(), List.of(), null, null, null)).artifactVersionId();
+                "[]", "{\"as_of_date\":\"2026-09-06\"}", null, List.of(), List.of(), null, null, null)).artifactVersionId();
 
         exports.export(alice, aliceCase.id(), rendered);
 
@@ -156,12 +158,12 @@ class DraftExportServiceTest {
         UUID unresolvedVersion = publication.publish(new ArtifactPublicationService.PublishRequest(
                 aliceCase.id(), "draft", "draft:" + unresolved.id(), "draft.v2", "calculated",
                 "{\"doc_type\":\"unresolved\",\"body\":\"正文\",\"unresolved\":[{\"path\":\"body\"}]}",
-                "[]", "{}", null, List.of(), List.of(), null, null, null)).artifactVersionId();
+                "[]", "{\"as_of_date\":\"2026-09-06\"}", null, List.of(), List.of(), null, null, null)).artifactVersionId();
         assertBlocked(unresolvedVersion);
 
         UUID moduleVersion = publication.publish(new ArtifactPublicationService.PublishRequest(
                 aliceCase.id(), "compliance", "module:compliance", "compliance.v2", "calculated",
-                "{\"body\":\"模块正文\"}", "[]", "{}", null, List.of(), List.of(), null, null, null)).artifactVersionId();
+                "{\"body\":\"模块正文\"}", "[]", "{\"as_of_date\":\"2026-09-06\"}", null, List.of(), List.of(), null, null, null)).artifactVersionId();
         assertBlocked(moduleVersion);
         org.mockito.Mockito.verifyNoInteractions(engine);
     }

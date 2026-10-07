@@ -9,6 +9,44 @@ info:
 servers:
   - url: /
 paths:
+  /v2/cases/{caseId}/analysis-date:
+    put:
+      summary: 设置法律分析基准日期；变更时使模块与文书失效，保留历史
+      operationId: updateCaseAnalysisDate
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/CaseId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [asOfDate]
+              properties:
+                asOfDate: { type: string, format: date }
+                expectedAsOfDate:
+                  type: string
+                  format: date
+                  nullable: true
+                  description: 当前读到的日期；缺省/null 表示预期尚未填写，冲突时返回 ANALYSIS_DATE_CONFLICT
+      responses:
+        '200':
+          description: 日期已保存；相同日期重放不新增审计或重复失效
+          content:
+            application/json:
+              schema: { $ref: './public-api.yaml#/components/schemas/CaseView' }
+        '400':
+          description: 缺失或非法日期
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: 需要有效 Bearer 会话
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /v2/cases/{caseId}/facts-versions:
     post:
       summary: 固化当前事实编辑态为新的 draft FactsVersion（六类实体全量快照）
