@@ -146,6 +146,93 @@ class CaseArchiveServiceTest {
         assertTrue(gaps.stream().anyMatch(g -> g.code().equals("draft_not_approved")));
     }
 
+    @Test
+    void archiveIncludesOnlyExplicitlyReferencedParseVersion() {
+        seedFacts(1, "facts");
+        seedModule("compliance");
+        UUID conviction = seedModule("conviction");
+        seedModule("sentencing");
+        seedDraft();
+
+        UUID parseStream = UUID.randomUUID();
+        UUID parseV1 = UUID.randomUUID();
+        UUID parseV2 = UUID.randomUUID();
+        UUID unrelatedParse = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO app.artifact_stream(artifact_stream_id, case_id, kind, scope_key)
+                VALUES (?, ?::uuid, 'parse', 'parse:source-a')
+                """, parseStream, caseId);
+        insertArtifact(parseV1, parseStream, 1, "parse-v1");
+        insertArtifact(parseV2, parseStream, 2, "parse-v2");
+        jdbc.update("UPDATE app.artifact_stream SET latest_version_id = ?, next_version = 3 WHERE artifact_stream_id = ?",
+                parseV2, parseStream);
+        UUID unrelatedStream = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO app.artifact_stream(artifact_stream_id, case_id, kind, scope_key)
+                VALUES (?, ?::uuid, 'parse', 'parse:source-b')
+                """, unrelatedStream, caseId);
+        insertArtifact(unrelatedParse, unrelatedStream, 1, "parse-unrelated");
+        jdbc.update("UPDATE app.artifact_stream SET latest_version_id = ?, next_version = 2 WHERE artifact_stream_id = ?",
+                unrelatedParse, unrelatedStream);
+        UUID supportingStream = UUID.randomUUID();
+        UUID supporting = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO app.artifact_stream(artifact_stream_id, case_id, kind, scope_key)
+                VALUES (?, ?::uuid, 'draft', 'supporting:historical')
+                """, supportingStream, caseId);
+        insertArtifact(supporting, supportingStream, 1, "supporting-historical");
+        jdbc.update("UPDATE app.artifact_stream SET latest_version_id = ?, next_version = 2 WHERE artifact_stream_id = ?",
+                supporting, supportingStream);
+        jdbc.update("""
+                INSERT INTO app.artifact_artifact_dependency(artifact_version_id, depends_on_artifact_version_id)
+                VALUES (?, ?), (?, ?)
+                """, conviction, supporting, supporting, parseV1);
+
+        Map<String, Object> archive = archives.create(caseId, CaseArchiveService.PROFILE_CASE_FULL, account);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> items = (List<Map<String, Object>>) archive.get("items");
+        assertTrue(items.stream().anyMatch(item -> item.get("artifactVersionId").toString().equals(parseV1.toString())
+                && item.get("role").equals("parse")));
+        assertTrue(items.stream().anyMatch(item -> item.get("artifactVersionId").toString().equals(supporting.toString())
+                && item.get("role").equals("supporting")));
+        assertTrue(items.stream().noneMatch(item -> item.get("artifactVersionId").toString().equals(parseV2.toString())));
+        assertTrue(items.stream().noneMatch(item -> item.get("artifactVersionId").toString().equals(unrelatedParse.toString())));
+    }
+
+    @Test
+    void crossCaseDependencyIsRejectedBeforeArchiveWrite() {
+        seedFacts(1, "facts");
+        seedModule("compliance");
+        UUID conviction = seedModule("conviction");
+        seedModule("sentencing");
+        seedDraft();
+
+        UUID foreignCase = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO app.cases(id, owner_account_id, title, jurisdiction, metadata_json)
+                VALUES (?, ?, 'foreign archive case', 'CN', '{}'::jsonb)
+                """, foreignCase, account);
+        UUID foreignStream = UUID.randomUUID();
+        UUID foreignArtifact = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO app.artifact_stream(artifact_stream_id, case_id, kind, scope_key)
+                VALUES (?, ?, 'parse', 'parse:foreign')
+                """, foreignStream, foreignCase);
+        insertArtifact(foreignArtifact, foreignStream, 1, "foreign-parse");
+        jdbc.update("UPDATE app.artifact_stream SET latest_version_id = ?, next_version = 2 WHERE artifact_stream_id = ?",
+                foreignArtifact, foreignStream);
+        jdbc.update("""
+                INSERT INTO app.artifact_artifact_dependency(artifact_version_id, depends_on_artifact_version_id)
+                VALUES (?, ?)
+                """, conviction, foreignArtifact);
+
+        ApiException error = assertThrows(ApiException.class,
+                () -> archives.create(caseId, CaseArchiveService.PROFILE_CASE_FULL, account));
+        assertEquals("ARCHIVE_ITEM_CROSS_CASE", error.code());
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM app.case_archive WHERE case_id = ?::uuid", Integer.class, caseId));
+        assertEquals(1, jdbc.queryForObject("SELECT next_archive_version FROM app.cases WHERE id = ?::uuid", Integer.class, caseId));
+    }
+
     private UUID seedFacts(int version, String hash) {
         UUID facts = UUID.randomUUID();
         jdbc.update("INSERT INTO app.facts_head(case_id) VALUES (?::uuid) ON CONFLICT DO NOTHING", caseId);
@@ -176,6 +263,14 @@ class CaseArchiveServiceTest {
                 VALUES (?::uuid, ?, ?, ?, false)
                 """, caseId, module, stream, artifact);
         return artifact;
+    }
+
+    private void insertArtifact(UUID artifact, UUID stream, int version, String hash) {
+        jdbc.update("""
+                INSERT INTO app.artifact_version(artifact_version_id, artifact_stream_id, version,
+                    schema_version, outcome_status, payload, blockers, dependency_snapshot, output_hash)
+                VALUES (?, ?, ?, 'parse.v1', 'calculated', '{}'::jsonb, '[]'::jsonb, '{}'::jsonb, ?)
+                """, artifact, stream, version, hash);
     }
 
     private UUID seedDraft() {

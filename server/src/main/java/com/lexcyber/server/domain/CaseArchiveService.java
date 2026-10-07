@@ -4,9 +4,11 @@ import com.lexcyber.server.api.ApiException;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -110,13 +112,41 @@ public class CaseArchiveService {
                 WHERE case_id = ?::uuid AND approved_version_id IS NOT NULL
                 """, (rs, ignored) -> items.add(Map.of(
                 "artifact_version_id", rs.getString(1), "role", "draft")), caseId);
+        // Include supporting material only through explicit artifact dependencies.
+        // A newer or unrelated parse stream must not silently enter the manifest.
+        Set<String> coreArtifactIds = new HashSet<>(items.stream()
+                .map(item -> String.valueOf(item.get("artifact_version_id")))
+                .toList());
         jdbc.query("""
-                SELECT v.artifact_version_id FROM app.artifact_version v
+                WITH RECURSIVE core(artifact_version_id) AS (
+                    SELECT confirmed_version_id FROM app.module_head
+                    WHERE case_id = ?::uuid AND confirmed_version_id IS NOT NULL
+                    UNION
+                    SELECT approved_version_id FROM app.draft_head
+                    WHERE case_id = ?::uuid AND approved_version_id IS NOT NULL
+                ), dependencies(artifact_version_id) AS (
+                    SELECT d.depends_on_artifact_version_id
+                    FROM app.artifact_artifact_dependency d
+                    JOIN core c ON c.artifact_version_id = d.artifact_version_id
+                    UNION
+                    SELECT d.depends_on_artifact_version_id
+                    FROM app.artifact_artifact_dependency d
+                    JOIN dependencies parent ON parent.artifact_version_id = d.artifact_version_id
+                )
+                SELECT DISTINCT d.artifact_version_id, s.kind
+                FROM dependencies d
+                JOIN app.artifact_version v ON v.artifact_version_id = d.artifact_version_id
                 JOIN app.artifact_stream s ON s.artifact_stream_id = v.artifact_stream_id
-                WHERE s.case_id = ?::uuid AND s.kind = 'parse'
-                  AND v.artifact_version_id = s.latest_version_id
-                """, (rs, ignored) -> items.add(Map.of(
-                "artifact_version_id", rs.getString(1), "role", "parse")), caseId);
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM core c WHERE c.artifact_version_id = d.artifact_version_id
+                )
+                """, (rs) -> {
+                    String artifactId = rs.getString("artifact_version_id");
+                    if (!coreArtifactIds.contains(artifactId)) {
+                        items.add(Map.of("artifact_version_id", artifactId,
+                                "role", "parse".equals(rs.getString("kind")) ? "parse" : "supporting"));
+                    }
+                }, caseId, caseId);
 
         // Return a stable item order on both creation and idempotent replay.
         items.sort(Comparator.comparing((Map<String, Object> item) -> String.valueOf(item.get("role")))
