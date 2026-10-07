@@ -15,18 +15,24 @@ from engine.rules.evaluator import AmountAggregationError, build_view
 
 def _snapshot(parent_value):
     return {
-        "items": [{"key": "upstream_crime_established", "value": True,
-                   "verificationStatus": "confirmed"}],
+        "items": [{"id": "fact-upstream", "key": "upstream_crime_established", "value": True,
+                   "verificationStatus": "confirmed", "evidenceIds": ["parameter-proof"]},
+                  *[{"id": key, "key": key, "value": False, "verificationStatus": "confirmed",
+                     "evidenceIds": ["parameter-proof"]}
+                    for key in ("has_surrender", "has_confession", "has_guilty_plea")]],
         "entities": {
-            "jurisdictionConnections": [{"verificationStatus": "confirmed"}],
+            "evidence": [{"id": "parameter-proof", "type": "document",
+                          "verificationStatus": "confirmed"}],
+            "jurisdictionConnections": [{"id": "connection", "verificationStatus": "confirmed",
+                                         "evidenceIds": ["parameter-proof"]}],
             "amounts": [
                 {"id": "child", "entityId": "22222222-2222-2222-2222-222222222222",
                  "kind": "payment_settlement_amount", "value": "80000",
                  "componentOf": "11111111-1111-1111-1111-111111111111",
-                 "verificationStatus": "confirmed"},
+                 "verificationStatus": "confirmed", "evidenceIds": ["parameter-proof"]},
                 {"id": "parent", "entityId": "11111111-1111-1111-1111-111111111111",
                  "kind": "payment_settlement_amount", "value": str(parent_value),
-                 "verificationStatus": "confirmed"},
+                 "verificationStatus": "confirmed", "evidenceIds": ["parameter-proof"]},
             ],
         },
     }

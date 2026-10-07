@@ -66,7 +66,12 @@ def _rules(source_id: str, temporal_source_ids: tuple[str, str] | None = None) -
             "rule_id": FIXTURE_PREFIX + rule_id,
             "rule_version": rule_version,
             "family": family,
-            "predicate": {"path": f"facts.{field}.value", "op": "eq", "value": True},
+            # These isolated flags are optional fixture selectors.  Guard their
+            # absence explicitly so an unread value never masquerades as false.
+            "predicate": {"all": [
+                {"path": f"facts.{field}", "op": "exists"},
+                {"path": f"facts.{field}.value", "op": "eq", "value": True},
+            ]},
             "outcome": outcome,
             "source_ids": source_ids or [source_id],
             "coverage": {"fixture": True, "name": FIXTURE_PREFIX + rule_id},

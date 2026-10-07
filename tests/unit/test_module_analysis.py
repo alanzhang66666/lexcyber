@@ -8,11 +8,12 @@ from engine.adapters.module_analysis import ModuleAnalysisError, analyze
 
 SNAPSHOT = {
     "items": [
-        {"key": "upstream_crime_completed", "value": True, "verificationStatus": "confirmed"},
-        {"key": "conduct_date", "value": "2024-03-01", "verificationStatus": "confirmed"},
-        {"key": "judgment_date", "value": "2026-02-01", "verificationStatus": "confirmed"},
+        {"key": "upstream_crime_completed", "entityId": "fact-upstream", "value": True, "verificationStatus": "confirmed", "evidenceIds": ["proof-1"]},
+        {"key": "conduct_date", "entityId": "fact-conduct", "value": "2024-03-01", "verificationStatus": "confirmed", "evidenceIds": ["proof-1"]},
+        {"key": "judgment_date", "entityId": "fact-judgment", "value": "2026-02-01", "verificationStatus": "confirmed", "evidenceIds": ["proof-1"]},
     ],
-    "entities": {"jurisdictionConnections": [{"verificationStatus": "confirmed"}]},
+    "entities": {"jurisdictionConnections": [{"verificationStatus": "confirmed"}],
+                  "evidence": [{"entityId": "proof-1", "verificationStatus": "confirmed"}]},
 }
 
 APPROVED_RULE = {
@@ -133,11 +134,12 @@ def test_conviction_accepts_any_confirmed_jurisdiction_connection(monkeypatch):
     monkeypatch.setattr(module_analysis, "_resolve_sources", lambda *a, **k: EMPTY_TEMPORAL)
     payload = _payload("conviction.analyze")
     payload["metadata"]["factsSnapshot"] = {
-        **SNAPSHOT,
-        "entities": {"jurisdictionConnections": [
-            {"verificationStatus": "candidate"},
-            {"verificationStatus": "confirmed"},
-        ]},
+            **SNAPSHOT,
+                "entities": {"jurisdictionConnections": [
+                    {"verificationStatus": "candidate"},
+                    {"entityId": "jurisdiction-1", "verificationStatus": "confirmed",
+                     "evidenceIds": ["proof-1"]},
+            ], "evidence": [{"entityId": "proof-1", "verificationStatus": "confirmed"}]},
     }
 
     body = analyze(payload, "conviction.analyze")["final_output"]
@@ -191,3 +193,67 @@ def test_non_fired_temporal_rules_are_not_reported_as_calculated(monkeypatch):
     assert all(path["status"] == "not_applicable" for path in body["temporal_paths"])
     assert all(path["rules"][0]["status"] == "not_applicable"
                for path in body["temporal_paths"])
+
+
+def test_candidate_predicate_read_blocks_even_when_rule_does_not_fire(monkeypatch):
+    monkeypatch.setattr(module_analysis.registry, "active_rules",
+                        lambda fam, *_: [APPROVED_RULE] if fam == "compliance" else [])
+    monkeypatch.setattr(module_analysis, "_resolve_sources", lambda *a, **k: EMPTY_TEMPORAL)
+    payload = _payload()
+    payload["metadata"]["factsSnapshot"] = {
+        **SNAPSHOT,
+        "items": [{**SNAPSHOT["items"][0], "value": False,
+                    "verificationStatus": "candidate"}],
+    }
+    body = analyze(payload, "compliance.analyze")["final_output"]
+    assert body["status"] == "blocked"
+    assert any(item["code"] == "INPUT_UNCONFIRMED"
+               for item in body["input_validation"]["blockers"])
+    assert body["rules"][0]["input_blockers"]
+
+
+def test_confirmed_jurisdiction_without_proof_is_blocked(monkeypatch):
+    monkeypatch.setattr(module_analysis.registry, "active_rules",
+                        lambda *_: [APPROVED_RULE])
+    monkeypatch.setattr(module_analysis, "_resolve_sources", lambda *a, **k: EMPTY_TEMPORAL)
+    payload = _payload("conviction.analyze")
+    payload["metadata"]["factsSnapshot"] = {
+        **SNAPSHOT,
+        "entities": {"jurisdictionConnections": [
+            {"entityId": "jurisdiction-1", "verificationStatus": "confirmed"}],
+                      "evidence": [{"entityId": "proof-1", "verificationStatus": "confirmed"}]},
+    }
+    body = analyze(payload, "conviction.analyze")["final_output"]
+    assert body["status"] == "blocked"
+    assert any(item["code"] == "JURISDICTION_CONNECTION_UNCONFIRMED"
+               for item in body["blockers"])
+
+
+@pytest.mark.parametrize("connections", [
+    [
+        {"entityId": "bad-jurisdiction", "verificationStatus": "confirmed",
+         "evidenceIds": []},
+        {"entityId": "good-jurisdiction", "verificationStatus": "confirmed",
+         "evidenceIds": ["proof-1"]},
+    ],
+    [
+        {"entityId": "good-jurisdiction", "verificationStatus": "confirmed",
+         "evidenceIds": ["proof-1"]},
+        {"entityId": "bad-jurisdiction", "verificationStatus": "confirmed",
+         "evidenceIds": []},
+    ],
+])
+def test_valid_confirmed_jurisdiction_is_order_independent(monkeypatch, connections):
+    monkeypatch.setattr(module_analysis.registry, "active_rules",
+                        lambda *_: [APPROVED_RULE])
+    monkeypatch.setattr(module_analysis, "_resolve_sources", lambda *a, **k: EMPTY_TEMPORAL)
+    payload = _payload("conviction.analyze")
+    payload["metadata"]["factsSnapshot"] = {
+        **SNAPSHOT,
+        "entities": {"jurisdictionConnections": connections,
+                      "evidence": [{"entityId": "proof-1", "verificationStatus": "confirmed"}]},
+    }
+    body = analyze(payload, "conviction.analyze")["final_output"]
+    assert body["status"] == "calculated"
+    assert not any(item["code"] == "JURISDICTION_CONNECTION_UNCONFIRMED"
+                   for item in body["blockers"])

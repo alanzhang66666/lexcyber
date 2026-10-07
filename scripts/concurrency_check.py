@@ -84,7 +84,7 @@ def register(base: str) -> str:
 
 def ci_facts(*extra: dict[str, Any]) -> list[dict[str, Any]]:
     """Facts predicates consumed by the CI synthetic rule/evaluator fixtures."""
-    return [
+    return [{**item, "evidenceIds": ["ci-evidence-1"]} for item in [
         {"key": "ci_case_label", "value": "concurrency-check", "verificationStatus": "confirmed"},
         {"key": "ci_confirmed_marker", "value": "yes", "verificationStatus": "confirmed"},
         {"key": "ci_compliance_flag", "value": True, "verificationStatus": "confirmed"},
@@ -92,7 +92,7 @@ def ci_facts(*extra: dict[str, Any]) -> list[dict[str, Any]]:
         {"key": "ci_distinction_flag", "value": True, "verificationStatus": "confirmed"},
         {"key": "ci_sentencing_flag", "value": True, "verificationStatus": "confirmed"},
         *extra,
-    ]
+    ]]
 
 
 def setup_case(base: str, token: str) -> str:
@@ -101,21 +101,20 @@ def setup_case(base: str, token: str) -> str:
         "jurisdiction": "CN", "asOfDate": "2026-01-01", "metadata": {"purpose": "concurrency-check"},
     }), 201, "create case")
     case_id = str(created["id"])
-    status, body = request(base, "PUT", f"/v2/cases/{case_id}/facts-entities/facts",
-                           token=token, json_body={"items": ci_facts()})
-    if status not in (200, 204):
-        raise SystemExit(f"write facts {status} {body}")
     for kind, items in {
+        "evidence": [{"id": "ci-evidence-1", "type": "document", "label": "CI fixture evidence",
+                      "verificationStatus": "confirmed"}],
+        "facts": ci_facts(),
         "actors": [{"id": "ci-actor-1", "type": "person", "name": "CI fixture",
                     "role": "subject", "verificationStatus": "confirmed"}],
         "events": [{"id": "ci-event-1", "date": "2026-01-01", "stage": "fixture",
                     "description": "synthetic CI event", "verificationStatus": "confirmed"}],
-        "evidence": [{"id": "ci-evidence-1", "type": "document", "label": "CI fixture evidence",
-                      "verificationStatus": "confirmed"}],
         "amounts": [{"id": "ci-amount-1", "kind": "crime_amount", "label": "CI fixture amount",
-                     "value": "6", "currency": "CNY", "verificationStatus": "confirmed"}],
+                     "value": "6", "currency": "CNY", "verificationStatus": "confirmed",
+                     "evidenceIds": ["ci-evidence-1"]}],
         "jurisdiction-connections": [{"id": "ci-jurisdiction-1", "type": "territory",
-                                       "value": "CI", "verificationStatus": "confirmed"}],
+                                       "value": "CI", "verificationStatus": "confirmed",
+                                       "evidenceIds": ["ci-evidence-1"]}],
     }.items():
         status, body = request(base, "PUT", f"/v2/cases/{case_id}/facts-entities/{kind}",
                                token=token, json_body={"items": items})

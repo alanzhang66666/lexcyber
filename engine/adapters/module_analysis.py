@@ -16,6 +16,7 @@ from engine.adapters import legal_temporal
 from engine.rules import registry
 from engine.rules.evaluator import PredicateError, build_view, evaluate
 from engine.rules.evidence import check_required_evidence
+from engine.rules.inputs import InputValidator
 
 
 class ModuleAnalysisError(Exception):
@@ -44,7 +45,8 @@ def analyze(payload: dict[str, Any], task_type: str) -> dict[str, Any]:
         raise ModuleAnalysisError(exc.code, str(exc)) from exc
     input_ref = payload.get("input_snapshot_ref") or ""
     facts_version_id = _ref_value(input_ref, "facts_version")
-    date_resolution = legal_temporal.resolve_case_dates(snapshot)
+    input_validator = InputValidator(snapshot, build_view(snapshot))
+    date_resolution = legal_temporal.resolve_case_dates(snapshot, input_validator)
     conduct_date = date_resolution["conduct"]
     judgment_date = date_resolution["judgment"]
     both_dates = conduct_date is not None and judgment_date is not None
@@ -80,6 +82,8 @@ def analyze(payload: dict[str, Any], task_type: str) -> dict[str, Any]:
     for rule in rules:
         try:
             fired, trace = evaluate(rule["predicate"], view)
+            input_blockers = input_validator.check_trace(
+                trace, phase=f"rule_predicate:{rule['ruleId']}")
         except PredicateError as exc:
             blockers.append({"code": exc.code, "path": f"rules.{rule['ruleId']}",
                              "message": str(exc)})
@@ -87,14 +91,18 @@ def analyze(payload: dict[str, Any], task_type: str) -> dict[str, Any]:
         evidence = _check_required_evidence(rule, snapshot) if fired else {
             "ruleId": rule["ruleId"], "requiredKinds": [], "blockers": []
         }
+        if input_blockers:
+            blockers.extend(input_blockers)
         entry = {
             "ruleId": rule["ruleId"], "ruleVersion": rule["ruleVersion"],
             "family": rule["family"], "fired": fired,
-            "status": "blocked" if evidence.get("blockers") else (
+            "status": "blocked" if evidence.get("blockers") or input_blockers else (
                 "calculated" if fired else "not_applicable"),
             "trace": trace, "outcome": rule["outcome"] if fired else None,
             "sourceIds": rule["sourceIds"], "contentHash": rule["contentHash"],
             "evidence_checks": evidence,
+            "input_blockers": input_blockers,
+            "input_validation": input_validator.summary(),
         }
         rule_results.append(entry)
         if fired:
@@ -152,12 +160,25 @@ def analyze(payload: dict[str, Any], task_type: str) -> dict[str, Any]:
     dependency_versions = _unique_dicts(dependency_versions,
                                         ("sourceId", "sourceVersion", "point"))
 
-    if module == "conviction" and not _has_confirmed_jurisdiction_connection(snapshot):
+    if module == "conviction" and not _has_confirmed_jurisdiction_connection(
+            snapshot, input_validator, point="as_of"):
         blockers.append({
             "code": "JURISDICTION_CONNECTION_UNCONFIRMED",
             "path": "entities.jurisdictionConnections",
             "message": "定罪研判需要至少一个 verificationStatus 为 confirmed 的管辖连接点",
         })
+
+    input_validation = input_validator.summary()
+    for path in temporal_paths:
+        path_marker = path.get("input_validation") or {}
+        for check in path_marker.get("checks", []):
+            if check not in input_validation["checks"]:
+                input_validation["checks"].append(check)
+        for blocker in path_marker.get("blockers", []):
+            if blocker not in input_validation["blockers"]:
+                input_validation["blockers"].append(blocker)
+    input_validation["status"] = "blocked" if input_validation["blockers"] else "verified"
+    blockers.extend(input_validation.get("blockers", []))
 
     status = "blocked" if blockers else ("calculated" if any(r["fired"] for r in rule_results)
                                          else "not_applicable")
@@ -182,6 +203,7 @@ def analyze(payload: dict[str, Any], task_type: str) -> dict[str, Any]:
         "source_resolutions": _source_resolutions(temporal),
         "legal_dates": _legal_dates(date_resolution),
         "human_review_required": True,
+        "input_validation": input_validation,
         "generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
     }
     return {"final_output": result_payload, "human_approval_required": True}
@@ -209,18 +231,37 @@ def _snapshot_date(view: dict[str, Any], key: str) -> datetime.date | None:
         return None
 
 
-def _has_confirmed_jurisdiction_connection(snapshot: dict[str, Any]) -> bool:
+def _date_present(snapshot: dict[str, Any], key: str) -> bool:
+    return any(isinstance(item, dict) and item.get("key") == key
+               for item in snapshot.get("items") or [])
+
+
+def _has_confirmed_jurisdiction_connection(snapshot: dict[str, Any],
+                                            input_validator: InputValidator | None = None,
+                                            *, point: str = "as_of") -> bool:
     entities = snapshot.get("entities")
     if not isinstance(entities, dict):
         return False
     connections = entities.get("jurisdictionConnections")
     if not isinstance(connections, list):
         return False
-    return any(
-        isinstance(connection, dict)
-        and connection.get("verificationStatus") == "confirmed"
-        for connection in connections
-    )
+    diagnostics: list[dict[str, Any]] = []
+    for index, connection in enumerate(connections):
+        if not isinstance(connection, dict) or connection.get("verificationStatus") != "confirmed":
+            continue
+        if input_validator is None:
+            return True
+        probe = InputValidator(snapshot, build_view(snapshot))
+        probe.check_path(f"entities.jurisdictionConnections.items.{index}",
+                         phase="jurisdiction", point=point)
+        summary = probe.summary()
+        if not summary["blockers"]:
+            input_validator.merge_summary(summary)
+            return True
+        diagnostics.append(summary)
+    for summary in diagnostics:
+        input_validator.merge_summary(summary)
+    return False
 
 
 def _resolve_sources(source_ids: set[str], conduct: datetime.date | None,
@@ -244,9 +285,16 @@ def _temporal_paths(payload: dict[str, Any], family: str, schema_version: str,
     view = build_view(snapshot)
     families = [family] + (["distinction"] if module == "conviction" else [])
     for point, point_date in (("conduct", conduct), ("judgment", judgment)):
+        input_validator = InputValidator(snapshot, view)
+        date_names = ("conduct_date", "offense_date") if point == "conduct" else ("judgment_date",)
+        for date_name in date_names:
+            if _date_present(snapshot, date_name):
+                input_validator.check_path(f"facts.{date_name}.value",
+                                           phase="legal_dates", point=point)
         path_rules: list[dict[str, Any]] = []
         path_blockers: list[dict[str, Any]] = []
-        if module == "conviction" and not _has_confirmed_jurisdiction_connection(snapshot):
+        if module == "conviction" and not _has_confirmed_jurisdiction_connection(
+                snapshot, input_validator, point=point):
             path_blockers.append({
                 "code": "JURISDICTION_CONNECTION_UNCONFIRMED",
                 "path": "entities.jurisdictionConnections",
@@ -268,6 +316,8 @@ def _temporal_paths(payload: dict[str, Any], family: str, schema_version: str,
         for rule in path_rules:
             try:
                 fired, trace = evaluate(rule["predicate"], view)
+                input_blockers = input_validator.check_trace(
+                    trace, phase=f"rule_predicate:{rule['ruleId']}", point=point)
             except PredicateError as exc:
                 path_blockers.append({"code": exc.code, "path": f"rules.{rule['ruleId']}",
                                       "message": str(exc)})
@@ -275,15 +325,19 @@ def _temporal_paths(payload: dict[str, Any], family: str, schema_version: str,
             evidence = _check_required_evidence(rule, snapshot) if fired else {
                 "ruleId": rule["ruleId"], "requiredKinds": [], "blockers": []
             }
+            if input_blockers:
+                path_blockers.extend(input_blockers)
             if fired:
                 path_blockers.extend(evidence.get("blockers", []))
             path_results.append({"ruleId": rule["ruleId"], "ruleVersion": rule["ruleVersion"],
                                  "family": rule["family"], "fired": fired, "trace": trace,
-                                 "status": "blocked" if evidence.get("blockers") else (
+                                 "status": "blocked" if evidence.get("blockers") or input_blockers else (
                                      "calculated" if fired else "not_applicable"),
                                  "outcome": rule["outcome"] if fired else None,
                                  "sourceIds": rule["sourceIds"], "contentHash": rule["contentHash"],
-                                 "evidence_checks": evidence})
+                                 "evidence_checks": evidence,
+                                 "input_blockers": input_blockers,
+                                 "input_validation": input_validator.summary()})
         if not path_rules and not path_blockers:
             path_blockers.append({"code": "TEMPORAL_RULE_PATH_UNAVAILABLE",
                                   "point": point, "date": point_date.isoformat(),
@@ -295,11 +349,14 @@ def _temporal_paths(payload: dict[str, Any], family: str, schema_version: str,
             point_date if point == "judgment" else None,
         )
         path_blockers.extend(legal_temporal.temporal_blockers(path_sources))
-        path_status = "blocked" if path_blockers else (
+        path_input_validation = input_validator.summary()
+        path_status = "blocked" if path_blockers or path_input_validation.get("blockers") else (
             "calculated" if any(rule["fired"] for rule in path_results) else "not_applicable")
+        path_blockers.extend(path_input_validation.get("blockers", []))
         paths.append({"point": point, "as_of_date": point_date.isoformat(),
                       "status": path_status,
                       "rules": path_results, "blockers": path_blockers,
+                      "input_validation": path_input_validation,
                       "dependency_snapshot": {"facts_version_id": facts_version_id,
                                                 "as_of_date": point_date.isoformat(),
                                                 "rules": [{"ruleId": r["ruleId"],

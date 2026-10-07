@@ -28,6 +28,7 @@ from engine.adapters.module_analysis import ModuleAnalysisError
 from engine.rules import registry
 from engine.rules.evaluator import PredicateError, build_view, evaluate
 from engine.rules.evidence import check_required_evidence
+from engine.rules.inputs import InputValidator
 
 
 def calculate_v2(payload: dict[str, Any]) -> dict[str, Any]:
@@ -44,7 +45,9 @@ def calculate_v2(payload: dict[str, Any]) -> dict[str, Any]:
     input_ref = payload.get("input_snapshot_ref") or ""
     facts_version_id = (input_ref[len("facts_version:"):]
                         if input_ref.startswith("facts_version:") else None)
-    date_resolution = legal_temporal.resolve_case_dates(snapshot)
+    view = build_view(snapshot)
+    input_validator = InputValidator(snapshot, view)
+    date_resolution = legal_temporal.resolve_case_dates(snapshot, input_validator)
     conduct_date = date_resolution["conduct"]
     judgment_date = date_resolution["judgment"]
     both_dates = conduct_date is not None and judgment_date is not None
@@ -67,7 +70,6 @@ def calculate_v2(payload: dict[str, Any]) -> dict[str, Any]:
         primary_rule_blockers.append({"code": "MODULE_RULES_UNAVAILABLE",
                                       "message": "主 asOfDate 无已会签量刑规则包"})
 
-    view = build_view(snapshot)
     actor_id = (metadata.get("sentencing") or {}).get("actorId") \
         or metadata.get("actorId")
 
@@ -83,13 +85,24 @@ def calculate_v2(payload: dict[str, Any]) -> dict[str, Any]:
                              "message": "sentencing 规则缺少 calculation 计算块"})
             continue
         applicable = True
+        predicate_trace: list[dict[str, Any]] = []
         if rule.get("predicate"):
             try:
-                applicable, _ = evaluate(rule["predicate"], view)
+                applicable, predicate_trace = evaluate(rule["predicate"], view)
+                predicate_blockers = input_validator.check_trace(
+                    predicate_trace, phase=f"rule_predicate:{rule['ruleId']}")
             except PredicateError as exc:
                 blockers.append({"code": exc.code, "path": f"rules.{rule['ruleId']}",
                                  "message": str(exc)})
                 continue
+        else:
+            predicate_blockers = []
+        if predicate_blockers:
+            blocker_result = _blocked_result(rule, predicate_blockers)
+            blocker_result["input_validation"] = input_validator.summary()
+            blockers.extend(predicate_blockers)
+            results.append(blocker_result)
+            continue
         if not applicable:
             continue
         applicable_rules.append(rule)
@@ -98,11 +111,15 @@ def calculate_v2(payload: dict[str, Any]) -> dict[str, Any]:
             blockers.extend(evidence["blockers"])
             results.append(_blocked_result(rule, evidence["blockers"], evidence))
             continue
-        computed = _compute(rule, calc, view)
+        computed = _compute(rule, calc, view, input_validator=input_validator,
+                            rule_id=str(rule["ruleId"]))
         computed["evidence_checks"] = evidence
+        computed["input_validation"] = input_validator.summary()
         results.append(computed)
 
     blockers.extend(date_resolution["blockers"])
+    input_validation = input_validator.summary()
+    blockers.extend(input_validation.get("blockers", []))
     source_ids = {str(source_id) for result in results
                   for source_id in result.get("sourceIds", [])}
     temporal = legal_temporal.resolve_sources(source_ids, conduct_date, judgment_date)
@@ -142,6 +159,17 @@ def calculate_v2(payload: dict[str, Any]) -> dict[str, Any]:
                              "point": path["point"],
                              "blockers": path_blockers})
 
+    for path in temporal_paths:
+        marker = path.get("input_validation") or {}
+        for check in marker.get("checks", []):
+            if check not in input_validation["checks"]:
+                input_validation["checks"].append(check)
+        for blocker in marker.get("blockers", []):
+            if blocker not in input_validation["blockers"]:
+                input_validation["blockers"].append(blocker)
+    input_validation["status"] = "blocked" if input_validation["blockers"] else "verified"
+    blockers.extend(input_validation.get("blockers", []))
+
     if blockers:
         status = "blocked"
     elif not results:
@@ -156,11 +184,12 @@ def calculate_v2(payload: dict[str, Any]) -> dict[str, Any]:
         for result in results:
             result["term_months"] = None
             result["fine"] = None
+            result["steps"] = []
         for path in temporal_paths:
-            if path.get("status") == "blocked":
-                for result in path.get("results", []):
-                    result["term_months"] = None
-                    result["fine"] = None
+            for result in path.get("results", []):
+                result["term_months"] = None
+                result["fine"] = None
+                result["steps"] = []
 
     dependency_rules = [{"ruleId": r["ruleId"], "ruleVersion": r["ruleVersion"],
                          "family": "sentencing",
@@ -199,23 +228,30 @@ def calculate_v2(payload: dict[str, Any]) -> dict[str, Any]:
         "source_resolutions": _source_resolutions(temporal),
         "legal_dates": _legal_dates(date_resolution),
         "temporal_paths": temporal_paths,
+        "input_validation": input_validation,
     }
     return {"final_output": body, "human_approval_required": True}
 
 
 def _compute(rule: dict[str, Any], calc: dict[str, Any],
-             view: dict[str, Any]) -> dict[str, Any]:
+             view: dict[str, Any], *, input_validator: InputValidator | None = None,
+             point: str = "as_of", rule_id: str | None = None) -> dict[str, Any]:
     steps: list[dict[str, Any]] = []
     blockers: list[dict[str, Any]] = []
 
-    base = _resolve_base(rule, calc, view, steps, blockers)
+    base = _resolve_base(rule, calc, view, steps, blockers, input_validator=input_validator,
+                          point=point, rule_id=rule_id)
     current = base
     if current is not None:
         for position, adj in enumerate(calc.get("adjustments") or []):
             fired = True
             if adj.get("when"):
                 try:
-                    fired, _ = evaluate(adj["when"], view)
+                    fired, trace = evaluate(adj["when"], view)
+                    if input_validator is not None:
+                        blockers.extend(input_validator.check_trace(
+                            trace, phase=f"adjustment:{rule_id or rule.get('ruleId')}:{position}",
+                            point=point))
                 except PredicateError as exc:
                     blockers.append({"code": exc.code,
                                      "path": f"calculation.adjustments[{position}].when",
@@ -261,8 +297,8 @@ def _compute(rule: dict[str, Any], calc: dict[str, Any],
         "contentHash": rule["contentHash"], "sourceIds": _participating_source_ids(rule, calc, view),
         "status": "blocked" if blockers or term is None else "calculated",
         "term_months": float(term) if term is not None else None,
-        "fine": calc.get("fine"),
-        "steps": steps + bounded_steps,
+        "fine": None if blockers else calc.get("fine"),
+        "steps": [] if blockers else steps + bounded_steps,
         "blockers": blockers,
     }
     if term is None and not blockers:
@@ -370,6 +406,13 @@ def _temporal_paths(snapshot: dict[str, Any], metadata: dict[str, Any], case_id:
     view = build_view(snapshot)
     for point, point_date in (("conduct", conduct), ("judgment", judgment)):
         blockers: list[dict[str, Any]] = []
+        input_validator = InputValidator(snapshot, view)
+        for date_name in (("conduct_date", "offense_date") if point == "conduct"
+                          else ("judgment_date",)):
+            if any(isinstance(item, dict) and item.get("key") == date_name
+                   for item in snapshot.get("items") or []):
+                input_validator.check_path(f"facts.{date_name}.value",
+                                           phase="legal_dates", point=point)
         try:
             path_rules = registry.active_rules("sentencing", point_date)
         except registry.RegistryError as exc:
@@ -379,10 +422,16 @@ def _temporal_paths(snapshot: dict[str, Any], metadata: dict[str, Any], case_id:
         path_results: list[dict[str, Any]] = []
         for rule in path_rules:
             try:
-                applicable, _ = evaluate(rule["predicate"], view) if rule.get("predicate") else (True, [])
+                applicable, trace = evaluate(rule["predicate"], view) if rule.get("predicate") else (True, [])
+                predicate_blockers = input_validator.check_trace(
+                    trace, phase=f"rule_predicate:{rule['ruleId']}", point=point) if trace else []
             except PredicateError as exc:
                 blockers.append({"code": exc.code, "path": f"rules.{rule['ruleId']}",
                                  "message": str(exc)})
+                continue
+            if predicate_blockers:
+                blockers.extend(predicate_blockers)
+                path_results.append(_blocked_result(rule, predicate_blockers))
                 continue
             if not applicable:
                 continue
@@ -398,7 +447,8 @@ def _temporal_paths(snapshot: dict[str, Any], metadata: dict[str, Any], case_id:
                 blockers.append(blocker)
                 path_results.append(_blocked_result(rule, [blocker], evidence))
             else:
-                result = _compute(rule, calc, view)
+                result = _compute(rule, calc, view, input_validator=input_validator,
+                                  point=point, rule_id=str(rule["ruleId"]))
                 result["evidence_checks"] = evidence
                 path_results.append(result)
                 if result["status"] == "blocked":
@@ -422,9 +472,18 @@ def _temporal_paths(snapshot: dict[str, Any], metadata: dict[str, Any], case_id:
             for result in path_results:
                 result["term_months"] = None
                 result["fine"] = None
+        path_input_validation = input_validator.summary()
+        blockers.extend(path_input_validation.get("blockers", []))
+        if blockers:
+            path_status = "blocked"
+            for result in path_results:
+                result["term_months"] = None
+                result["fine"] = None
+                result["steps"] = []
         paths.append({"point": point, "as_of_date": point_date.isoformat(),
                       "status": path_status, "results": path_results,
                       "blockers": blockers,
+                      "input_validation": path_input_validation,
                       "dependency_snapshot": {
                           "facts_version_id": facts_version_id,
                           "as_of_date": point_date.isoformat(),
@@ -439,10 +498,16 @@ def _temporal_paths(snapshot: dict[str, Any], metadata: dict[str, Any], case_id:
 
 
 def _resolve_base(rule: dict[str, Any], calc: dict[str, Any], view: dict[str, Any],
-                  steps: list[dict[str, Any]], blockers: list[dict[str, Any]]) -> Decimal | None:
+                  steps: list[dict[str, Any]], blockers: list[dict[str, Any]],
+                  *, input_validator: InputValidator | None = None,
+                  point: str = "as_of", rule_id: str | None = None) -> Decimal | None:
     for position, tier in enumerate(calc.get("base_tiers") or []):
         try:
-            fired, _ = evaluate(tier["when"], view)
+            fired, trace = evaluate(tier["when"], view)
+            if input_validator is not None:
+                blockers.extend(input_validator.check_trace(
+                    trace, phase=f"base_tier:{rule_id or rule.get('ruleId')}:{position}",
+                    point=point))
         except (PredicateError, KeyError) as exc:
             blockers.append({"code": "BASE_TIER_INVALID",
                              "path": f"calculation.base_tiers[{position}]",

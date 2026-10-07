@@ -64,7 +64,7 @@ class FactsReferenceMigrationTest {
                     + "\",\"id\":\"archived-proof\"}],\"actors\":[{\"entityId\":\"" + archivedActor
                     + "\",\"externalId\":\"archived-actor\"}]}}";
             UUID validFacts = insertFacts(jdbc, validCase, owner, validPayload);
-            Artifact valid = insertModule(jdbc, validCase, "conviction", "case.conviction.v2", "{}");
+            Artifact valid = insertModule(jdbc, validCase, "conviction", "case.conviction.v2", validInputValidation());
             bindFacts(jdbc, valid.versionId(), validFacts);
             Artifact legacy = insertModule(jdbc, validCase, "compliance", "case.module.v1", "{}");
             UUID emptyFacts = UUID.randomUUID();
@@ -104,6 +104,10 @@ class FactsReferenceMigrationTest {
                 + "VALUES (?, ?, 1, 'frozen-reference', ?::jsonb, ?, ?, now())", facts, caseId, payload, owner, owner);
         jdbc.update("INSERT INTO app.facts_head(case_id, confirmed_facts_version_id, next_version) VALUES (?, ?, 2)", caseId, facts);
         return facts;
+    }
+
+    private String validInputValidation() {
+        return "{\"input_validation\":{\"schema_version\":\"case.input-validation.v1\",\"status\":\"verified\",\"checks\":[],\"blockers\":[]}}";
     }
 
     private void bindFacts(JdbcTemplate jdbc, UUID artifact, UUID facts) {

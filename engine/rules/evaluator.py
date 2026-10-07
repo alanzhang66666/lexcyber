@@ -39,7 +39,9 @@ class AmountAggregationError(ValueError):
 
 def build_view(snapshot: dict[str, Any]) -> dict[str, Any]:
     """把 FactsVersion payload 规范化为谓词寻址视图。"""
-    view: dict[str, Any] = {"facts": {}, "amounts": {}, "entities": {}}
+    view: dict[str, Any] = {"facts": {}, "amounts": {}, "entities": {},
+                            "_input_rows": {"amounts": {}},
+                            "_input_invalid": {"amounts": {}}}
     for item in snapshot.get("items") or []:
         if isinstance(item, dict) and item.get("key"):
             view["facts"][str(item["key"])] = item
@@ -140,12 +142,36 @@ def build_view(snapshot: dict[str, Any]) -> dict[str, Any]:
         if row.get("verificationStatus") == "confirmed":
             bucket["confirmed_count"] += 1
     for kind, bucket in amounts.items():
+        rows_for_kind = [r for r in amount_rows if str(r.get("kind") or "unknown") == kind]
+        sum_rows = [amount_rows[i] for i in sorted(eligible_by_kind.get(kind, set()))
+                    if not has_eligible_same_kind_ancestor(i, eligible_by_kind.get(kind, set()))]
+        confirmed_sum_rows = [amount_rows[i] for i in sorted(confirmed_eligible_by_kind.get(kind, set()))
+                              if not has_eligible_same_kind_ancestor(
+                                  i, confirmed_eligible_by_kind.get(kind, set()))]
+        confirmed_rows = [r for r in rows_for_kind if r.get("verificationStatus") == "confirmed"]
+        invalid_sum_rows = [amount_rows[i] for i, row in enumerate(amount_rows)
+                            if str(row.get("kind") or "unknown") == kind
+                            and i not in numeric_by_index
+                            and not has_eligible_same_kind_ancestor(i, eligible_by_kind.get(kind, set()))]
+        invalid_confirmed_rows = [amount_rows[i] for i, row in enumerate(amount_rows)
+                                  if str(row.get("kind") or "unknown") == kind
+                                  and row.get("verificationStatus") == "confirmed"
+                                  and i not in numeric_by_index
+                                  and not has_eligible_same_kind_ancestor(
+                                      i, confirmed_eligible_by_kind.get(kind, set()))]
+        input_rows = {"sum": sum_rows, "confirmedSum": confirmed_sum_rows,
+                      "count": rows_for_kind, "confirmedCount": confirmed_rows}
+        input_invalid = {"sum": invalid_sum_rows, "confirmedSum": invalid_confirmed_rows,
+                         "count": [], "confirmedCount": []}
+        view["_input_rows"]["amounts"][kind] = input_rows
+        view["_input_invalid"]["amounts"][kind] = input_invalid
         view["amounts"][kind] = {
             "sum": float(bucket["sum"]), "count": bucket["count"],
             "confirmedSum": float(bucket["confirmed_sum"]),
             "confirmedCount": bucket["confirmed_count"],
-            "items": [r for r in entities.get("amounts") or []
-                      if isinstance(r, dict) and str(r.get("kind")) == kind],
+            "items": rows_for_kind,
+            "_input_rows": input_rows,
+            "_input_invalid": input_invalid,
         }
     return view
 

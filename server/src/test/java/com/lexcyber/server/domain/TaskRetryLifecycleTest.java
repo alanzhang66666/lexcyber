@@ -147,7 +147,7 @@ class TaskRetryLifecycleTest {
         ArtifactPublicationService publications = new ArtifactPublicationService(jdbc, new StalePropagationService(jdbc));
         UUID conviction = publications.publish(new ArtifactPublicationService.PublishRequest(
                 caseId, "conviction", "module:conviction", "case.conviction.v2", "calculated",
-                "{}", "[]", "{\"as_of_date\":\"2026-09-06\"}", factsVersion, java.util.List.of(), java.util.List.of(),
+                "{\"input_validation\":{\"schema_version\":\"case.input-validation.v1\",\"status\":\"verified\",\"checks\":[],\"blockers\":[]}}", "[]", "{\"as_of_date\":\"2026-09-06\"}", factsVersion, java.util.List.of(), java.util.List.of(),
                 null, null, "conviction-first")).artifactVersionId();
         new ModuleConfirmationService(jdbc).confirm(caseId, "conviction", owner);
         UUID taskId = tasks.createModuleTask(new TaskCreate("module:sentencing", caseId, null,
@@ -160,7 +160,7 @@ class TaskRetryLifecycleTest {
         jdbc.update("UPDATE app.tasks SET status='failed' WHERE id=?", taskId);
         publications.publish(new ArtifactPublicationService.PublishRequest(
                 caseId, "conviction", "module:conviction", "case.conviction.v2", "calculated",
-                "{\"changed\":true}", "[]", "{\"as_of_date\":\"2026-09-06\"}", factsVersion, java.util.List.of(), java.util.List.of(),
+                "{\"changed\":true,\"input_validation\":{\"schema_version\":\"case.input-validation.v1\",\"status\":\"verified\",\"checks\":[],\"blockers\":[]}}", "[]", "{\"as_of_date\":\"2026-09-06\"}", factsVersion, java.util.List.of(), java.util.List.of(),
                 null, null, "conviction-second"));
         ApiException stale = assertThrows(ApiException.class, () -> tasks.retry(taskId));
         assertEquals("DEPENDENCY_STALE", stale.code());

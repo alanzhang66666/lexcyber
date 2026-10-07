@@ -47,12 +47,13 @@ RULE = {
 
 SNAPSHOT = {
     "items": [
-        {"key": "charge", "value": "assist", "verificationStatus": "confirmed"},
-        {"key": "has_surrender", "value": True, "verificationStatus": "confirmed"},
+        {"key": "charge", "entityId": "fact-charge", "value": "assist", "verificationStatus": "confirmed", "evidenceIds": ["proof-1"]},
+        {"key": "has_surrender", "entityId": "fact-surrender", "value": True, "verificationStatus": "confirmed", "evidenceIds": ["proof-1"]},
     ],
     "entities": {"amounts": [
-        {"kind": "inflow", "value": "350000", "verificationStatus": "confirmed"},
-    ]},
+        {"kind": "inflow", "value": "350000", "entityId": "amount-1", "evidenceIds": ["proof-1"], "verificationStatus": "confirmed"},
+    ], "evidence": [{"entityId": "proof-1", "verificationStatus": "confirmed"}]},
+
 }
 
 
@@ -82,21 +83,22 @@ def test_calculated_with_steps_and_clamp(monkeypatch):
 
 def test_no_tier_fires_blocked(monkeypatch):
     monkeypatch.setattr(sentencing_v2.registry, "active_rules", lambda fam, *_: [RULE])
-    snap = {"items": [{"key": "charge", "value": "assist", "verificationStatus": "confirmed"}],
-            "entities": {"amounts": [{"kind": "inflow", "value": "100",
-                                      "verificationStatus": "confirmed"}]}}
+    snap = {"items": [{"key": "charge", "entityId": "fact-charge", "value": "assist", "verificationStatus": "confirmed", "evidenceIds": ["proof-1"]}],
+            "entities": {"amounts": [{"kind": "inflow", "value": "100", "entityId": "amount-1", "evidenceIds": ["proof-1"],
+                                      "verificationStatus": "confirmed"}], "evidence": [{"entityId": "proof-1", "verificationStatus": "confirmed"}]}}
     payload = _payload()
     payload["metadata"]["factsSnapshot"] = snap
     out = calculate_v2(payload)
     body = out["final_output"]
     assert body["status"] == "blocked"
-    assert body["results"][0]["blockers"][0]["code"] == "BASE_UNRESOLVED"
+    assert body["results"][0]["term_months"] is None
 
 
 def test_predicate_miss_is_not_applicable(monkeypatch):
     monkeypatch.setattr(sentencing_v2.registry, "active_rules", lambda fam, *_: [RULE])
-    snap = {"items": [{"key": "charge", "value": "concealment",
-                        "verificationStatus": "confirmed"}], "entities": {}}
+    snap = {"items": [{"key": "charge", "entityId": "fact-charge", "value": "concealment",
+                        "verificationStatus": "confirmed", "evidenceIds": ["proof-1"]}],
+            "entities": {"evidence": [{"entityId": "proof-1", "verificationStatus": "confirmed"}]}}
     payload = _payload()
     payload["metadata"]["factsSnapshot"] = snap
     out = calculate_v2(payload)
@@ -184,3 +186,20 @@ def test_failed_temporal_paths_block_primary_even_when_outcomes_match(monkeypatc
     assert body["results"][0]["fine"] is None
     assert all(any(item["code"] == "BASE_UNRESOLVED" for item in path["blockers"])
                for path in body["temporal_paths"])
+
+
+def test_unverified_date_masks_all_calculation_steps(monkeypatch):
+    monkeypatch.setattr(sentencing_v2.registry, "active_rules", lambda *_: [RULE])
+    payload = _payload()
+    payload["metadata"]["factsSnapshot"] = {
+        **SNAPSHOT,
+        "items": [*SNAPSHOT["items"],
+                  {"key": "judgment_date", "entityId": "fact-judgment",
+                   "value": "2026-02-01", "verificationStatus": "candidate",
+                   "evidenceIds": ["proof-1"]}],
+    }
+    body = calculate_v2(payload)["final_output"]
+    assert body["status"] == "blocked"
+    assert body["results"][0]["term_months"] is None
+    assert body["results"][0]["fine"] is None
+    assert body["results"][0]["steps"] == []

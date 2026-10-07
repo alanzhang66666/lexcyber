@@ -83,11 +83,17 @@ def test_fixture_inputs_drive_all_real_adapters(monkeypatch):
         ],
         "entities": {
             "actors": [{"id": "actor-1"}], "events": [{"id": "event-1"}],
-            "evidence": [{"id": "evidence-1"}],
-            "amounts": [{"kind": "crime_amount", "value": "6", "verificationStatus": "confirmed"}],
-            "jurisdictionConnections": [{"id": "jurisdiction-1", "verificationStatus": "confirmed"}],
+            "evidence": [{"id": "evidence-1", "type": "document", "verificationStatus": "confirmed"}],
+            "amounts": [{"id": "amount-1", "kind": "crime_amount", "value": "6",
+                         "verificationStatus": "confirmed", "evidenceIds": ["evidence-1"]}],
+            "jurisdictionConnections": [{"id": "jurisdiction-1", "verificationStatus": "confirmed",
+                                         "evidenceIds": ["evidence-1"]}],
         },
     }
+    # This successful synthetic fixture has explicit parameter proofs; it does
+    # not alter candidate state or replace required evidence-kind checks.
+    snapshot["items"] = [{**row, "id": row["key"], "evidenceIds": ["evidence-1"]}
+                         for row in snapshot["items"]]
     base = {"case_id": "case-ci", "input_snapshot_ref": "facts_version:00000000-0000-0000-0000-000000000002",
             "metadata": {"asOfDate": "2026-01-01", "factsSnapshot": snapshot,
                          "artifactVersions": {"conviction": "00000000-0000-0000-0000-000000000003"}}}

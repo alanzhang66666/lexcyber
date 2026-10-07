@@ -185,12 +185,20 @@ def test_real_db_adapter_keeps_both_temporal_paths_and_blocks_missing_evidence(s
     registry.signoff("rule", f"{evidence_rule_id}@1", "it-reviewer", "reviewer", "approved")
     snapshot = {
         "items": [
-            {"key": "temporal_flag", "value": True, "verificationStatus": "confirmed"},
-            {"key": "evidence_flag", "value": True, "verificationStatus": "confirmed"},
-            {"key": "conduct_date", "value": "2024-06-01", "verificationStatus": "confirmed"},
-            {"key": "judgment_date", "value": "2026-01-01", "verificationStatus": "confirmed"},
+            {"id": "temporal-flag", "key": "temporal_flag", "value": True,
+             "verificationStatus": "confirmed", "evidenceIds": ["parameter-proof"]},
+            {"id": "evidence-flag", "key": "evidence_flag", "value": True,
+             "verificationStatus": "confirmed", "evidenceIds": ["parameter-proof"]},
+            {"id": "conduct-date", "key": "conduct_date", "value": "2024-06-01",
+             "verificationStatus": "confirmed", "evidenceIds": ["parameter-proof"]},
+            {"id": "judgment-date", "key": "judgment_date", "value": "2026-01-01",
+             "verificationStatus": "confirmed", "evidenceIds": ["parameter-proof"]},
         ],
-        "entities": {"jurisdictionConnections": [{"verificationStatus": "confirmed"}]},
+        "entities": {
+            "evidence": [{"id": "parameter-proof", "type": "document", "verificationStatus": "confirmed"}],
+            "jurisdictionConnections": [{"id": "connection", "verificationStatus": "confirmed",
+                                         "evidenceIds": ["parameter-proof"]}],
+        },
     }
     result = module_analysis.analyze({
         "case_id": str(uuid.uuid4()), "input_snapshot_ref": "facts_version:integration",

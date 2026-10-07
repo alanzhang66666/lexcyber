@@ -109,7 +109,8 @@ class CaseDocumentServiceTest {
         UUID stream = publication.ensureStreamLocked(created.id(), "compliance", "module:compliance");
         var artifact = publication.publish(new ArtifactPublicationService.PublishRequest(
                 created.id(), "compliance", "module:compliance", "case.compliance.v2", "calculated",
-                "{}", "[]", "{\"as_of_date\":\"2024-03-01\"}", null, List.of(), List.of(), null, null, null));
+                "{\"input_validation\":{\"schema_version\":\"case.input-validation.v1\",\"status\":\"verified\",\"checks\":[],\"blockers\":[]}}",
+                "[]", "{\"as_of_date\":\"2024-03-01\"}", null, List.of(), List.of(), null, null, null));
         ModuleConfirmationService confirmation = new ModuleConfirmationService(jdbc);
         confirmation.confirm(created.id(), "compliance", alice);
         cases.updateAnalysisDate(alice, created.id(), new CaseAnalysisDateUpdate(before.plusDays(1), before));

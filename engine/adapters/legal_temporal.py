@@ -11,6 +11,7 @@ from datetime import date
 from typing import Any
 
 from engine.rules import registry
+from engine.rules.inputs import InputValidator
 
 
 def _date_items(snapshot: dict[str, Any], name: str) -> list[dict[str, Any]]:
@@ -25,7 +26,7 @@ def _raw_date(item: dict[str, Any]) -> Any:
     return value
 
 
-def resolve_case_dates(snapshot: dict[str, Any]) -> dict[str, Any]:
+def resolve_case_dates(snapshot: dict[str, Any], input_validator: InputValidator | None = None) -> dict[str, Any]:
     """Resolve confirmed conduct/judgment dates from an immutable snapshot."""
     points: dict[str, date | None] = {"conduct": None, "judgment": None}
     missing: list[str] = []
@@ -42,6 +43,8 @@ def resolve_case_dates(snapshot: dict[str, Any]) -> dict[str, Any]:
         for name in present:
             items = grouped[name]
             path = f"facts.{name}.value"
+            if input_validator is not None:
+                input_validator.check_path(path, phase="legal_dates", point=point)
             raw_values = [_raw_date(item) for item in items]
             if len({repr(value) for value in raw_values}) > 1:
                 conflict = {"code": "LEGAL_DATE_CONFLICT", "point": point,
@@ -75,6 +78,7 @@ def resolve_case_dates(snapshot: dict[str, Any]) -> dict[str, Any]:
     return {
         "conduct": points["conduct"], "judgment": points["judgment"],
         "missing": missing, "conflicts": conflicts, "blockers": blockers,
+        "input_validation": input_validator.summary() if input_validator is not None else None,
     }
 
 

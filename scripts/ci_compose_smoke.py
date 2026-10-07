@@ -20,6 +20,13 @@ from pathlib import Path
 BASE = "http://127.0.0.1:18080"
 SAMPLE_TEXT = "LexCyber CI document storage and parsing check."
 DOCX_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+PARAMETER_PROOF = {"id": "ci-parameter-proof", "type": "document",
+                   "label": "Synthetic CI parameter proof", "verificationStatus": "confirmed"}
+
+
+def fixture_linked(items):
+    """Explicit proof links for synthetic parameters, independent of rule kinds."""
+    return [{**item, "evidenceIds": [PARAMETER_PROOF["id"]]} for item in items]
 
 
 def request(method, path, *, token=None, payload=None, data=None, content_type=None, expected=200):
@@ -252,6 +259,70 @@ def run_reference_integrity(token):
           flush=True)
 
 
+def run_parameter_proof_integrity(token):
+    """Rule-kind presence never verifies the parameter used to decide a rule."""
+    case = request("POST", "/v1/cases", token=token, expected=201, payload={
+        "title": "CI actual parameter proof fixture", "jurisdiction": "CI", "asOfDate": "2026-01-01",
+        "metadata": {"purpose": "LEXCYBER_CI_FIXTURES"},
+    })
+    base = f"/v2/cases/{_id(case, 'id', 'caseId')}"
+    service_log = {"id": "verified-service-log", "type": "service_log", "verificationStatus": "confirmed"}
+    fact = {"id": "decision-parameter", "key": "ci_evidence_guard_flag", "value": True,
+            "verificationStatus": "confirmed", "evidenceIds": [PARAMETER_PROOF["id"]]}
+    previous = None
+    blocked_versions = []
+    scenarios = [
+        ({**fact, "verificationStatus": "candidate"}, PARAMETER_PROOF, "INPUT_UNCONFIRMED"),
+        ({**fact, "verificationStatus": "candidate", "value": False}, PARAMETER_PROOF, "INPUT_UNCONFIRMED"),
+        ({**fact, "evidenceIds": []}, PARAMETER_PROOF, "INPUT_EVIDENCE_INVALID"),
+        (fact, {**PARAMETER_PROOF, "verificationStatus": "candidate"}, "INPUT_UNCONFIRMED"),
+        (fact, PARAMETER_PROOF, None),
+    ]
+    for parameter, proof, expected_code in scenarios:
+        request("PUT", f"{base}/facts-entities/evidence", token=token,
+                payload={"items": [proof, service_log]})
+        request("PUT", f"{base}/facts-entities/facts", token=token, payload={"items": [parameter]})
+        version = request("POST", f"{base}/facts-versions", token=token, expected=201)
+        facts_id = _id(version, "factsVersionId")
+        request("POST", f"{base}/facts-versions/{facts_id}/confirm", token=token,
+                payload={"expectedConfirmedFactsVersionId": previous})
+        previous = facts_id
+        execution = request("POST", f"{base}/modules/compliance/executions", token=token, expected=202)
+        wait_execution(token, _id(execution, "executionId"))
+        head = request("GET", f"{base}/modules/compliance", token=token)
+        artifact = request("GET", f"/v2/artifact-versions/{_id(head, 'latestVersionId')}", token=token)
+        body = artifact["payload"]
+        marker = body["input_validation"]
+        assert marker["schema_version"] == "case.input-validation.v1", body
+        if expected_code:
+            assert artifact["outcomeStatus"] == "blocked" and marker["status"] == "blocked", body
+            assert any(item.get("code") == expected_code for item in marker["blockers"]), body
+            assert any(check["path"].startswith("facts.ci_evidence_guard_flag")
+                       and check["status"] == "blocked" for check in marker["checks"]), body
+            blocked_versions.append(artifact)
+            review = request("POST", f"/v2/artifact-versions/{artifact['artifactVersionId']}/reviews",
+                             token=token, expected=201, payload={"comment": "CI unverified parameter rejection"})
+            request("POST", f"/v1/reviews/{_id(review, 'reviewId')}/approve", token=token,
+                    expected=409, payload={"resultVersion": artifact["version"]})
+            assert not request("GET", f"{base}/modules/compliance", token=token)["effectivelyConfirmed"]
+        else:
+            assert artifact["outcomeStatus"] == "calculated" and marker["status"] == "verified", body
+            assert marker["checks"] and marker["blockers"] == [], marker
+            rule = next(row for row in body["rules"] if row["ruleId"] == "ci-fixture-evidence-guard")
+            assert rule["evidence_checks"]["matchedEvidenceIds"]["service_log"], rule
+            review = request("POST", f"/v2/artifact-versions/{artifact['artifactVersionId']}/reviews",
+                             token=token, expected=201, payload={"comment": "CI linked confirmed parameter"})
+            approved = request("POST", f"/v1/reviews/{_id(review, 'reviewId')}/approve", token=token,
+                               payload={"resultVersion": artifact["version"]})
+            assert approved["status"] == "approved", approved
+            assert request("GET", f"{base}/modules/compliance", token=token)["effectivelyConfirmed"]
+    for artifact in blocked_versions:
+        historical = request("GET", f"/v2/artifact-versions/{artifact['artifactVersionId']}", token=token)
+        assert historical["payload"] == artifact["payload"], historical
+    print("PASS actual parameter candidate true/false and missing/unconfirmed proof block; verified linked input approves",
+          flush=True)
+
+
 def run_lifecycle(token):
     """Exercise the v2 facts → modules → draft → archive chain through nginx."""
     case = request("POST", "/v1/cases", token=token, expected=201, payload={
@@ -259,26 +330,26 @@ def run_lifecycle(token):
         "metadata": {"purpose": "LEXCYBER_CI_FIXTURES"},
     })
     case_id = _id(case, "id", "caseId")
-    facts = [
+    facts = fixture_linked([
         {"key": "ci_case_label", "value": "compose-lifecycle", "verificationStatus": "confirmed"},
         {"key": "ci_confirmed_marker", "value": "yes", "verificationStatus": "confirmed"},
         {"key": "ci_compliance_flag", "value": True, "verificationStatus": "confirmed"},
         {"key": "ci_conviction_flag", "value": True, "verificationStatus": "confirmed"},
         {"key": "ci_distinction_flag", "value": True, "verificationStatus": "confirmed"},
         {"key": "ci_sentencing_flag", "value": True, "verificationStatus": "confirmed"},
-    ]
+    ])
     actors = [{"id": "ci-actor-1", "type": "person", "name": "CI fixture", "role": "subject",
                "verificationStatus": "confirmed"}]
     events = [{"id": "ci-event-1", "date": "2026-01-01", "stage": "fixture",
                "description": "synthetic CI event", "verificationStatus": "confirmed"}]
-    evidence = [{"id": "ci-evidence-1", "type": "document", "label": "CI fixture evidence",
-                 "verificationStatus": "confirmed"}]
+    evidence = [PARAMETER_PROOF]
     amounts = [{"id": "ci-amount-1", "kind": "crime_amount", "label": "CI fixture amount",
-                "value": "6", "currency": "CNY", "verificationStatus": "confirmed"}]
+                "value": "6", "currency": "CNY", "verificationStatus": "confirmed",
+                "evidenceIds": [PARAMETER_PROOF["id"]]}]
     jurisdiction = [{"id": "ci-jurisdiction-1", "type": "territory", "value": "CI",
-                     "verificationStatus": "confirmed"}]
-    for kind, items in (("facts", facts), ("actors", actors), ("events", events),
-                        ("evidence", evidence), ("amounts", amounts),
+                     "verificationStatus": "confirmed", "evidenceIds": [PARAMETER_PROOF["id"]]}]
+    for kind, items in (("evidence", evidence), ("facts", facts), ("actors", actors), ("events", events),
+                        ("amounts", amounts),
                         ("jurisdiction-connections", jurisdiction)):
         request("PUT", f"/v2/cases/{case_id}/facts-entities/{kind}", token=token,
                 expected=200, payload={"items": items})
@@ -445,6 +516,8 @@ def run_lifecycle(token):
         "metadata": {"purpose": "LEXCYBER_CI_FIXTURES"},
     })
     jurisdiction_case_id = _id(jurisdiction_case, "id", "caseId")
+    request("PUT", f"/v2/cases/{jurisdiction_case_id}/facts-entities/evidence", token=token,
+            payload={"items": [PARAMETER_PROOF]})
     request("PUT", f"/v2/cases/{jurisdiction_case_id}/facts-entities/facts", token=token,
             payload={"items": facts})
     previous_facts = None
@@ -480,17 +553,20 @@ def run_lifecycle(token):
         "metadata": {"purpose": "LEXCYBER_CI_FIXTURES"},
     })
     component_case_id = _id(component_case, "id", "caseId")
+    request("PUT", f"/v2/cases/{component_case_id}/facts-entities/evidence", token=token,
+            payload={"items": [PARAMETER_PROOF]})
     request("PUT", f"/v2/cases/{component_case_id}/facts-entities/facts", token=token,
-            payload={"items": facts + [{"key": "ci_component_guard_flag", "value": True,
-                                       "verificationStatus": "confirmed"}]})
+            payload={"items": facts + fixture_linked([{
+                "key": "ci_component_guard_flag", "value": True, "verificationStatus": "confirmed"}])})
     request("PUT", f"/v2/cases/{component_case_id}/facts-entities/jurisdiction-connections",
             token=token, payload={"items": jurisdiction})
     request("PUT", f"/v2/cases/{component_case_id}/facts-entities/amounts", token=token,
             payload={"items": [
                 {"id": "child", "kind": "payment_settlement_amount", "value": 80000,
-                 "componentOf": "parent", "verificationStatus": "confirmed"},
+                 "componentOf": "parent", "verificationStatus": "confirmed",
+                 "evidenceIds": [PARAMETER_PROOF["id"]]},
                 {"id": "parent", "kind": "payment_settlement_amount", "value": 120000,
-                 "verificationStatus": "confirmed"},
+                 "verificationStatus": "confirmed", "evidenceIds": [PARAMETER_PROOF["id"]]},
             ]})
     component_version = request("POST", f"/v2/cases/{component_case_id}/facts-versions",
                                 token=token, expected=201)
@@ -590,13 +666,13 @@ def run_lifecycle(token):
         "asOfDate": "2026-01-01", "metadata": {"purpose": "LEXCYBER_CI_FIXTURES"},
     })
     temporal_case_id = _id(temporal_case, "id", "caseId")
-    temporal_facts = [
+    temporal_facts = fixture_linked([
         {"key": "ci_temporal_guard_flag", "value": True, "verificationStatus": "confirmed"},
         {"key": "ci_evidence_guard_flag", "value": False, "verificationStatus": "confirmed"},
         {"key": "conduct_date", "value": "2024-06-01", "verificationStatus": "confirmed"},
         {"key": "judgment_date", "value": "2026-01-01", "verificationStatus": "confirmed"},
-    ]
-    for kind, items in (("facts", temporal_facts), ("jurisdiction-connections", jurisdiction)):
+    ])
+    for kind, items in (("evidence", [PARAMETER_PROOF]), ("facts", temporal_facts), ("jurisdiction-connections", jurisdiction)):
         request("PUT", f"/v2/cases/{temporal_case_id}/facts-entities/{kind}", token=token,
                 expected=200, payload={"items": items})
     temporal_version = request("POST", f"/v2/cases/{temporal_case_id}/facts-versions",
@@ -640,8 +716,10 @@ def run_lifecycle(token):
         "metadata": {"purpose": "LEXCYBER_CI_FIXTURES"},
     })
     evidence_case_id = _id(evidence_case, "id", "caseId")
-    evidence_facts = [{"key": "ci_evidence_guard_flag", "value": True,
-                       "verificationStatus": "confirmed"}]
+    evidence_facts = fixture_linked([{"key": "ci_evidence_guard_flag", "value": True,
+                                     "verificationStatus": "confirmed"}])
+    request("PUT", f"/v2/cases/{evidence_case_id}/facts-entities/evidence", token=token,
+            payload={"items": [PARAMETER_PROOF]})
     request("PUT", f"/v2/cases/{evidence_case_id}/facts-entities/facts", token=token,
             expected=200, payload={"items": evidence_facts})
 
@@ -665,7 +743,7 @@ def run_lifecycle(token):
                for item in missing_artifact["payload"]["blockers"]), missing_artifact
 
     request("PUT", f"/v2/cases/{evidence_case_id}/facts-entities/evidence", token=token,
-            expected=200, payload={"items": [{"id": "ci-candidate-log", "type": "service_log",
+            expected=200, payload={"items": [PARAMETER_PROOF, {"id": "ci-candidate-log", "type": "service_log",
                                                 "verificationStatus": "candidate"}]})
     candidate_version_id = _confirm_evidence_version(evidence_version_id)
     candidate_execution = request("POST", f"/v2/cases/{evidence_case_id}/modules/compliance/executions",
@@ -680,7 +758,7 @@ def run_lifecycle(token):
     # Update the existing business id; entityId is the canonical UUID returned
     # by the API, not an arbitrary fixture label.
     request("PUT", f"/v2/cases/{evidence_case_id}/facts-entities/evidence", token=token,
-            expected=200, payload={"items": [{"id": "ci-candidate-log", "type": "service_log",
+            expected=200, payload={"items": [PARAMETER_PROOF, {"id": "ci-candidate-log", "type": "service_log",
                                                 "verificationStatus": "confirmed"}]})
     confirmed_version_id = _confirm_evidence_version(candidate_version_id)
     confirmed_execution = request("POST", f"/v2/cases/{evidence_case_id}/modules/compliance/executions",
@@ -699,6 +777,7 @@ def run_lifecycle(token):
     assert approved_evidence.get("status") == "approved", approved_evidence
     print("PASS evidence missing/candidate blockers, confirmed evidence calculation and frozen CAS binding", flush=True)
     run_reference_integrity(token)
+    run_parameter_proof_integrity(token)
 
 
 def main():

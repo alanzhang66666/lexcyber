@@ -167,6 +167,7 @@ class V2RenderLifecycleTest {
 
         String content = MAPPER.writeValueAsString(Map.of(
                 "schema_version", "sentencing.v2", "status", "calculated",
+                "input_validation", validInputValidation(),
                 "dependency_snapshot", Map.of("as_of_date", "2026-09-06", "facts_version_id", factsVersion.toString(),
                         "artifacts", List.of(Map.of("module", "conviction",
                                 "artifactVersionId", convictionV1.toString()))),
@@ -231,6 +232,7 @@ class V2RenderLifecycleTest {
         String content = MAPPER.writeValueAsString(Map.of(
                 "schema_version", "draft.v2",
                 "status", "calculated",
+                "input_validation", validInputValidation(),
                 "dependency_snapshot", Map.of(
                         "as_of_date", "2026-09-06",
                         "facts_version_id", factsVersion.toString(),
@@ -348,6 +350,7 @@ class V2RenderLifecycleTest {
                 String.class, taskId, executionId));
         String content = MAPPER.writeValueAsString(Map.of(
                 "schema_version", "draft.v2", "status", "calculated",
+                "input_validation", validInputValidation(),
                 "dependency_snapshot", Map.of("as_of_date", "2026-09-06", "facts_version_id", factsVersion.toString(),
                         "artifacts", List.of(Map.of("module", "compliance", "artifactVersionId", complianceV1.toString()))),
                 "body", "rendered with frozen V1"));
@@ -366,6 +369,11 @@ class V2RenderLifecycleTest {
     }
 
     private record RenderReviewFixture(UUID reviewId) {}
+
+    private Map<String, Object> validInputValidation() {
+        return Map.of("schema_version", "case.input-validation.v1", "status", "verified",
+                "checks", List.of(), "blockers", List.of());
+    }
 
     private UUID insertConfirmedModuleVersion(String caseId, String module, String payload) {
         UUID streamId = UUID.randomUUID();

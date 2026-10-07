@@ -123,6 +123,72 @@ class LegalAnalysisContextTest {
                 .confirm(caseId.toString(), "compliance", account));
     }
 
+    @Test
+    void requireCurrentRejectsMalformedDirectAndRecursiveInputValidationMarkers() {
+        insertCase("2026-09-06");
+        String[] malformed = {
+                "{}",
+                "{\"input_validation\":null}",
+                "{\"input_validation\":{\"schema_version\":\"wrong\",\"status\":\"verified\",\"checks\":[],\"blockers\":[]}}",
+                "{\"input_validation\":{\"schema_version\":\"case.input-validation.v1\",\"status\":\"blocked\",\"checks\":[],\"blockers\":[{}]}}",
+                "{\"input_validation\":{\"schema_version\":\"case.input-validation.v1\",\"status\":\"verified\",\"checks\":[],\"blockers\":[{}]}}",
+                "{\"input_validation\":{\"schema_version\":\"case.input-validation.v1\",\"status\":\"verified\",\"checks\":{},\"blockers\":[]}}",
+                "{\"input_validation\":{\"schema_version\":\"case.input-validation.v1\",\"status\":\"verified\",\"checks\":[null],\"blockers\":[]}}"
+        };
+        for (String payload : malformed) {
+            UUID upstream = insertArtifact("compliance", "case.compliance.v2", payload);
+            UUID downstream = insertArtifact("sentencing", "sentencing.v2", validInputValidation());
+            jdbc.update("INSERT INTO app.artifact_artifact_dependency(artifact_version_id, depends_on_artifact_version_id) VALUES (?, ?)",
+                    downstream, upstream);
+            ApiException error = assertThrows(ApiException.class,
+                    () -> LegalAnalysisContext.requireCurrent(jdbc, caseId.toString(), downstream));
+            assertEquals("DEPENDENCY_STALE", error.code());
+        }
+    }
+
+    @Test
+    void requireCurrentAllowsVerifiedInputValidationMarker() {
+        insertCase("2026-09-06");
+        UUID version = insertArtifact("compliance", "case.compliance.v2", validInputValidation());
+        LegalAnalysisContext.requireCurrent(jdbc, caseId.toString(), version);
+    }
+
+    @Test
+    void requireCurrentRejectsForeignArtifactInFullDependencyClosure() {
+        insertCase("2026-09-06");
+        UUID foreignCase = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO app.cases(id, owner_account_id, title, jurisdiction, as_of_date, metadata_json)
+                VALUES (?, ?, 'Foreign test', 'CN', '2026-09-06', '{}'::jsonb)
+                """, foreignCase, account);
+        UUID root = insertArtifact("compliance", "case.compliance.v2", validInputValidation());
+        UUID foreign = insertArtifactForCase(foreignCase, "conviction", "case.conviction.v2", "{}");
+        jdbc.update("INSERT INTO app.artifact_artifact_dependency(artifact_version_id, depends_on_artifact_version_id) VALUES (?, ?)",
+                root, foreign);
+
+        ApiException error = assertThrows(ApiException.class,
+                () -> LegalAnalysisContext.requireCurrent(jdbc, caseId.toString(), root));
+        assertEquals("DEPENDENCY_STALE", error.code());
+    }
+
+    @Test
+    void requireCurrentRejectsForeignLegacyArtifactToo() {
+        insertCase("2026-09-06");
+        UUID foreignCase = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO app.cases(id, owner_account_id, title, jurisdiction, as_of_date, metadata_json)
+                VALUES (?, ?, 'Foreign legacy test', 'CN', '2026-09-06', '{}'::jsonb)
+                """, foreignCase, account);
+        UUID root = insertArtifact("compliance", "case.compliance.v2", validInputValidation());
+        UUID foreign = insertArtifactForCase(foreignCase, "conviction", "case.module.v1", "{}");
+        jdbc.update("INSERT INTO app.artifact_artifact_dependency(artifact_version_id, depends_on_artifact_version_id) VALUES (?, ?)",
+                root, foreign);
+
+        ApiException error = assertThrows(ApiException.class,
+                () -> LegalAnalysisContext.requireCurrent(jdbc, caseId.toString(), root));
+        assertEquals("DEPENDENCY_STALE", error.code());
+    }
+
     private UUID bindConfirmedFacts(UUID artifact, String payload) {
         UUID facts = UUID.randomUUID();
         jdbc.update("""
@@ -180,16 +246,37 @@ class LegalAnalysisContextTest {
     }
 
     private UUID insertModuleArtifact(String schemaVersion, String asOfDate) {
-        return insertModuleArtifact(schemaVersion, asOfDate, "{}");
+        return insertModuleArtifact(schemaVersion, asOfDate,
+                "{\"input_validation\":{\"schema_version\":\"case.input-validation.v1\",\"status\":\"verified\",\"checks\":[],\"blockers\":[]}}");
     }
 
     private UUID insertModuleArtifact(String schemaVersion, String asOfDate, String payload) {
+        UUID version = insertArtifact("compliance", schemaVersion, payload, asOfDate);
+        jdbc.update("UPDATE app.artifact_stream SET latest_version_id = ? WHERE artifact_stream_id = ?",
+                version, jdbc.queryForObject("SELECT artifact_stream_id FROM app.artifact_version WHERE artifact_version_id = ?",
+                        UUID.class, version));
+        return version;
+    }
+
+    private UUID insertArtifact(String module, String schemaVersion, String payload) {
+        return insertArtifact(module, schemaVersion, payload, "2026-09-06");
+    }
+
+    private UUID insertArtifact(String module, String schemaVersion, String payload, String asOfDate) {
+        return insertArtifactForCase(caseId, module, schemaVersion, payload, asOfDate);
+    }
+
+    private UUID insertArtifactForCase(UUID targetCase, String module, String schemaVersion, String payload) {
+        return insertArtifactForCase(targetCase, module, schemaVersion, payload, "2026-09-06");
+    }
+
+    private UUID insertArtifactForCase(UUID targetCase, String module, String schemaVersion, String payload, String asOfDate) {
         UUID streamId = UUID.randomUUID();
         UUID version = UUID.randomUUID();
         jdbc.update("""
                 INSERT INTO app.artifact_stream(artifact_stream_id, case_id, kind, scope_key, next_version)
-                VALUES (?, ?, 'compliance', 'module:compliance', 2)
-                """, streamId, caseId);
+                VALUES (?, ?, ?, ?, 2)
+                """, streamId, targetCase, module, "module:" + module);
         jdbc.update("""
                 INSERT INTO app.artifact_version(
                     artifact_version_id, artifact_stream_id, version, schema_version,
@@ -199,6 +286,10 @@ class LegalAnalysisContextTest {
         jdbc.update("UPDATE app.artifact_stream SET latest_version_id = ? WHERE artifact_stream_id = ?",
                 version, streamId);
         return version;
+    }
+
+    private String validInputValidation() {
+        return "{\"input_validation\":{\"schema_version\":\"case.input-validation.v1\",\"status\":\"verified\",\"checks\":[],\"blockers\":[]}}";
     }
 
     private void insertModuleHead(String module, UUID version) {

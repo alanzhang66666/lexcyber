@@ -45,7 +45,7 @@ class LegalTemporalMigrationTest {
 
             UUID unrelatedCase = insertCase(jdbc, owner);
             Artifact unrelated = insertModule(jdbc, unrelatedCase, "compliance",
-                    "case.compliance.v2", "{\"divergence\":[]}");
+                    "case.compliance.v2", "{\"divergence\":[],\"input_validation\":{\"schema_version\":\"case.input-validation.v1\",\"status\":\"verified\",\"checks\":[],\"blockers\":[]}}");
 
             flyway.migrate(); // V23 walks the dependency graph from divergent v2 outputs.
 

@@ -74,8 +74,10 @@ class AnalysisDateMigrationTest {
             assertEquals(missingModule.versionId(), confirmed(jdbc, missingModule.streamId()));
             assertEquals(mismatchedModule.versionId(), confirmed(jdbc, mismatchedModule.streamId()));
             assertEquals(mismatchedDraft.versionId(), approved(jdbc, mismatchedDraft.headId()));
-            assertPayload(jdbc, mismatchedModule.versionId(), "{\"module\":\"frozen\"}");
-            assertPayload(jdbc, mismatchedDraft.versionId(), "{\"body\":\"frozen\"}");
+            assertPayload(jdbc, mismatchedModule.versionId(),
+                    "{\"module\":\"frozen\",\"input_validation\":{\"schema_version\":\"case.input-validation.v1\",\"status\":\"verified\",\"checks\":[],\"blockers\":[]}}");
+            assertPayload(jdbc, mismatchedDraft.versionId(),
+                    "{\"body\":\"frozen\",\"input_validation\":{\"schema_version\":\"case.input-validation.v1\",\"status\":\"verified\",\"checks\":[],\"blockers\":[]}}");
             assertEquals(1, jdbc.queryForObject(
                     "SELECT COUNT(*) FROM app.artifact_version WHERE artifact_version_id = ?",
                     Integer.class, mismatchedDraft.versionId()));
@@ -127,6 +129,10 @@ class AnalysisDateMigrationTest {
 
     private void insertVersion(JdbcTemplate jdbc, UUID streamId, UUID versionId, String schema,
             String asOfDate, String payload) {
+        if (schema.endsWith(".v2")) {
+            payload = payload.substring(0, payload.length() - 1)
+                    + ",\"input_validation\":{\"schema_version\":\"case.input-validation.v1\",\"status\":\"verified\",\"checks\":[],\"blockers\":[]}}";
+        }
         String dependency = asOfDate == null ? "{}" : "{\"as_of_date\":\"" + asOfDate + "\"}";
         jdbc.update("INSERT INTO app.artifact_version(artifact_version_id, artifact_stream_id, version, "
                 + "schema_version, outcome_status, payload, dependency_snapshot, output_hash) "

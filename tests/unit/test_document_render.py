@@ -16,9 +16,10 @@ TEMPLATE = {
 }
 
 SNAPSHOT = {
-    "items": [{"key": "defendant_name", "value": "张某", "verificationStatus": "confirmed"}],
-    "entities": {"amounts": [{"kind": "inflow", "value": "250000",
-                              "verificationStatus": "confirmed"}]},
+    "items": [{"key": "defendant_name", "entityId": "fact-defendant", "value": "张某", "verificationStatus": "confirmed", "evidenceIds": ["proof-1"]}],
+    "entities": {"amounts": [{"kind": "inflow", "value": "250000", "entityId": "amount-1", "evidenceIds": ["proof-1"],
+                              "verificationStatus": "confirmed"}],
+                  "evidence": [{"entityId": "proof-1", "verificationStatus": "confirmed"}]},
 }
 
 
@@ -27,7 +28,9 @@ def _payload(artifacts=None):
             "metadata": {"taskType": "draft.render", "asOfDate": "2026-01-01", "docType": "indictment",
                          "factsSnapshot": SNAPSHOT,
                          "artifactVersions": {"conviction": "11111111-1111-1111-1111-111111111111"},
-                         "artifacts": artifacts or {"conviction": {"status": "calculated"}}}}
+                         "artifacts": artifacts or {"conviction": {"schema_version": "case.conviction.v2", "status": "calculated",
+                            "input_validation": {"schema_version": "case.input-validation.v1", "status": "verified", "checks": [], "blockers": []}}}}
+    }
 
 
 def test_rendered(monkeypatch):
@@ -119,3 +122,16 @@ def test_chinese_placeholder_introduced_by_fact_blocks_body(monkeypatch):
     assert out["status"] == "blocked"
     assert out["body"] is None
     assert {"path": "body", "reason": "unresolved_placeholder"} in out["unresolved"]
+
+
+def test_invalid_upstream_marker_blocks_render(monkeypatch):
+    monkeypatch.setattr(document_render.registry, "active_template", lambda dt: TEMPLATE)
+    payload = _payload({"conviction": {
+        "schema_version": "case.conviction.v2", "status": "calculated",
+        "input_validation": {"schema_version": "case.input-validation.v1",
+                              "status": "verified", "checks": [{}], "blockers": []}}})
+    body = render(payload)["final_output"]
+    assert body["status"] == "blocked"
+    assert body["body"] is None
+    assert any(item["reason"] == "upstream_input_validation_blocked"
+               for item in body["unresolved"])

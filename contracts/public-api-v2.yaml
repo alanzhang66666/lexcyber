@@ -628,7 +628,14 @@ components:
           enum: [document.parse.v1, case.module.v1, case.compliance.v2, case.conviction.v2, sentencing.v2, draft.v2]
           description: 工件 payload 的冻结 schema 标识；case.module.v1 为 /v1 演示写层遗留（默认 410）
         outcomeStatus: { type: string, enum: [calculated, blocked, not_applicable] }
-        payload: { type: object }
+        payload:
+          type: object
+          description: >-
+            v2 执行工件含 input_validation：schema_version 为 case.input-validation.v1，
+            checks 记录实际读取路径、阶段、时点、参数身份与证据身份。
+            实际参数未核实、未关联证据或引用未核实/歧义证据时 blocked；
+            requiredEvidenceKinds 种类门槛独立校验。blocked 量刑无可用刑期/罚金/步骤，blocked 文书无正文。
+            旧 v2 缺少有效输入证明时不能确认或批准；旧不可变载荷仍可查询。
         blockers: { type: array, items: { type: object } }
         dependencySnapshot: { type: object }
         executionId: { type: string, format: uuid, nullable: true }
