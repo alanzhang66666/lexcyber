@@ -85,16 +85,16 @@ jobs:
   compose-e2e:
     runs-on: ubuntu-latest
     needs: [test, java, web, contracts]
+    env:
+      POSTGRES_PASSWORD: ci-postgres
+      APP_DB_PASSWORD: ci-app
+      ENGINE_DB_PASSWORD: ci-engine
+      ENGINE_SERVICE_TOKEN: ci-engine-token
+      MINIO_ROOT_USER: ci-minio
+      MINIO_ROOT_PASSWORD: ci-minio-password
     steps:
       - uses: actions/checkout@v4
       - name: Start 0.8 stack
-        env:
-          POSTGRES_PASSWORD: ci-postgres
-          APP_DB_PASSWORD: ci-app
-          ENGINE_DB_PASSWORD: ci-engine
-          ENGINE_SERVICE_TOKEN: ci-engine-token
-          MINIO_ROOT_USER: ci-minio
-          MINIO_ROOT_PASSWORD: ci-minio-password
         run: docker compose -f docker-compose.yml up -d --build
       - name: Wait for API and execute Stub task
         run: |
