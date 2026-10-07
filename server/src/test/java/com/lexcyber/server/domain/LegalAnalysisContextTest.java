@@ -67,6 +67,22 @@ class LegalAnalysisContextTest {
     }
 
     @Test
+    void confirmationRejectsPreviouslyCalculatedLegalDivergence() {
+        insertCase("2026-09-06");
+        UUID version = insertModuleArtifact("case.compliance.v2", "2026-09-06",
+                "{\"divergence\":[{\"code\":\"LAW_VERSION_DIVERGENCE\"}]}");
+        insertModuleHead("compliance", version);
+
+        ApiException error = assertThrows(ApiException.class,
+                () -> new ModuleConfirmationService(jdbc).confirm(caseId.toString(), "compliance", account));
+
+        assertEquals("MODULE_BLOCKED", error.code());
+        assertEquals(0, jdbc.queryForObject(
+                "SELECT COUNT(*) FROM app.module_head WHERE case_id = ? AND confirmed_version_id IS NOT NULL",
+                Integer.class, caseId));
+    }
+
+    @Test
     void approvalRejectsLateV2CompletionWithOldFrozenDate() {
         insertCase("2026-09-07");
         UUID draftId = UUID.randomUUID();
@@ -106,6 +122,10 @@ class LegalAnalysisContextTest {
     }
 
     private UUID insertModuleArtifact(String schemaVersion, String asOfDate) {
+        return insertModuleArtifact(schemaVersion, asOfDate, "{}");
+    }
+
+    private UUID insertModuleArtifact(String schemaVersion, String asOfDate, String payload) {
         UUID streamId = UUID.randomUUID();
         UUID version = UUID.randomUUID();
         jdbc.update("""
@@ -116,8 +136,8 @@ class LegalAnalysisContextTest {
                 INSERT INTO app.artifact_version(
                     artifact_version_id, artifact_stream_id, version, schema_version,
                     outcome_status, payload, dependency_snapshot, output_hash)
-                VALUES (?, ?, 1, ?, 'calculated', '{}', jsonb_build_object('as_of_date', ?), 'module')
-                """, version, streamId, schemaVersion, asOfDate);
+                VALUES (?, ?, 1, ?, 'calculated', ?::jsonb, jsonb_build_object('as_of_date', ?), 'module')
+                """, version, streamId, schemaVersion, payload, asOfDate);
         jdbc.update("UPDATE app.artifact_stream SET latest_version_id = ? WHERE artifact_stream_id = ?",
                 version, streamId);
         return version;

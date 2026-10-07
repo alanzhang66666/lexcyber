@@ -488,6 +488,120 @@ def run_lifecycle(token):
     assert unchanged_artifact["payload"] == component_artifact["payload"]
     print("PASS explicit analysis date binding, missing-date gate, CAS and stale old-date confirmation", flush=True)
 
+    # A real registry temporal fixture must preserve both legal paths when the
+    # confirmed conduct and judgment dates select different source versions.
+    temporal_case = request("POST", "/v1/cases", token=token, expected=201, payload={
+        "title": "CI temporal divergence fixture", "jurisdiction": "CI",
+        "asOfDate": "2026-01-01", "metadata": {"purpose": "LEXCYBER_CI_FIXTURES"},
+    })
+    temporal_case_id = _id(temporal_case, "id", "caseId")
+    temporal_facts = [
+        {"key": "ci_temporal_guard_flag", "value": True, "verificationStatus": "confirmed"},
+        {"key": "ci_evidence_guard_flag", "value": False, "verificationStatus": "confirmed"},
+        {"key": "conduct_date", "value": "2024-06-01", "verificationStatus": "confirmed"},
+        {"key": "judgment_date", "value": "2026-01-01", "verificationStatus": "confirmed"},
+    ]
+    for kind, items in (("facts", temporal_facts), ("jurisdiction-connections", jurisdiction)):
+        request("PUT", f"/v2/cases/{temporal_case_id}/facts-entities/{kind}", token=token,
+                expected=200, payload={"items": items})
+    temporal_version = request("POST", f"/v2/cases/{temporal_case_id}/facts-versions",
+                               token=token, expected=201)
+    temporal_facts_id = _id(temporal_version, "factsVersionId")
+    request("POST", f"/v2/cases/{temporal_case_id}/facts-versions/{temporal_facts_id}/confirm",
+            token=token, expected=200, payload={"expectedConfirmedFactsVersionId": None})
+    temporal_execution = request("POST", f"/v2/cases/{temporal_case_id}/modules/compliance/executions",
+                                 token=token, expected=202)
+    wait_execution(token, _id(temporal_execution, "executionId"))
+    temporal_head = request("GET", f"/v2/cases/{temporal_case_id}/modules/compliance", token=token)
+    temporal_artifact = request("GET", f"/v2/artifact-versions/{_id(temporal_head, 'latestVersionId')}", token=token)
+    temporal_payload = temporal_artifact["payload"]
+    assert temporal_artifact["outcomeStatus"] == "blocked"
+    assert any(item.get("code") == "LAW_VERSION_DIVERGENCE" for item in temporal_payload["blockers"]), temporal_artifact
+    assert {path["point"] for path in temporal_payload["temporal_paths"]} == {"conduct", "judgment"}
+    assert {path["status"] for path in temporal_payload["temporal_paths"]} == {"calculated"}
+    labels = set()
+    for path in temporal_payload["temporal_paths"]:
+        guards = [rule for rule in path["rules"]
+                  if rule["ruleId"] == "ci-fixture-temporal-guard" and rule["fired"]]
+        assert len(guards) == 1, path
+        labels.add(guards[0]["outcome"]["finding"])
+    assert labels == {"ci_fixture_temporal_old", "ci_fixture_temporal_new"}, temporal_payload
+    temporal_versions = {(item["sourceVersion"], item["point"])
+                         for item in temporal_payload["dependency_snapshot"]["source_versions"]}
+    assert {version for version, _ in temporal_versions} >= {"2020.1", "2025.1"}, temporal_payload
+    temporal_review = request("POST", f"/v2/artifact-versions/{temporal_artifact['artifactVersionId']}/reviews",
+                              token=token, expected=201,
+                              payload={"comment": "CI temporal divergence fixture"})
+    temporal_rejected = request("POST", f"/v1/reviews/{_id(temporal_review, 'reviewId')}/approve",
+                               token=token, expected=409,
+                               payload={"resultVersion": temporal_artifact["version"]})
+    assert temporal_rejected.get("code") == "MODULE_BLOCKED", temporal_rejected
+    print("PASS real dual-time legal paths, LAW_VERSION_DIVERGENCE blocker and source-version binding", flush=True)
+
+    # Evidence gating is exercised independently so a temporal blocker cannot
+    # hide the transition missing -> candidate -> confirmed.
+    evidence_case = request("POST", "/v1/cases", token=token, expected=201, payload={
+        "title": "CI evidence gate fixture", "jurisdiction": "CI", "asOfDate": "2026-01-01",
+        "metadata": {"purpose": "LEXCYBER_CI_FIXTURES"},
+    })
+    evidence_case_id = _id(evidence_case, "id", "caseId")
+    evidence_facts = [{"key": "ci_evidence_guard_flag", "value": True,
+                       "verificationStatus": "confirmed"}]
+    request("PUT", f"/v2/cases/{evidence_case_id}/facts-entities/facts", token=token,
+            expected=200, payload={"items": evidence_facts})
+
+    def _confirm_evidence_version(expected_id):
+        version = request("POST", f"/v2/cases/{evidence_case_id}/facts-versions",
+                          token=token, expected=201)
+        version_id = _id(version, "factsVersionId")
+        request("POST", f"/v2/cases/{evidence_case_id}/facts-versions/{version_id}/confirm",
+                token=token, expected=200,
+                payload={"expectedConfirmedFactsVersionId": expected_id})
+        return version_id
+
+    evidence_version_id = _confirm_evidence_version(None)
+    missing_execution = request("POST", f"/v2/cases/{evidence_case_id}/modules/compliance/executions",
+                                token=token, expected=202)
+    wait_execution(token, _id(missing_execution, "executionId"))
+    evidence_head = request("GET", f"/v2/cases/{evidence_case_id}/modules/compliance", token=token)
+    missing_artifact = request("GET", f"/v2/artifact-versions/{_id(evidence_head, 'latestVersionId')}", token=token)
+    assert missing_artifact["outcomeStatus"] == "blocked"
+    assert any(item.get("code") == "RULE_EVIDENCE_MISSING"
+               for item in missing_artifact["payload"]["blockers"]), missing_artifact
+
+    request("PUT", f"/v2/cases/{evidence_case_id}/facts-entities/evidence", token=token,
+            expected=200, payload={"items": [{"id": "ci-candidate-log", "type": "service_log",
+                                                "verificationStatus": "candidate"}]})
+    candidate_version_id = _confirm_evidence_version(evidence_version_id)
+    candidate_execution = request("POST", f"/v2/cases/{evidence_case_id}/modules/compliance/executions",
+                                  token=token, expected=202)
+    wait_execution(token, _id(candidate_execution, "executionId"))
+    evidence_head = request("GET", f"/v2/cases/{evidence_case_id}/modules/compliance", token=token)
+    candidate_artifact = request("GET", f"/v2/artifact-versions/{_id(evidence_head, 'latestVersionId')}", token=token)
+    assert candidate_artifact["outcomeStatus"] == "blocked"
+    assert any(item.get("code") == "RULE_EVIDENCE_UNCONFIRMED"
+               for item in candidate_artifact["payload"]["blockers"]), candidate_artifact
+
+    request("PUT", f"/v2/cases/{evidence_case_id}/facts-entities/evidence", token=token,
+            expected=200, payload={"items": [{"entityId": "ci-confirmed-log", "type": "service_log",
+                                                "verificationStatus": "confirmed"}]})
+    confirmed_version_id = _confirm_evidence_version(candidate_version_id)
+    confirmed_execution = request("POST", f"/v2/cases/{evidence_case_id}/modules/compliance/executions",
+                                  token=token, expected=202)
+    wait_execution(token, _id(confirmed_execution, "executionId"))
+    evidence_head = request("GET", f"/v2/cases/{evidence_case_id}/modules/compliance", token=token)
+    confirmed_artifact = request("GET", f"/v2/artifact-versions/{_id(evidence_head, 'latestVersionId')}", token=token)
+    assert confirmed_artifact["outcomeStatus"] == "calculated"
+    assert confirmed_artifact["payload"]["dependency_snapshot"]["as_of_date"] == "2026-01-01"
+    assert confirmed_artifact["payload"]["facts_version_id"] == confirmed_version_id
+    confirmed_review = request("POST", f"/v2/artifact-versions/{confirmed_artifact['artifactVersionId']}/reviews",
+                               token=token, expected=201,
+                               payload={"comment": "CI confirmed evidence fixture"})
+    approved_evidence = request("POST", f"/v1/reviews/{_id(confirmed_review, 'reviewId')}/approve",
+                                token=token, payload={"resultVersion": confirmed_artifact["version"]})
+    assert approved_evidence.get("status") == "approved", approved_evidence
+    print("PASS evidence missing/candidate blockers, confirmed evidence calculation and frozen CAS binding", flush=True)
+
 
 def main():
     global BASE

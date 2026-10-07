@@ -139,8 +139,9 @@ def resolve_temporal(source_key: str, conduct_date: date | None,
     with connection() as conn:
         rows = conn.execute(
             """
-            SELECT source_id, source_version, effective_from, effective_to, verification_level,
-                   authority, title, article
+            SELECT source_id, source_key, source_version, effective_from, effective_to,
+                   repeal_date, verification_level, authority, title, article,
+                   document_number, jurisdiction, official_url, excerpt, provenance, coverage
             FROM engine.legal_source WHERE source_key = %s ORDER BY effective_from
             """,
             (source_key,),
@@ -151,40 +152,57 @@ def resolve_temporal(source_key: str, conduct_date: date | None,
 
     def pick(point: date | None):
         if point is None:
-            return None
-        for r in rows:
-            if r[2] <= point and (r[3] is None or point <= r[3]):
-                return r
-        return None
+            return []
+        return [r for r in rows
+                if r[3] <= point and (r[4] is None or point <= r[4])]
 
     conduct = pick(conduct_date)
     judgment = pick(judgment_date)
-    result: dict[str, Any] = {"found": True, "coverageGap": False, "divergence": []}
-    for label, point, hit in (("conduct", conduct_date, conduct), ("judgment", judgment_date, judgment)):
-        if point is not None and hit is None:
+    result: dict[str, Any] = {"found": True, "coverageGap": False,
+                              "overlap": False, "divergence": []}
+    point_hits = (("conduct", conduct_date, conduct), ("judgment", judgment_date, judgment))
+    for label, point, hits in point_hits:
+        if point is not None and not hits:
             result["coverageGap"] = True
             result.setdefault("gaps", []).append(
                 {"point": label, "date": str(point), "detail": "no version covers this date"})
-    if conduct is not None:
-        result["conduct_law"] = _source_view(conduct)
-    if judgment is not None:
-        result["judgment_law"] = _source_view(judgment)
-    if (conduct is not None and judgment is not None
-            and conduct[0] != judgment[0]):
+        if len(hits) > 1:
+            result["overlap"] = True
+            result.setdefault("overlaps", []).append({
+                "point": label, "date": str(point),
+                "candidates": [_source_view(row) for row in hits],
+            })
+        elif hits:
+            result[f"{label}_law"] = _source_view(hits[0])
+        result.setdefault("resolutions", {})[label] = {
+            "date": str(point) if point is not None else None,
+            "candidates": [_source_view(row) for row in hits],
+        }
+    if (len(conduct) == 1 and len(judgment) == 1
+            and conduct[0][0] != judgment[0][0]):
         result["divergence"] = [{
             "code": "LAW_VERSION_DIVERGENCE",
             "detail": "行为时点与裁判时点落在同一法源的不同版本区间，须人工择法",
-            "conductVersion": conduct[1], "judgmentVersion": judgment[1],
+            "conductVersion": conduct[0][2], "judgmentVersion": judgment[0][2],
         }]
+    if result["overlap"]:
+        result["divergence"].append({
+            "code": "LAW_VERSION_OVERLAP",
+            "detail": "法源有效区间重叠，无法自动选择版本",
+            "points": [item["point"] for item in result["overlaps"]],
+        })
     return result
 
 
 def _source_view(row) -> dict[str, Any]:
     return {
-        "sourceId": str(row[0]), "sourceVersion": row[1],
-        "effectiveFrom": str(row[2]), "effectiveTo": str(row[3]) if row[3] else None,
-        "verificationLevel": row[4], "authority": row[5],
-        "title": row[6], "article": row[7],
+        "sourceId": str(row[0]), "sourceKey": row[1], "sourceVersion": row[2],
+        "effectiveFrom": str(row[3]), "effectiveTo": str(row[4]) if row[4] else None,
+        "repealDate": str(row[5]) if row[5] else None,
+        "verificationLevel": row[6], "authority": row[7],
+        "title": row[8], "article": row[9], "documentNumber": row[10],
+        "jurisdiction": row[11], "officialUrl": row[12], "excerpt": row[13],
+        "provenance": row[14], "coverage": row[15] or {},
     }
 
 

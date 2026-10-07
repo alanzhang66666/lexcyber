@@ -5,6 +5,7 @@ import { useCaseModule } from '../composables/useCaseModule'
 import CandidatePathCard from '../components/CandidatePathCard.vue'
 import FactCard from '../components/FactCard.vue'
 import RuleResultsPanel from '../components/RuleResultsPanel.vue'
+import LegalTemporalPanel from '../components/LegalTemporalPanel.vue'
 import {
   APPLICABILITY_LABEL,
   caseRelationsFrom,
@@ -249,6 +250,8 @@ watch(caseId, () => void load())
         <p v-else class="panel-note">待确认事项：无</p>
       </section>
       </template>
+
+      <LegalTemporalPanel v-if="moduleState" :content="moduleState.content" />
 
       <section v-if="moduleState" class="panel">
         <div class="panel-heading">

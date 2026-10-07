@@ -167,7 +167,12 @@ public class ModuleConfirmationService {
         String outcome = jdbc.queryForObject(
                 "SELECT outcome_status FROM app.artifact_version WHERE artifact_version_id = ?",
                 String.class, latest);
-        if ("blocked".equals(outcome)) {
+        Boolean hasLegalBlockers = jdbc.queryForObject("""
+                SELECT COALESCE(payload -> 'divergence', '[]'::jsonb) <> '[]'::jsonb
+                    OR COALESCE(payload -> 'blockers', '[]'::jsonb) <> '[]'::jsonb
+                FROM app.artifact_version WHERE artifact_version_id = ?
+                """, Boolean.class, latest);
+        if ("blocked".equals(outcome) || Boolean.TRUE.equals(hasLegalBlockers)) {
             throw new ApiException(HttpStatus.CONFLICT, "MODULE_BLOCKED", "blocked 版本不可确认");
         }
         // 防御性校验（ADR-0005 §3）：事实依赖若存在，必须仍指向当前 head；

@@ -23,6 +23,9 @@ APPROVED_RULE = {
     "requiredEvidenceKinds": [], "coverage": {}, "contentHash": "h1",
 }
 
+EMPTY_TEMPORAL = {"divergence": [], "blockers": [], "source_versions": [],
+                  "resolutions": {}}
+
 
 def _payload(task_type="compliance.analyze"):
     return {"case_id": "case-1", "input_snapshot_ref": "facts_version:fv-9",
@@ -51,15 +54,15 @@ def test_missing_or_invalid_as_of_date_fails_closed(monkeypatch, value):
 
 def test_no_approved_rules_fails_closed(monkeypatch):
     monkeypatch.setattr(module_analysis.registry, "active_rules", lambda fam, *_: [])
-    with pytest.raises(ModuleAnalysisError) as err:
-        analyze(_payload(), "compliance.analyze")
-    assert err.value.code == "MODULE_RULES_UNAVAILABLE"
+    body = analyze(_payload(), "compliance.analyze")["final_output"]
+    assert body["status"] == "blocked"
+    assert any(item["code"] == "MODULE_RULES_UNAVAILABLE" for item in body["blockers"])
 
 
 def test_compliance_payload_shape(monkeypatch):
     monkeypatch.setattr(module_analysis.registry, "active_rules",
                         lambda fam, *_: [APPROVED_RULE] if fam == "compliance" else [])
-    monkeypatch.setattr(module_analysis, "_resolve_sources", lambda *a, **k: [])
+    monkeypatch.setattr(module_analysis, "_resolve_sources", lambda *a, **k: EMPTY_TEMPORAL)
     out = analyze(_payload(), "compliance.analyze")
     body = out["final_output"]
     assert body["schema_version"] == "case.compliance.v2"
@@ -78,7 +81,7 @@ def test_conviction_pulls_distinction_family(monkeypatch):
         return [APPROVED_RULE]
 
     monkeypatch.setattr(module_analysis.registry, "active_rules", fake_active)
-    monkeypatch.setattr(module_analysis, "_resolve_sources", lambda *a, **k: [])
+    monkeypatch.setattr(module_analysis, "_resolve_sources", lambda *a, **k: EMPTY_TEMPORAL)
     out = analyze(_payload("conviction.analyze"), "conviction.analyze")
     assert set(calls) == {"conviction", "distinction"}
     assert out["final_output"]["schema_version"] == "case.conviction.v2"
@@ -88,7 +91,7 @@ def test_predicate_error_blocks_not_crashes(monkeypatch):
     bad_rule = dict(APPROVED_RULE, predicate={"all": []})
     monkeypatch.setattr(module_analysis.registry, "active_rules",
                         lambda fam, *_: [bad_rule])
-    monkeypatch.setattr(module_analysis, "_resolve_sources", lambda *a, **k: [])
+    monkeypatch.setattr(module_analysis, "_resolve_sources", lambda *a, **k: EMPTY_TEMPORAL)
     out = analyze(_payload(), "compliance.analyze")
     body = out["final_output"]
     assert body["status"] == "blocked"
@@ -107,7 +110,7 @@ def test_predicate_error_blocks_not_crashes(monkeypatch):
 def test_conviction_requires_confirmed_jurisdiction_connection(monkeypatch, connections):
     monkeypatch.setattr(module_analysis.registry, "active_rules",
                         lambda fam, *_: [APPROVED_RULE])
-    monkeypatch.setattr(module_analysis, "_resolve_sources", lambda *a, **k: [])
+    monkeypatch.setattr(module_analysis, "_resolve_sources", lambda *a, **k: EMPTY_TEMPORAL)
     payload = _payload("conviction.analyze")
     payload["metadata"]["factsSnapshot"] = {
         **SNAPSHOT,
@@ -127,7 +130,7 @@ def test_conviction_requires_confirmed_jurisdiction_connection(monkeypatch, conn
 def test_conviction_accepts_any_confirmed_jurisdiction_connection(monkeypatch):
     monkeypatch.setattr(module_analysis.registry, "active_rules",
                         lambda fam, *_: [APPROVED_RULE])
-    monkeypatch.setattr(module_analysis, "_resolve_sources", lambda *a, **k: [])
+    monkeypatch.setattr(module_analysis, "_resolve_sources", lambda *a, **k: EMPTY_TEMPORAL)
     payload = _payload("conviction.analyze")
     payload["metadata"]["factsSnapshot"] = {
         **SNAPSHOT,
@@ -142,3 +145,49 @@ def test_conviction_accepts_any_confirmed_jurisdiction_connection(monkeypatch):
     assert body["status"] == "calculated"
     assert not any(item["code"] == "JURISDICTION_CONNECTION_UNCONFIRMED"
                    for item in body["blockers"])
+
+
+def test_temporal_divergence_blocks_and_keeps_two_rule_paths(monkeypatch):
+    monkeypatch.setattr(module_analysis.registry, "active_rules",
+                        lambda fam, *_: [APPROVED_RULE])
+    monkeypatch.setattr(module_analysis, "_resolve_sources", lambda *_: {
+        "divergence": [{"code": "LAW_VERSION_DIVERGENCE", "sourceKey": "law-x"}],
+        "blockers": [], "source_versions": [], "resolutions": {},
+    })
+    monkeypatch.setattr(module_analysis.legal_temporal, "resolve_sources",
+                        lambda *_: EMPTY_TEMPORAL)
+    body = analyze(_payload(), "compliance.analyze")["final_output"]
+    assert body["status"] == "blocked"
+    assert len(body["temporal_paths"]) == 2
+    assert {path["point"] for path in body["temporal_paths"]} == {"conduct", "judgment"}
+    assert all(path["as_of_date"] for path in body["temporal_paths"])
+
+
+def test_same_outcome_path_evidence_gap_still_blocks_top(monkeypatch):
+    dated_rule = {**APPROVED_RULE, "requiredEvidenceKinds": ["judgment"]}
+
+    def dated_active(_family, as_of):
+        return [dated_rule] if str(as_of) == "2024-03-01" else [APPROVED_RULE]
+
+    monkeypatch.setattr(module_analysis.registry, "active_rules", dated_active)
+    monkeypatch.setattr(module_analysis, "_resolve_sources", lambda *_: EMPTY_TEMPORAL)
+    body = analyze(_payload(), "compliance.analyze")["final_output"]
+    assert body["status"] == "blocked"
+    assert any(item["code"] == "TEMPORAL_PATH_BLOCKED" and item["point"] == "conduct"
+               for item in body["blockers"])
+    conduct = next(path for path in body["temporal_paths"] if path["point"] == "conduct")
+    assert conduct["status"] == "blocked"
+
+
+def test_non_fired_temporal_rules_are_not_reported_as_calculated(monkeypatch):
+    unmatched = {**APPROVED_RULE, "predicate": {
+        "path": "facts.upstream_crime_completed.value", "op": "eq", "value": False}}
+    monkeypatch.setattr(module_analysis.registry, "active_rules", lambda *_: [unmatched])
+    monkeypatch.setattr(module_analysis, "_resolve_sources", lambda *_: EMPTY_TEMPORAL)
+    body = analyze(_payload(), "compliance.analyze")["final_output"]
+    assert body["status"] == "not_applicable"
+    assert body["rules"][0]["status"] == "not_applicable"
+    assert len(body["temporal_paths"]) == 2
+    assert all(path["status"] == "not_applicable" for path in body["temporal_paths"])
+    assert all(path["rules"][0]["status"] == "not_applicable"
+               for path in body["temporal_paths"])

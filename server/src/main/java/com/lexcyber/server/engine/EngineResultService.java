@@ -205,7 +205,7 @@ public class EngineResultService {
         UUID factsVersionId = dep.get("facts_version_id") == null ? null
                 : UUID.fromString(String.valueOf(dep.get("facts_version_id")));
 
-        List<ArtifactPublicationService.ExternalDependency> external = new java.util.ArrayList<>();
+        java.util.Set<ArtifactPublicationService.ExternalDependency> external = new java.util.LinkedHashSet<>();
         if (dep.get("rules") instanceof List<?> rules) {
             for (Object rule : rules) {
                 if (rule instanceof Map<?, ?> r && r.get("ruleId") != null) {
@@ -220,12 +220,34 @@ public class EngineResultService {
                     "template", String.valueOf(t.get("templateId")),
                     t.get("templateVersion") == null ? "" : String.valueOf(t.get("templateVersion"))));
         }
-        if (dep.get("sources") instanceof List<?> sources) {
-            for (Object source : sources) {
-                external.add(new ArtifactPublicationService.ExternalDependency(
-                        "legal_source", String.valueOf(source), ""));
+        java.util.Set<String> versionedSources = new java.util.HashSet<>();
+        java.util.Set<ArtifactPublicationService.ExternalDependency> sourceDependencies =
+                new java.util.LinkedHashSet<>();
+        if (dep.containsKey("source_versions")) {
+            if (!(dep.get("source_versions") instanceof List<?> versions)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "invalid legal source version snapshot");
+            }
+            for (Object item : versions) {
+                if (!(item instanceof Map<?, ?> source)
+                        || !(source.get("sourceId") instanceof String sourceId) || sourceId.isBlank()
+                        || !(source.get("sourceVersion") instanceof String sourceVersion) || sourceVersion.isBlank()) {
+                    throw new ResponseStatusException(HttpStatus.CONFLICT, "invalid legal source version snapshot");
+                }
+                versionedSources.add(sourceId);
+                sourceDependencies.add(new ArtifactPublicationService.ExternalDependency(
+                        "legal_source", sourceId, sourceVersion));
             }
         }
+        if (dep.get("sources") instanceof List<?> sources) {
+            for (Object source : sources) {
+                String sourceId = String.valueOf(source);
+                if (!versionedSources.contains(sourceId)) {
+                    sourceDependencies.add(new ArtifactPublicationService.ExternalDependency(
+                            "legal_source", sourceId, ""));
+                }
+            }
+        }
+        external.addAll(sourceDependencies);
 
         // Bind exactly the versions used by rendering, never the heads at completion time.
         List<UUID> artifactDeps = new java.util.ArrayList<>();
@@ -308,7 +330,7 @@ public class EngineResultService {
 
         var result = artifacts.publish(new ArtifactPublicationService.PublishRequest(
                 caseId, kind, scopeKey, schemaVersion, outcome, payload.contentJson(),
-                blockersJson, writeJson(dep), factsVersionId, artifactDeps, external,
+                blockersJson, writeJson(dep), factsVersionId, artifactDeps, List.copyOf(external),
                 payload.executionId(), payload.completionIdentity(), payload.contentHash()));
         return result.artifactVersionId();
     }

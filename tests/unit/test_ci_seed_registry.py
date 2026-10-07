@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from engine import store
 from engine.adapters import document_render, module_analysis, sentencing_v2
 from scripts import ci_seed_registry as fixture
 
@@ -35,6 +36,23 @@ def test_fixture_is_explicitly_synthetic_and_covers_all_module_families():
 def test_fixture_inputs_drive_all_real_adapters(monkeypatch):
     """Exercise adapter predicates and output semantics without a database."""
     source_id = "00000000-0000-0000-0000-000000000001"
+    source = fixture._source()
+
+    class SourceLookup:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def execute(self, sql, params):
+            assert params == ([source_id],)
+            return self
+
+        def fetchall(self):
+            return [(source_id, source["source_key"], source["source_version"])]
+
+    monkeypatch.setattr(store, "connection", SourceLookup)
     raw_rules = fixture._rules(source_id)
     rules = [{
         "ruleId": item["rule_id"], "ruleVersion": item["rule_version"],

@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useCaseModule } from '../composables/useCaseModule'
 import FactCard from '../components/FactCard.vue'
 import RuleResultsPanel from '../components/RuleResultsPanel.vue'
+import LegalTemporalPanel from '../components/LegalTemporalPanel.vue'
 import { APPLICABILITY_LABEL, caseRelationsFrom, toAnalysisFacts, toComplianceChecklist } from '../lib/module-content'
 import { toV2ModuleAnalysis } from '../lib/module-content-v2'
 
@@ -141,6 +142,8 @@ watch(caseId, () => void load())
         </div>
       </section>
       </template>
+
+      <LegalTemporalPanel v-if="moduleState" :content="moduleState.content" />
 
       <section v-if="moduleState" class="panel">
         <div class="panel-heading">

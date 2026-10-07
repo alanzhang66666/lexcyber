@@ -149,18 +149,22 @@ def signoff_endpoint(payload: dict) -> dict:
 
 @app.post("/internal/v1/registry/resolve", dependencies=[Depends(require_service_token)])
 def resolve_temporal_endpoint(payload: dict) -> dict:
-    from datetime import date as _date
+    from engine.rules.registry import RegistryError, parse_explicit_date, resolve_temporal
 
-    from engine.rules.registry import resolve_temporal
-
-    def _parse(value):
-        return _date.fromisoformat(value) if value else None
-
-    return resolve_temporal(
-        payload.get("sourceKey", ""),
-        _parse(payload.get("conductDate")),
-        _parse(payload.get("judgmentDate")),
-    )
+    source_key = payload.get("sourceKey")
+    if not isinstance(source_key, str) or not source_key.strip():
+        raise HTTPException(status_code=400, detail={
+            "code": "INVALID_SOURCE_KEY", "message": "sourceKey is required"})
+    try:
+        conduct = payload.get("conductDate")
+        judgment = payload.get("judgmentDate")
+        return resolve_temporal(
+            source_key,
+            parse_explicit_date(conduct, "conductDate") if conduct is not None else None,
+            parse_explicit_date(judgment, "judgmentDate") if judgment is not None else None,
+        )
+    except RegistryError as exc:
+        raise HTTPException(status_code=400, detail={"code": exc.code, "message": str(exc)}) from exc
 
 
 @app.get("/internal/v1/executions/{execution_id}", dependencies=[Depends(require_service_token)])

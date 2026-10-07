@@ -11,6 +11,7 @@ import uuid
 
 import pytest
 
+from engine.adapters import module_analysis
 from engine.rules import registry
 from engine.rules.registry import RegistryError
 from engine.store import connection
@@ -150,6 +151,58 @@ def test_temporal_divergence_and_gap(subject_prefix):
     assert not same["divergence"]
     gap = registry.resolve_temporal(key, datetime.date(2005, 1, 1), None)
     assert gap["coverageGap"], "区间外时点必须返回覆盖缺口而非近似"
+
+
+def test_temporal_overlap_is_reported_by_real_registry(subject_prefix):
+    """Overlapping effective intervals must remain an explicit DB resolution error."""
+    key = f"{subject_prefix}-overlap"
+    registry.register_legal_source(_source(key, "v1", "2020-01-01", "2025-12-31"))
+    registry.register_legal_source(_source(key, "v2", "2024-01-01"))
+    resolved = registry.resolve_temporal(key, datetime.date(2024, 6, 1), datetime.date(2024, 6, 1))
+    assert resolved["overlap"] is True
+    assert any(item["code"] == "LAW_VERSION_OVERLAP" for item in resolved["divergence"])
+    assert len(resolved["resolutions"]["conduct"]["candidates"]) == 2
+
+
+def test_real_db_adapter_keeps_both_temporal_paths_and_blocks_missing_evidence(subject_prefix):
+    """The adapter must use approved DB rules/sources and fail closed on evidence."""
+    key = f"{subject_prefix}-adapter"
+    old_source = registry.register_legal_source(
+        _source(key, "old", "2020-01-01", "2024-12-31"))
+    new_source = registry.register_legal_source(_source(key, "new", "2025-01-01"))
+    rule_id = f"{subject_prefix}-temporal"
+    item = _rule(rule_id, "1", sources=[old_source["sourceId"], new_source["sourceId"]],
+                 effective_from="2020-01-01")
+    item["predicate"] = {"path": "facts.temporal_flag.value", "op": "eq", "value": True}
+    registry.register_rule_package(item)
+    registry.signoff("rule", f"{rule_id}@1", "it-reviewer", "reviewer", "approved")
+    evidence_rule_id = f"{subject_prefix}-evidence"
+    evidence_item = _rule(evidence_rule_id, "1", sources=[old_source["sourceId"]],
+                          effective_from="2020-01-01")
+    evidence_item["predicate"] = {"path": "facts.evidence_flag.value", "op": "eq", "value": True}
+    evidence_item["required_evidence_kinds"] = ["service_log"]
+    registry.register_rule_package(evidence_item)
+    registry.signoff("rule", f"{evidence_rule_id}@1", "it-reviewer", "reviewer", "approved")
+    snapshot = {
+        "items": [
+            {"key": "temporal_flag", "value": True, "verificationStatus": "confirmed"},
+            {"key": "evidence_flag", "value": True, "verificationStatus": "confirmed"},
+            {"key": "conduct_date", "value": "2024-06-01", "verificationStatus": "confirmed"},
+            {"key": "judgment_date", "value": "2026-01-01", "verificationStatus": "confirmed"},
+        ],
+        "entities": {"jurisdictionConnections": [{"verificationStatus": "confirmed"}]},
+    }
+    result = module_analysis.analyze({
+        "case_id": str(uuid.uuid4()), "input_snapshot_ref": "facts_version:integration",
+        "metadata": {"asOfDate": "2026-01-01", "factsSnapshot": snapshot},
+    }, "compliance.analyze")["final_output"]
+    codes = {item["code"] for item in result["blockers"]}
+    assert result["status"] == "blocked"
+    assert "LAW_VERSION_DIVERGENCE" in codes
+    assert "RULE_EVIDENCE_MISSING" in codes
+    assert {path["point"] for path in result["temporal_paths"]} == {"conduct", "judgment"}
+    versions = {(item["sourceVersion"], item["point"]) for item in result["dependency_snapshot"]["source_versions"]}
+    assert {version for version, _ in versions} >= {"old", "new"}
 
 
 def test_template_signoff(subject_prefix):

@@ -129,6 +129,66 @@ class EngineResultServiceTest {
     }
 
     @Test
+    void publicationPreservesBothLegalVersionsAndDeduplicatesPointReferences() {
+        UUID resultId = UUID.randomUUID();
+        addDispatch(currentExecution, resultId, 1);
+        String content = """
+                {"text":"versioned sources","dependency_snapshot":{
+                  "rules":[
+                    {"ruleId":"same-rule","ruleVersion":"1","family":"compliance"},
+                    {"ruleId":"same-rule","ruleVersion":"1"}
+                  ],
+                  "sources":["source-old","source-new","legacy-source"],
+                  "source_versions":[
+                    {"sourceId":"source-old","sourceVersion":"2024","point":"conduct"},
+                    {"sourceId":"source-old","sourceVersion":"2024","point":"judgment"},
+                    {"sourceId":"source-new","sourceVersion":"2026","point":"judgment"}
+                  ]}}
+                """;
+        ResultEnvelope callback = envelope(currentExecution, resultId, content, true);
+        service.accept(callback);
+        service.accept(callback);
+
+        UUID version = jdbc.queryForObject(
+                "SELECT artifact_version_id FROM app.artifact_version WHERE execution_id = ?",
+                UUID.class, currentExecution);
+        assertEquals(4, jdbc.queryForObject(
+                "SELECT COUNT(*) FROM app.artifact_external_dependency WHERE artifact_version_id = ?",
+                Integer.class, version));
+        assertEquals(1, jdbc.queryForObject("""
+                SELECT COUNT(*) FROM app.artifact_external_dependency
+                WHERE artifact_version_id = ? AND dependency_kind = 'rule' AND dependency_key = 'same-rule'
+                """, Integer.class, version));
+        assertEquals("2024", jdbc.queryForObject("""
+                SELECT dependency_version FROM app.artifact_external_dependency
+                WHERE artifact_version_id = ? AND dependency_kind = 'legal_source' AND dependency_key = 'source-old'
+                """, String.class, version));
+        assertEquals("2026", jdbc.queryForObject("""
+                SELECT dependency_version FROM app.artifact_external_dependency
+                WHERE artifact_version_id = ? AND dependency_kind = 'legal_source' AND dependency_key = 'source-new'
+                """, String.class, version));
+        assertEquals("", jdbc.queryForObject("""
+                SELECT dependency_version FROM app.artifact_external_dependency
+                WHERE artifact_version_id = ? AND dependency_kind = 'legal_source' AND dependency_key = 'legacy-source'
+                """, String.class, version));
+    }
+
+    @Test
+    void malformedExplicitLegalVersionCannotPublishAnArtifact() {
+        UUID resultId = UUID.randomUUID();
+        addDispatch(currentExecution, resultId, 1);
+        String content = "{\"dependency_snapshot\":{\"source_versions\":[{\"sourceId\":\"source\",\"sourceVersion\":\"\"}]}}";
+
+        ResponseStatusException error = assertThrows(ResponseStatusException.class,
+                () -> service.accept(envelope(currentExecution, resultId, content, true)));
+
+        assertEquals(409, error.getStatusCode().value());
+        assertEquals(0, jdbc.queryForObject(
+                "SELECT COUNT(*) FROM app.artifact_version WHERE execution_id = ?",
+                Integer.class, currentExecution));
+    }
+
+    @Test
     void duplicateCallbackDoesNotCreateSecondReviewOrReopenDecision() {
         UUID resultId = UUID.randomUUID();
         addDispatch(currentExecution, resultId, 1);

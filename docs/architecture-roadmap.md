@@ -14,6 +14,8 @@
 
 审核基线为 `8aadc846174436f88b5ab388e3c5a5d1fe755e01`。该提交 CI 五项全通过，但遗漏了文书批准、旧 execution 迟到发布、渲染输入依赖竞态及多规则量刑阻断展示。
 
+最近完整验收提交 `dd61e5b7df67df8f1216da5fd6ec2326947f13ee` 的 [CI 37693953565](https://github.com/alanzhang66666/lexcyber/actions/runs/37693953565) 五个 job 全部成功：Java/Postgres 141 项，0 失败/错误/跳过（包含 V21→V22 带数据升级）；Python 非 integration 224 项；web 126 项、实际 Vue 页面类型检查及生产构建；三个 OpenAPI。Compose 16 项业务检查、§19 三项实际并发、注册表数据库 12 项均通过，含缺失日期阻断、日期 CAS、旧日期批准拒绝和历史指针保留。该结果证明此提交的已测行为，后续新增修复仍须独立验收；PR #15 仍为 draft，main 未合入。
+
 - 修复分支 `codex/repair-main-lifecycle`：渲染文书使用 UUID 描述符与 head；V21 前向迁移保留旧流及历史版本，将不可验证的旧待审稿关闭为 superseded，要求重新生成。
 - 派发冻结有效已确认模块的 payload 和 artifact version ID；渲染回调仅绑定实际输入版本，审批再次校验事实与模块依赖。未会签能力继续 fail-closed。
 - 旧 execution 不发布；失败回调不发布；回调重放不新建复核或回退已完成执行。复核决策校验请求版本。
@@ -45,6 +47,9 @@
 - 日期修复本地 Python 224 项、Ruff、前端 126 项及实际 Vue 页面类型检查、TypeScript/Vite build、三个 OpenAPI 通过；Java test-compile 通过，新增数据库/真实 Compose 日期拒绝、CAS、依赖追溯与旧日期批准拒绝，以及 12 项注册表数据库检查，待本次提交完整 CI。
 - 日期验收负面记录：`4204f5a` 的 CI 暴露新失效原因未纳入数据库 CHECK，以及重试夹具漏填日期依赖；修正 V22 在失效旧数据前扩展闭合枚举，并补带数据 V21→V22 升级回归。`9e93aca` 的 Java/Postgres 141 项全过、0 跳过（含真实升级测试），Python 224、web 126 和三个契约通过；Compose 在既有 15 项 PASS 后因新增脚本调用不存在的 v2 confirm 端点返回 404，后续并发/注册表未执行。脚本已改为现役开启复核→批准流程，精确断言旧日期批准返回 `DEPENDENCY_STALE`；完整新 head 验收仍待 CI。
 - 本次审计还发现 `vue-tsc --noEmit` 在空根 references 配置下漏检页面；改为明确检查 `tsconfig.app.json`，修正文书刷新按钮把点击事件当 caseId 的实际缺陷并加点击验收。默认 env 演示改为完全 stub，文档说明注册/登录后 `/tasks` 入口与真实模型前置；修复六处已归档文档链接。
+- 续查 A20/INV-LEGAL-003、006、007：旧模块将法源冲突/覆盖缺口写入 divergence 却仍 calculated，量刑遗漏双时点解析。现在按确认行为/裁判日期分别执行批准规则，保留两条未选定路径和实际规则/法源版本依赖；法源缺失、有效期重叠、覆盖缺口、语义不同及任一分支失败均阻断整体。候选/非法/冲突日期明确定位，缺失时保留显式基准日期路径与缺点信息。Java 拒绝携带冲突或 blockers 的确认并去重版本依赖；V23 前向迁移使旧 divergence 工件及显式依赖后代的确认/批准失效，保留不可变载荷和历史指针。
+- 续查 A21/§14.1：requiredEvidenceKinds 原先只读未校验。现在仅对命中规则按既有 `entities.evidence[].type` 精确种类及 confirmed 状态检查，缺失/未核实/非法身份和容器阻断；没有引入别名映射或把类型匹配当司法证据充分性。前端显示双时点法源和规则版本、分支缺口及待核实种类；整体未择定时显示路径对照提示，失败分支隐藏数字。
+- 本次新补丁经独立复审，修正了分支计算错误只存在结果级 blockers 而未提升整体状态，以及 Compose 脚本误取首条未命中规则的错误。最终本地 Python 非 integration 258 项、Ruff、三个 OpenAPI/快照、web 133 项及实际页面类型/生产构建通过；Java test-compile 通过。本机未运行真实 PostgreSQL；V22→V23 带数据迁移、版本依赖去重、真实双时点/证据缺失→candidate→confirmed 和既有全链路验证以此次新提交 CI 为准，尚未提前认定成功。
 - 未扩张旧 prompt 数据库模型：追溯证明 PromptRegistry 只由未挂载到当前图的 worker 节点调用，当前 reserved 任务均直接进入 Engine adapter。该遗留副作用与现役路径不同，本轮未创建第二套 schema 或把旧库脚本当现役启动前置。
 
 ## 阶段状态
