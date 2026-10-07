@@ -5,11 +5,14 @@ import com.lexcyber.server.api.ApiException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -346,8 +349,8 @@ public class FactsBaselineService {
 
     /**
      * 按种类整组替换可编辑实体（与 /v1 facts PUT 同语义：删除+重建该案件该类的全部行）。
-     * amount.kind 受封闭集约束；引用字段（actorId/componentOf/documentId/evidenceIds）
-     * 先按同案 external_id 解析，再按 uuid/legacy 解析，均失败置 NULL 不伪造。
+     * amount.kind 受封闭集约束；componentOf 必须是同案本次替换中的有效无环引用。
+     * 其他遗留引用字段按 external_id / uuid 解析，不伪造不存在的实体。
      */
     @Transactional
     public void replaceEntities(String caseId, String pathKind, List<Map<String, Object>> items) {
@@ -437,6 +440,7 @@ public class FactsBaselineService {
     }
 
     private void replaceAmounts(String caseId, List<Map<String, Object>> items) {
+        Map<String, Integer> amountAliases = validateAmountComponentGraph(items);
         jdbc.update("DELETE FROM app.case_amount WHERE case_id = ?::uuid", caseId);
         for (Map<String, Object> item : items) {
             String kind = str(item.get("kind"));
@@ -457,7 +461,7 @@ public class FactsBaselineService {
         }
         // 第二遍回填 component_of（同案 external_id → uuid），避免插入顺序依赖
         for (Map<String, Object> item : items) {
-            String componentOf = resolveEntityRef(caseId, "amount", item.get("componentOf"));
+            String componentOf = resolveReplacementAmountRef(caseId, item.get("componentOf"), amountAliases, items);
             if (componentOf != null) {
                 jdbc.update("""
                         UPDATE app.case_amount SET component_of = ?::uuid
@@ -465,6 +469,116 @@ public class FactsBaselineService {
                         """, componentOf, caseId, str(item.get("id")));
             }
         }
+    }
+
+    private String resolveReplacementAmountRef(String caseId, Object raw,
+            Map<String, Integer> amountAliases, List<Map<String, Object>> items) {
+        String value = str(raw);
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        Integer aliasIndex = amountAliases.get(amountReferenceKey(value));
+        if (aliasIndex != null) {
+            value = str(items.get(aliasIndex).get("id"));
+        }
+        List<String> exact = jdbc.query("""
+                SELECT amount_id::text FROM app.case_amount
+                WHERE case_id = ?::uuid AND trim(external_id) = ?
+                """, (rs, ignored) -> rs.getString(1), caseId, value.trim());
+        if (!exact.isEmpty()) {
+            return exact.get(0);
+        }
+        if (IdentityService.isUuid(value.trim())) {
+            List<String> uuidInsensitive = jdbc.query("""
+                    SELECT amount_id::text FROM app.case_amount
+                    WHERE case_id = ?::uuid AND lower(trim(external_id)) = lower(?)
+                    """, (rs, ignored) -> rs.getString(1), caseId, value.trim());
+            if (!uuidInsensitive.isEmpty()) {
+                return uuidInsensitive.get(0);
+            }
+        }
+        throw invalidAmountComponent("componentOf could not resolve to its replacement row");
+    }
+
+    /** Validate the complete incoming amount graph before deleting the existing working copy. */
+    private Map<String, Integer> validateAmountComponentGraph(List<Map<String, Object>> items) {
+        Map<String, Integer> idsByKey = new HashMap<>();
+        Map<Integer, Integer> parentByIndex = new HashMap<>();
+        for (int i = 0; i < items.size(); i++) {
+            Map<String, Object> item = items.get(i);
+            String kind = str(item.get("kind"));
+            if (kind == null || !AMOUNT_KINDS.contains(kind)) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_REQUEST",
+                        "amount kind must be one of " + AMOUNT_KINDS);
+            }
+            if (item.containsKey("id") && (str(item.get("id")) == null || str(item.get("id")).isBlank())) {
+                throw invalidAmountComponent("amount id cannot be blank when provided");
+            }
+            String id = str(item.get("id"));
+            if (id != null && !id.isBlank()) {
+                String key = amountReferenceKey(id);
+                if (idsByKey.putIfAbsent(key, i) != null) {
+                    throw invalidAmountComponent("amount ids must be unique");
+                }
+            }
+            String entityId = str(item.get("entityId"));
+            if (entityId != null && !entityId.isBlank()) {
+                if (!IdentityService.isUuid(entityId)) {
+                    throw invalidAmountComponent("amount entityId must be a uuid");
+                }
+                String key = amountReferenceKey(entityId);
+                Integer previous = idsByKey.putIfAbsent(key, i);
+                if (previous != null && previous != i) {
+                    throw invalidAmountComponent("amount ids must be unique");
+                }
+                // entityId is an incoming graph alias, not a mutable-row lookup or a
+                // caller-supplied primary key. Historical snapshots remain retryable;
+                // references resolve only to newly inserted rows in this case.
+            }
+        }
+        for (int i = 0; i < items.size(); i++) {
+            String parent = str(items.get(i).get("componentOf"));
+            if (parent == null || parent.isBlank()) {
+                continue;
+            }
+            String childId = str(items.get(i).get("id"));
+            if (childId == null || childId.isBlank()) {
+                throw invalidAmountComponent("componentOf child must have an id");
+            }
+            String key = amountReferenceKey(parent);
+            Integer parentIndex = idsByKey.get(key);
+            if (parentIndex == null) {
+                throw invalidAmountComponent("componentOf must refer to an amount in this replacement");
+            }
+            if (parentIndex == i) {
+                throw invalidAmountComponent("amount componentOf cannot refer to itself");
+            }
+            String parentId = str(items.get(parentIndex).get("id"));
+            if (parentId == null || parentId.isBlank()) {
+                throw invalidAmountComponent("componentOf parent must have an id");
+            }
+            parentByIndex.put(i, parentIndex);
+        }
+        for (int i = 0; i < items.size(); i++) {
+            Set<Integer> path = new HashSet<>();
+            Integer cursor = i;
+            while (cursor != null) {
+                if (!path.add(cursor)) {
+                    throw invalidAmountComponent("amount componentOf relationships cannot contain cycles");
+                }
+                cursor = parentByIndex.get(cursor);
+            }
+        }
+        return idsByKey;
+    }
+
+    private static String amountReferenceKey(String raw) {
+        String value = raw.trim();
+        return IdentityService.isUuid(value) ? value.toLowerCase(java.util.Locale.ROOT) : value;
+    }
+
+    private static ApiException invalidAmountComponent(String message) {
+        return new ApiException(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", message);
     }
 
     private void replaceJurisdiction(String caseId, List<Map<String, Object>> items) {

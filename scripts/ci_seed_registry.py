@@ -53,6 +53,12 @@ def _rules(source_id: str) -> list[dict[str, object]]:
             "required_evidence_kinds": [],
         }
 
+    component_guard = rule("component-amount-threshold", "conviction", "ci_component_guard_flag",
+                           {"finding": "ci_fixture_amount_threshold"})
+    component_guard["predicate"] = {"all": [
+        component_guard["predicate"],
+        {"path": "amounts.payment_settlement_amount.confirmedSum", "op": "gte", "value": 200000},
+    ]}
     return [
         rule("compliance", "compliance", "ci_compliance_flag", {"finding": "ci_fixture_compliance"}),
         rule("conviction", "conviction", "ci_conviction_flag", {"finding": "ci_fixture_conviction"}),
@@ -60,6 +66,7 @@ def _rules(source_id: str) -> list[dict[str, object]]:
         rule("sentencing", "sentencing", "ci_sentencing_flag", {
             "calculation": {"base_months": 6, "fine": {"mode": "ci_fixture"}},
         }),
+        component_guard,
     ]
 
 

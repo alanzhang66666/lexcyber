@@ -380,6 +380,71 @@ def run_lifecycle(token):
                            token=token)["effectivelyConfirmed"]
     print("PASS absent/candidate jurisdiction blocks conviction and cannot be approved", flush=True)
 
+    component_case = request("POST", "/v1/cases", token=token, expected=201, payload={
+        "title": "CI amount components fixture", "jurisdiction": "CI",
+        "metadata": {"purpose": "LEXCYBER_CI_FIXTURES"},
+    })
+    component_case_id = _id(component_case, "id", "caseId")
+    request("PUT", f"/v2/cases/{component_case_id}/facts-entities/facts", token=token,
+            payload={"items": facts + [{"key": "ci_component_guard_flag", "value": True,
+                                       "verificationStatus": "confirmed"}]})
+    request("PUT", f"/v2/cases/{component_case_id}/facts-entities/jurisdiction-connections",
+            token=token, payload={"items": jurisdiction})
+    request("PUT", f"/v2/cases/{component_case_id}/facts-entities/amounts", token=token,
+            payload={"items": [
+                {"id": "child", "kind": "payment_settlement_amount", "value": 80000,
+                 "componentOf": "parent", "verificationStatus": "confirmed"},
+                {"id": "parent", "kind": "payment_settlement_amount", "value": 120000,
+                 "verificationStatus": "confirmed"},
+            ]})
+    component_version = request("POST", f"/v2/cases/{component_case_id}/facts-versions",
+                                token=token, expected=201)
+    component_facts_id = _id(component_version, "factsVersionId")
+    component_detail = request("GET", f"/v2/cases/{component_case_id}/facts-versions/{component_facts_id}", token=token)
+    component_rows = component_detail["payload"]["entities"]["amounts"]
+    parent_row = next(row for row in component_rows if row["id"] == "parent")
+    child_row = next(row for row in component_rows if row["id"] == "child")
+    assert child_row["componentOf"] == parent_row["entityId"], component_rows
+    request("POST", f"/v2/cases/{component_case_id}/facts-versions/{component_facts_id}/confirm",
+            token=token, payload={"expectedConfirmedFactsVersionId": None})
+    dispatched = request("POST", f"/v2/cases/{component_case_id}/modules/conviction/executions",
+                         token=token, expected=202)
+    wait_execution(token, _id(dispatched, "executionId"))
+    head = request("GET", f"/v2/cases/{component_case_id}/modules/conviction", token=token)
+    component_artifact = request("GET", f"/v2/artifact-versions/{_id(head, 'latestVersionId')}", token=token)
+    guard = next(rule for rule in component_artifact["payload"]["rules"]
+                 if rule["ruleId"] == "ci-fixture-component-amount-threshold")
+    assert guard["fired"] is False, guard
+    amount_trace = next(trace for trace in guard["trace"]
+                        if trace["path"] == "amounts.payment_settlement_amount.confirmedSum")
+    assert amount_trace["actual"] == 120000, amount_trace
+    # Repeat the exact immutable snapshot request: its entityId aliases survive
+    # deletion of the first working copy and must not become dangling references.
+    for _ in range(2):
+        request("PUT", f"/v2/cases/{component_case_id}/facts-entities/amounts", token=token,
+                payload={"items": component_rows})
+    roundtrip = request("POST", f"/v2/cases/{component_case_id}/facts-versions", token=token, expected=201)
+    roundtrip_detail = request("GET", f"/v2/cases/{component_case_id}/facts-versions/{_id(roundtrip, 'factsVersionId')}", token=token)
+    roundtrip_rows = roundtrip_detail["payload"]["entities"]["amounts"]
+    assert next(row for row in roundtrip_rows if row["id"] == "child")["componentOf"] == next(
+        row for row in roundtrip_rows if row["id"] == "parent")["entityId"]
+    invalid_graphs = [
+        [{"id": "child", "kind": "illegal_gain", "componentOf": "missing"}],
+        [{"id": "self", "kind": "illegal_gain", "componentOf": "self"}],
+        [{"id": "a", "kind": "illegal_gain", "componentOf": "b"},
+         {"id": "b", "kind": "illegal_gain", "componentOf": "a"}],
+        [{"id": "duplicate", "kind": "illegal_gain"}, {"id": "duplicate", "kind": "crime_amount"}],
+        [{"id": "child", "kind": "illegal_gain", "componentOf": str(uuid.uuid4())}],
+    ]
+    for invalid in invalid_graphs:
+        error = request("PUT", f"/v2/cases/{component_case_id}/facts-entities/amounts", token=token,
+                        expected=400, payload={"items": invalid})
+        assert error.get("code") == "INVALID_REQUEST", error
+    retained = request("POST", f"/v2/cases/{component_case_id}/facts-versions", token=token, expected=201)
+    retained_detail = request("GET", f"/v2/cases/{component_case_id}/facts-versions/{_id(retained, 'factsVersionId')}", token=token)
+    assert retained_detail["payload"]["entities"]["amounts"] == roundtrip_rows
+    print("PASS amount component deduplication, repeated canonical UUID roundtrip and atomic graph rejection", flush=True)
+
 
 def main():
     global BASE

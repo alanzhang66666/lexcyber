@@ -234,6 +234,113 @@ class FactsBaselineServiceTest {
     }
 
     @Test
+    void amountComponentsResolveWithinReplacementRegardlessOfOrder() {
+        baseline.replaceEntities(aliceCase.id(), "amounts", List.of(
+                Map.of("id", "child", "kind", "illegal_gain", "value", 10, "componentOf", "parent"),
+                Map.of("id", "parent", "kind", "crime_amount", "value", 20)));
+
+        UUID parentId = jdbc.queryForObject(
+                "SELECT amount_id FROM app.case_amount WHERE case_id = ?::uuid AND external_id = 'parent'",
+                UUID.class, aliceCase.id());
+        UUID childParent = jdbc.queryForObject(
+                "SELECT component_of FROM app.case_amount WHERE case_id = ?::uuid AND external_id = 'child'",
+                UUID.class, aliceCase.id());
+        assertEquals(parentId, childParent);
+    }
+
+    @Test
+    void amountComponentsAcceptSnapshotEntityIdAliases() {
+        UUID oldParentId = UUID.randomUUID();
+        UUID oldChildId = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO app.case_amount(amount_id, case_id, external_id, kind, value)
+                VALUES (?, ?::uuid, 'old-parent', 'crime_amount', 20),
+                       (?, ?::uuid, 'old-child', 'illegal_gain', 10)
+                """, oldParentId, aliceCase.id(), oldChildId, aliceCase.id());
+
+        baseline.replaceEntities(aliceCase.id(), "amounts", List.of(
+                Map.of("id", "child", "entityId", oldChildId.toString(),
+                        "kind", "illegal_gain", "componentOf", oldParentId.toString()),
+                Map.of("id", "parent", "entityId", oldParentId.toString(),
+                        "kind", "crime_amount", "value", 20)));
+        UUID parentId = jdbc.queryForObject(
+                "SELECT amount_id FROM app.case_amount WHERE case_id = ?::uuid AND external_id = 'parent'",
+                UUID.class, aliceCase.id());
+        assertEquals(parentId, jdbc.queryForObject(
+                "SELECT component_of FROM app.case_amount WHERE case_id = ?::uuid AND external_id = 'child'",
+                UUID.class, aliceCase.id()));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void immutableAmountSnapshotCanBeReplacedTwiceWithoutLosingComponents() {
+        baseline.replaceEntities(aliceCase.id(), "amounts", List.of(
+                Map.of("id", "child", "kind", "illegal_gain", "value", 10, "componentOf", "parent"),
+                Map.of("id", "parent", "kind", "illegal_gain", "value", 20)));
+        UUID versionId = baseline.createDraftVersion(aliceCase.id(), alice);
+        Map<String, Object> payload = (Map<String, Object>) baseline.versionDetail(
+                aliceCase.id(), versionId).get("payload");
+        Map<String, Object> entities = (Map<String, Object>) payload.get("entities");
+        List<Map<String, Object>> originalRows = (List<Map<String, Object>>) entities.get("amounts");
+
+        for (int attempt = 0; attempt < 2; attempt++) {
+            baseline.replaceEntities(aliceCase.id(), "amounts", originalRows);
+            assertEquals(2, count("case_amount", aliceCase.id()));
+            UUID parentId = jdbc.queryForObject(
+                    "SELECT amount_id FROM app.case_amount WHERE case_id = ?::uuid AND external_id = 'parent'",
+                    UUID.class, aliceCase.id());
+            assertEquals(parentId, jdbc.queryForObject(
+                    "SELECT component_of FROM app.case_amount WHERE case_id = ?::uuid AND external_id = 'child'",
+                    UUID.class, aliceCase.id()));
+        }
+        assertEquals(payload, baseline.versionDetail(aliceCase.id(), versionId).get("payload"));
+    }
+
+    @Test
+    void invalidAmountComponentGraphsAreRejectedBeforeReplacement() {
+        baseline.replaceEntities(aliceCase.id(), "amounts",
+                List.of(Map.of("id", "original", "kind", "illegal_gain", "value", 7)));
+
+        List<List<Map<String, Object>>> invalid = List.of(
+                List.of(Map.of("id", "a", "kind", "illegal_gain", "componentOf", "missing")),
+                List.of(Map.of("kind", "illegal_gain", "componentOf", "a")),
+                List.of(Map.of("kind", "illegal_gain", "componentOf", "parent"),
+                        Map.of("id", "parent", "kind", "illegal_gain", "value", 10)),
+                List.of(Map.of("id", "a", "kind", "illegal_gain", "componentOf", "a")),
+                List.of(
+                        Map.of("id", "a", "kind", "illegal_gain", "componentOf", "b"),
+                        Map.of("id", "b", "kind", "illegal_gain", "componentOf", "a")),
+                List.of(
+                        Map.of("id", "a", "kind", "illegal_gain"),
+                        Map.of("id", "a", "kind", "crime_amount")));
+        for (List<Map<String, Object>> items : invalid) {
+            ApiException error = assertThrows(ApiException.class,
+                    () -> baseline.replaceEntities(aliceCase.id(), "amounts", items));
+            assertEquals(HttpStatus.BAD_REQUEST, error.status());
+            assertEquals("INVALID_REQUEST", error.code());
+            assertEquals(1, count("case_amount", aliceCase.id()));
+        }
+    }
+
+    @Test
+    void amountComponentUuidMustBelongToReplacementCase() {
+        String otherCase = cases.create(alice,
+                new CaseCreate("alice-other-" + shortId(), "CN", null, Map.of())).id();
+        UUID otherAmount = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO app.case_amount(amount_id, case_id, external_id, kind, value)
+                VALUES (?, ?::uuid, 'other', 'illegal_gain', 9)
+                """, otherAmount, otherCase);
+        baseline.replaceEntities(aliceCase.id(), "amounts",
+                List.of(Map.of("id", "original", "kind", "illegal_gain", "value", 7)));
+
+        ApiException error = assertThrows(ApiException.class, () -> baseline.replaceEntities(aliceCase.id(), "amounts",
+                List.of(Map.of("id", "child", "kind", "illegal_gain", "componentOf", otherAmount.toString()))));
+        assertEquals(HttpStatus.BAD_REQUEST, error.status());
+        assertEquals(1, count("case_amount", aliceCase.id()));
+    }
+
+    @Test
     void unconfirmedItemsKeepTheirVerificationStatusInSnapshot() {
         baseline.replaceEntities(aliceCase.id(), "facts", List.of(
                 Map.of("id", "f1", "key", "k1", "value", "v1", "verificationStatus", "candidate"),

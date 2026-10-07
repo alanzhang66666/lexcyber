@@ -32,6 +32,9 @@
 - 本地 DOCX 修复验证：Python 非 integration 179 项、前端 122 项、Vue 类型检查与生产构建、三个 OpenAPI 均通过；Java 导出 client 4 项通过，数据库用例已编译待 CI 实跑。实际生成两页中文 DOCX，检查全部分页图片并确认正文逐字符相等（换行统一为 LF），包括制表符、空行和末尾换行。首轮发现 Title 默认蓝色边框并已移除；本机渲染器补充系统中文字体路径后完成视觉验收，未修改用户字体安装。
 - 提交 `1000103` 的 CI `37682223967`：Java/Postgres 123 项、Python 179 项、web 122 项与三个 OpenAPI 成功；Compose 首次 DOCX 下载失败，后续 §19/注册表步骤未执行。原因已复现：自定义 JDK 客户端默认 h2c 升级导致 Uvicorn 接收不到请求正文（422），DOCX Accept 下错误响应再因媒体协商变成 500。修复为 HTTP/1.1、显式 JSON 请求与 JSON 错误响应；用实际 Java 客户端→FastAPI 验证中文 DOCX 和两次字节一致，31 项 HTTP/client 回归通过。当前补丁的完整 Compose 验收仍以新提交 CI 为准。
 - 补齐架构 §9.4 的管辖门槛：定罪只认可不可变事实快照中 `jurisdictionConnections[].verificationStatus=confirmed`，缺失/候选/拒绝/未知状态输出定位明确的 blocked 结果；不改变合规行为，也不推定合规适用性。Python 非 integration 187 项与 Ruff 通过；新增真实 Compose 的空连接点、candidate 结果及批准阻断检查，待新提交运行。
+- 提交 `e875d8d` 的 CI `37685380267` 五个 job 全部通过：Java/Postgres 128 项、0 跳过；Python 187 项；web 122 项；三个 OpenAPI；真实 DOCX 存储/下载、历史版本与权限、完整生命周期、缺失/candidate 管辖阻断、§19 三项并发和注册表数据库 8 项均执行成功。
+- 续查 INV-DATA-001 发现金额总项与组成部分重复累计，120000 + 其中 80000 被错误聚合为 200000、误触发仓库谓词。修复按 kind 分组、按各聚合的有效数字与确认状态沿 componentOf 去重；不同口径保持独立，候选总项不吞掉已确认子项。支持真实 Java 快照 entityId UUID 与外部 id 别名。无效/循环图和非有限值以明确不可重试错误关闭执行，不输出可批准的数字。工作副本金额引用在删除前验证，未知/跨案/自引用/循环/重复身份拒绝，合法 UUID 关系可读回再保存。entityId 仅作本次输入图别名，父引用只写入新建同案节点；补测不可变历史快照连续两次相同 PUT，避免第一次替换删除原 UUID 后第二次报 400。Python 205 项、Ruff、Java test-compile 通过；新增真实 Compose 金额规则追溯、UUID 读写和拒绝后原数据保留，以及数据库校验用例，完整验证待本次提交 CI。
+
 
 - 规则/模板正式会签、B/C 映射和量刑基准校正仍按法学待签清单办理，不能由代码修复代替。
 - 移除已失效的旧 `tests/integration/test_registry.py`：该测试依赖已删除的根 `migrations/` 与 `skill.*` schema，并把任何错误都转为 skip。现役技能目录读取已有 `test_skill_runtime.py` 覆盖，真实 Engine V6 注册表继续执行 8 项数据库集成测试。历史 `storage/postgres` 代码保留供非 Engine 遗留路径使用；本次不恢复旧 schema，也不把旧技能目录错映射到法学规则包。

@@ -29,6 +29,14 @@ class PredicateError(ValueError):
         self.code = "PREDICATE_INVALID"
 
 
+class AmountAggregationError(ValueError):
+    """Facts snapshot amount component graph cannot be aggregated safely."""
+
+    def __init__(self, message: str):
+        super().__init__(message)
+        self.code = "AMOUNT_AGGREGATION_INVALID"
+
+
 def build_view(snapshot: dict[str, Any]) -> dict[str, Any]:
     """把 FactsVersion payload 规范化为谓词寻址视图。"""
     view: dict[str, Any] = {"facts": {}, "amounts": {}, "entities": {}}
@@ -39,23 +47,96 @@ def build_view(snapshot: dict[str, Any]) -> dict[str, Any]:
     for section, rows in entities.items():
         rows = [r for r in (rows or []) if isinstance(r, dict)]
         view["entities"][section] = {"count": len(rows), "items": rows}
+    amount_rows = [row for row in (entities.get("amounts") or [])
+                   if isinstance(row, dict)]
+    # entityId is the canonical snapshot identity.  ``id`` is retained as a
+    # compatibility alias because pure in-memory callers historically used it.
+    amount_ids: dict[str, int] = {}
+    parent_by_index: dict[int, int] = {}
+    for index, row in enumerate(amount_rows):
+        aliases = [row.get("entityId"), row.get("id")]
+        for raw_alias in aliases:
+            if raw_alias is None:
+                continue
+            alias = str(raw_alias)
+            if not alias:
+                raise AmountAggregationError("amount identity must not be empty")
+            if alias in amount_ids and amount_ids[alias] != index:
+                raise AmountAggregationError(f"duplicate amount identity {alias}")
+            amount_ids[alias] = index
+    for index, row in enumerate(amount_rows):
+        component_of = row.get("componentOf")
+        if component_of is None:
+            continue
+        amount_id = row.get("entityId") or row.get("id")
+        if amount_id is None:
+            raise AmountAggregationError("amount with componentOf requires an identity")
+        parent_id = str(component_of)
+        if parent_id not in amount_ids:
+            raise AmountAggregationError(f"unknown amount componentOf {parent_id}")
+        parent_by_index[index] = amount_ids[parent_id]
+
+    # Validate the component graph once, before any aggregation.  A malformed
+    # graph must block evaluation rather than silently double-counting.
+    visited: set[int] = set()
+    for index in parent_by_index:
+        if index in visited:
+            continue
+        path: set[int] = set()
+        cursor: int | None = index
+        while cursor is not None and cursor in parent_by_index:
+            if cursor in path:
+                raise AmountAggregationError("cyclic amount componentOf graph")
+            if cursor in visited:
+                break
+            path.add(cursor)
+            cursor = parent_by_index[cursor]
+        visited.update(path)
+
+    def has_eligible_same_kind_ancestor(index: int, eligible: set[int]) -> bool:
+        parent = parent_by_index.get(index)
+        while parent is not None:
+            if parent in eligible and amount_rows[parent].get("kind") == amount_rows[index].get("kind"):
+                return True
+            parent = parent_by_index.get(parent)
+        return False
+
     amounts: dict[str, dict[str, Any]] = {}
-    for row in (entities.get("amounts") or []):
+    numeric_by_index: dict[int, Decimal] = {}
+    for index, row in enumerate(amount_rows):
+        value = row.get("value")
+        try:
+            numeric = Decimal(str(value)) if value is not None else None
+        except (InvalidOperation, ValueError):
+            numeric = None
+        if numeric is not None and not numeric.is_finite():
+            raise AmountAggregationError("amount value must be finite")
+        if numeric is not None:
+            numeric_by_index[index] = numeric
+
+    eligible_by_kind: dict[str, set[int]] = {}
+    confirmed_eligible_by_kind: dict[str, set[int]] = {}
+    for index in numeric_by_index:
+        kind = str(amount_rows[index].get("kind") or "unknown")
+        eligible_by_kind.setdefault(kind, set()).add(index)
+        if amount_rows[index].get("verificationStatus") == "confirmed":
+            confirmed_eligible_by_kind.setdefault(kind, set()).add(index)
+
+    for index, row in enumerate(amount_rows):
         if not isinstance(row, dict):
             continue
         kind = str(row.get("kind") or "unknown")
         bucket = amounts.setdefault(kind, {"sum": Decimal(0), "count": 0,
                                            "confirmed_sum": Decimal(0), "confirmed_count": 0})
         bucket["count"] += 1
-        value = row.get("value")
-        try:
-            numeric = Decimal(str(value)) if value is not None else None
-        except (InvalidOperation, ValueError):
-            numeric = None
-        if numeric is not None:
+        numeric = numeric_by_index.get(index)
+        general_eligible = eligible_by_kind.get(kind, set())
+        confirmed_eligible = confirmed_eligible_by_kind.get(kind, set())
+        if numeric is not None and not has_eligible_same_kind_ancestor(index, general_eligible):
             bucket["sum"] += numeric
-            if row.get("verificationStatus") == "confirmed":
-                bucket["confirmed_sum"] += numeric
+        if (numeric is not None and row.get("verificationStatus") == "confirmed"
+                and not has_eligible_same_kind_ancestor(index, confirmed_eligible)):
+            bucket["confirmed_sum"] += numeric
         if row.get("verificationStatus") == "confirmed":
             bucket["confirmed_count"] += 1
     for kind, bucket in amounts.items():
