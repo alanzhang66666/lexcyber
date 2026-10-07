@@ -3,9 +3,11 @@ import pytest
 from engine.adapters.case_bundle import (
     load_case_bundle,
     load_document_template_registry,
+    load_three_case_baseline,
     validate_case_bundle,
     validate_case_dataset,
     validate_document_template_registry,
+    validate_three_case_baseline,
 )
 from engine.adapters.consistency import validate_result_consistency
 from engine.adapters.sentencing import calculate_case_sentencing, calculate_sentencing
@@ -31,6 +33,49 @@ def test_three_case_dataset_has_stable_valid_bundles():
     }
     assert all(item["counts"]["evidence"] >= 8 for item in result["cases"])
     assert result["document_templates"] == {"valid": True, "errors": [], "template_count": 3}
+    assert result["baseline_scenarios"]["valid"] is True
+
+
+def test_t3_baseline_freezes_entities_scenarios_and_t1_trace_fields():
+    report = validate_three_case_baseline()
+    assert report["valid"] is True
+    assert report["errors"] == []
+    assert report["revision"] == "2026-09-30.1"
+    assert {item["case_code"] for item in report["cases"]} == {"A", "B", "C"}
+    assert all(item["scenario_count"] == 2 for item in report["cases"])
+
+    baseline = load_three_case_baseline()
+    for case in baseline["cases"]:
+        scenarios = {item["path_kind"]: item for item in case["scenarios"]}
+        assert "normal" in scenarios
+        assert {"missing_evidence", "conflicted_fact"} & scenarios.keys()
+        assert scenarios["normal"]["expected"]["module_status"] == "waiting_review"
+        assert scenarios["normal"]["expected"]["blockers"] == []
+        blocked = next(item for item in case["scenarios"] if item["path_kind"] != "normal")
+        assert blocked["expected"]["module_status"] == "blocked"
+        assert blocked["expected"]["blockers"]
+        assert case["t1_mapping"]["requiredResultFields"] == [
+            "datasetCaseId",
+            "t3BundleId",
+            "factsVersion",
+            "sourceVersion",
+        ]
+
+
+def test_t3_baseline_keeps_all_unsigned_sources_pending_and_non_public():
+    baseline = load_three_case_baseline()
+    assert baseline["public_release"] == {
+        "public_legal_conclusion": False,
+        "required_source_signoff": "signed_off",
+        "current_source_signoff": "pending",
+    }
+    for case in baseline["cases"]:
+        bundle = load_case_bundle(case["case_code"])
+        assert {item["source_id"] for item in case["source_bindings"]} == set(bundle["legal_source_ids"])
+        assert all(item["signoff_status"] == "pending" for item in case["source_bindings"])
+        assert all(item["public_eligible"] is False for item in case["source_bindings"])
+        assert all(item["effective_from"] for item in case["source_bindings"])
+        assert all(item["application_time"] for item in case["source_bindings"])
 
 
 def test_document_templates_are_versioned_and_referenced_by_each_case():

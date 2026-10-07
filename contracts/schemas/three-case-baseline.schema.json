@@ -1,0 +1,171 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "LexCyber T3 three-case baseline scenarios",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "dataset_id", "revision", "public_release", "cases"],
+  "properties": {
+    "schema_version": { "const": "lexcyber.three-case-baseline.v1" },
+    "dataset_id": { "$ref": "#/$defs/stableId" },
+    "revision": { "type": "string", "minLength": 1 },
+    "public_release": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["public_legal_conclusion", "required_source_signoff", "current_source_signoff"],
+      "properties": {
+        "public_legal_conclusion": { "const": false },
+        "required_source_signoff": { "const": "signed_off" },
+        "current_source_signoff": { "const": "pending" }
+      }
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": { "$ref": "#/$defs/caseBaseline" }
+    }
+  },
+  "$defs": {
+    "stableId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "entityCounts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["actors", "events", "facts", "evidence", "relationships"],
+      "properties": {
+        "actors": { "type": "integer", "minimum": 1 },
+        "events": { "type": "integer", "minimum": 1 },
+        "facts": { "type": "integer", "minimum": 1 },
+        "evidence": { "type": "integer", "minimum": 1 },
+        "relationships": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "sourceBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_id",
+        "effective_from",
+        "effective_to",
+        "use_scope",
+        "application_time",
+        "applicable_to_conduct",
+        "signoff_status",
+        "public_eligible"
+      ],
+      "properties": {
+        "source_id": { "$ref": "#/$defs/stableId" },
+        "effective_from": { "type": "string", "format": "date" },
+        "effective_to": { "type": ["string", "null"], "format": "date" },
+        "use_scope": {
+          "enum": ["conduct_time", "candidate_comparison", "sentencing_reference", "current_review_audit_only"]
+        },
+        "application_time": { "type": "string", "minLength": 1 },
+        "applicable_to_conduct": { "type": "boolean" },
+        "signoff_status": { "const": "pending" },
+        "public_eligible": { "const": false }
+      }
+    },
+    "blocker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "subject_id", "reason"],
+      "properties": {
+        "code": { "enum": ["EVIDENCE_MISSING", "FACT_CONFLICTED"] },
+        "subject_id": { "$ref": "#/$defs/stableId" },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    },
+    "mutation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operation", "fact_id"],
+      "properties": {
+        "operation": { "enum": ["remove_evidence", "use_conflicted_fact"] },
+        "fact_id": { "$ref": "#/$defs/stableId" },
+        "evidence_id": { "$ref": "#/$defs/stableId" }
+      }
+    },
+    "expected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["module_status", "analysis_status", "human_review_required", "public_legal_conclusion", "blockers"],
+      "properties": {
+        "module_status": { "enum": ["waiting_review", "blocked"] },
+        "analysis_status": { "enum": ["calculated", "blocked"] },
+        "human_review_required": { "const": true },
+        "public_legal_conclusion": { "const": false },
+        "blockers": { "type": "array", "items": { "$ref": "#/$defs/blocker" } }
+      }
+    },
+    "scenario": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scenario_id", "path_kind", "module", "actor_id", "mutations", "expected"],
+      "properties": {
+        "scenario_id": { "$ref": "#/$defs/stableId" },
+        "path_kind": { "enum": ["normal", "missing_evidence", "conflicted_fact"] },
+        "module": { "enum": ["conviction", "sentencing"] },
+        "actor_id": { "$ref": "#/$defs/stableId" },
+        "mutations": { "type": "array", "items": { "$ref": "#/$defs/mutation" } },
+        "expected": { "$ref": "#/$defs/expected" }
+      }
+    },
+    "t1Mapping": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "datasetCaseId",
+        "t3BundleId",
+        "factsVersionSource",
+        "sourceVersionSource",
+        "requiredResultFields"
+      ],
+      "properties": {
+        "datasetCaseId": { "type": "string", "minLength": 1 },
+        "t3BundleId": { "$ref": "#/$defs/stableId" },
+        "factsVersionSource": { "const": "T1 FactsView.version" },
+        "sourceVersionSource": { "const": "T1 ModuleStateView.sourceVersion" },
+        "requiredResultFields": {
+          "type": "array",
+          "const": ["datasetCaseId", "t3BundleId", "factsVersion", "sourceVersion"]
+        }
+      }
+    },
+    "caseBaseline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "case_code",
+        "dataset_case_id",
+        "t3_bundle_id",
+        "entity_counts",
+        "source_bindings",
+        "scenarios",
+        "t1_mapping"
+      ],
+      "properties": {
+        "case_code": { "enum": ["A", "B", "C"] },
+        "dataset_case_id": { "enum": ["A", "B", "C"] },
+        "t3_bundle_id": { "$ref": "#/$defs/stableId" },
+        "entity_counts": { "$ref": "#/$defs/entityCounts" },
+        "source_bindings": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/sourceBinding" }
+        },
+        "scenarios": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": { "$ref": "#/$defs/scenario" }
+        },
+        "t1_mapping": { "$ref": "#/$defs/t1Mapping" }
+      }
+    }
+  }
+}

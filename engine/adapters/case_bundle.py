@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -10,8 +11,11 @@ DEMO_ROOT = Path(__file__).resolve().parents[2] / "demo_cases" / "three_case_dem
 CONTRACT_SCHEMA_ROOT = Path(__file__).resolve().parents[2] / "contracts" / "schemas"
 INDEX_PATH = DEMO_ROOT / "index.json"
 TEMPLATE_REGISTRY_PATH = DEMO_ROOT / "document-templates.json"
+BASELINE_SCENARIOS_PATH = DEMO_ROOT / "baseline-scenarios.json"
+LEGAL_SOURCE_CATALOG_PATH = Path(__file__).resolve().parent / "legal_sources.json"
 INDEX_SCHEMA_PATH = CONTRACT_SCHEMA_ROOT / "collaboration-case-index.schema.json"
 BUNDLE_SCHEMA_PATH = CONTRACT_SCHEMA_ROOT / "collaboration-case-bundle.schema.json"
+BASELINE_SCHEMA_PATH = CONTRACT_SCHEMA_ROOT / "three-case-baseline.schema.json"
 
 
 def _issue(code: str, path: str, message: str) -> dict[str, str]:
@@ -64,6 +68,13 @@ def load_document_template_registry(root: Path | None = None) -> dict[str, Any]:
 
     dataset_root = root or DEMO_ROOT
     return _read_json(dataset_root / "document-templates.json")
+
+
+def load_three_case_baseline(root: Path | None = None) -> dict[str, Any]:
+    """Load the versioned T3 normal/blocking scenario handoff."""
+
+    dataset_root = root or DEMO_ROOT
+    return _read_json(dataset_root / "baseline-scenarios.json")
 
 
 def validate_document_template_registry(registry: dict[str, Any]) -> dict[str, Any]:
@@ -389,6 +400,352 @@ def validate_case_bundle(bundle: dict[str, Any], template_registry: dict[str, An
     }
 
 
+def _baseline_conduct_period_issues(
+    bundle: dict[str, Any],
+    bindings: list[dict[str, Any]],
+    sources_by_id: dict[str, Any],
+    prefix: str,
+) -> list[dict[str, str]]:
+    period = bundle.get("conduct_period")
+    try:
+        start = date.fromisoformat(period["start"])
+        end = date.fromisoformat(period["end"]) if period.get("end") is not None else None
+        if end is not None and end < start:
+            raise ValueError("conduct end precedes start")
+    except (KeyError, TypeError, ValueError) as exc:
+        return [_issue("baseline_conduct_period_invalid", f"{prefix}.bundle.conduct_period", str(exc))]
+
+    errors = []
+    for position, binding in enumerate(bindings):
+        source = sources_by_id.get(binding["source_id"])
+        if not binding["applicable_to_conduct"] or source is None:
+            continue
+        binding_path = f"{prefix}.source_bindings[{position}]"
+        try:
+            effective_from = date.fromisoformat(source["effective_from"])
+            effective_to = date.fromisoformat(source["effective_to"]) if source.get("effective_to") is not None else None
+            if effective_to is not None and effective_to < effective_from:
+                raise ValueError("source expiry precedes effective start")
+        except (KeyError, TypeError, ValueError) as exc:
+            errors.append(_issue("baseline_source_period_invalid", binding_path, str(exc)))
+            continue
+        if start < effective_from or (effective_to is not None and (end is None or end > effective_to)):
+            errors.append(
+                _issue(
+                    "baseline_source_outside_conduct_period",
+                    binding_path,
+                    f"{binding['source_id']} ({effective_from}..{effective_to}) does not cover conduct {start}..{end}",
+                )
+            )
+    return errors
+
+
+def _baseline_scenario_issues(
+    scenario: dict[str, Any],
+    facts_by_id: dict[str, Any],
+    evidence_ids: set[str],
+    scenario_path: str,
+) -> list[dict[str, str]]:
+    errors = []
+    expected = scenario["expected"]
+    mutations = scenario["mutations"]
+    path_kind = scenario["path_kind"]
+    if path_kind == "normal":
+        if (
+            mutations
+            or expected["module_status"] != "waiting_review"
+            or expected["analysis_status"] != "calculated"
+            or expected["blockers"]
+        ):
+            errors.append(
+                _issue(
+                    "baseline_normal_path_invalid", scenario_path,
+                    "normal path must be unmodified, waiting_review/calculated, and blocker-free",
+                )
+            )
+        return errors
+
+    if (
+        not mutations
+        or expected["module_status"] != "blocked"
+        or expected["analysis_status"] != "blocked"
+        or not expected["blockers"]
+    ):
+        errors.append(
+            _issue(
+                "baseline_blocked_path_invalid", scenario_path,
+                "negative path must have mutations, blocked module/analysis states, and blockers",
+            )
+        )
+    required_operation, blocker_code = {
+        "missing_evidence": ("remove_evidence", "EVIDENCE_MISSING"),
+        "conflicted_fact": ("use_conflicted_fact", "FACT_CONFLICTED"),
+    }[path_kind]
+    derived_blockers = set()
+    for position, mutation in enumerate(mutations):
+        mutation_path = f"{scenario_path}.mutations[{position}]"
+        fact = facts_by_id.get(mutation["fact_id"])
+        if fact is None:
+            errors.append(_issue("baseline_fact_unknown", f"{mutation_path}.fact_id", mutation["fact_id"]))
+            continue
+        if fact.get("actor_id") != scenario["actor_id"]:
+            errors.append(
+                _issue("baseline_mutation_actor_mismatch", mutation_path, f"{fact['id']} does not belong to {scenario['actor_id']}")
+            )
+            continue
+        if mutation["operation"] != required_operation:
+            errors.append(_issue("baseline_mutation_kind_mismatch", mutation_path, f"{path_kind} requires {required_operation}"))
+            continue
+        if required_operation == "remove_evidence":
+            evidence_id = mutation.get("evidence_id")
+            if evidence_id not in evidence_ids or evidence_id not in fact.get("evidence_ids", []):
+                errors.append(
+                    _issue(
+                        "baseline_evidence_mutation_invalid", f"{mutation_path}.evidence_id",
+                        f"{evidence_id} is not evidence for {fact['id']}",
+                    )
+                )
+                continue
+        elif fact.get("verification_status") != "conflicted":
+            errors.append(
+                _issue(
+                    "baseline_conflict_mutation_invalid", f"{mutation_path}.fact_id",
+                    f"{fact['id']} is {fact.get('verification_status')}, not conflicted",
+                )
+            )
+            continue
+        derived_blockers.add((blocker_code, fact["id"]))
+
+    declared_blockers = {(item["code"], item["subject_id"]) for item in expected["blockers"]}
+    if declared_blockers != derived_blockers or len(declared_blockers) != len(expected["blockers"]):
+        errors.append(
+            _issue(
+                "baseline_blocker_mutation_mismatch", f"{scenario_path}.expected.blockers",
+                f"expected one blocker per affected fact: {sorted(derived_blockers)}, got {sorted(declared_blockers)}",
+            )
+        )
+    return errors
+
+
+def validate_three_case_baseline(root: Path | None = None) -> dict[str, Any]:
+    """Validate T3 identities, source timing, negative paths, and T1 trace fields."""
+
+    dataset_root = root or DEMO_ROOT
+    baseline = load_three_case_baseline(dataset_root)
+    schema_errors = _schema_issues(baseline, BASELINE_SCHEMA_PATH, "baseline-scenarios.json")
+    if schema_errors:
+        safe_baseline = baseline if isinstance(baseline, dict) else {}
+        return {
+            "valid": False,
+            "schema_version": safe_baseline.get("schema_version"),
+            "dataset_id": safe_baseline.get("dataset_id"),
+            "revision": safe_baseline.get("revision"),
+            "public_release": safe_baseline.get("public_release"),
+            "errors": schema_errors,
+            "cases": [],
+        }
+    index = load_case_dataset_index(dataset_root)
+    source_catalog = _read_json(LEGAL_SOURCE_CATALOG_PATH)
+    sources_by_id = {item.get("id"): item for item in source_catalog.get("sources", [])}
+    results: list[dict[str, Any]] = []
+    all_errors: list[dict[str, str]] = list(schema_errors)
+    seen_codes: set[str] = set()
+
+    if baseline.get("dataset_id") != index.get("dataset_id"):
+        all_errors.append(
+            _issue(
+                "baseline_dataset_mismatch",
+                "baseline-scenarios.json.dataset_id",
+                f"expected {index.get('dataset_id')}, got {baseline.get('dataset_id')}",
+            )
+        )
+
+    for position, case_baseline in enumerate(baseline.get("cases", [])):
+        case_errors: list[dict[str, str]] = []
+        prefix = f"baseline-scenarios.json.cases[{position}]"
+        case_code = case_baseline.get("case_code")
+        seen_codes.add(str(case_code))
+        try:
+            bundle = load_case_bundle(str(case_code), dataset_root)
+        except KeyError as exc:
+            case_errors.append(_issue("baseline_case_unknown", f"{prefix}.case_code", str(exc)))
+            results.append({"case_code": case_code, "valid": False, "errors": case_errors})
+            all_errors.extend(case_errors)
+            continue
+
+        actor_ids = {item.get("id") for item in bundle.get("actors", [])}
+        event_ids = {item.get("id") for item in bundle.get("events", [])}
+        fact_ids = {item.get("id") for item in bundle.get("facts", [])}
+        evidence_ids = {item.get("id") for item in bundle.get("evidence", [])}
+        facts_by_id = {item.get("id"): item for item in bundle.get("facts", [])}
+        documents_by_id = {item.get("id"): item for item in bundle.get("documents", [])}
+
+        if case_baseline.get("dataset_case_id") != bundle.get("case_code"):
+            case_errors.append(
+                _issue(
+                    "baseline_dataset_case_id_mismatch",
+                    f"{prefix}.dataset_case_id",
+                    f"expected {bundle.get('case_code')}, got {case_baseline.get('dataset_case_id')}",
+                )
+            )
+        if case_baseline.get("t3_bundle_id") != bundle.get("case_id"):
+            case_errors.append(
+                _issue(
+                    "baseline_bundle_id_mismatch",
+                    f"{prefix}.t3_bundle_id",
+                    f"expected {bundle.get('case_id')}, got {case_baseline.get('t3_bundle_id')}",
+                )
+            )
+
+        actual_counts = {
+            "actors": len(actor_ids),
+            "events": len(event_ids),
+            "facts": len(fact_ids),
+            "evidence": len(evidence_ids),
+            "relationships": len(bundle.get("relationships", [])),
+        }
+        if case_baseline.get("entity_counts") != actual_counts:
+            case_errors.append(
+                _issue(
+                    "baseline_entity_counts_mismatch",
+                    f"{prefix}.entity_counts",
+                    f"expected {actual_counts}, got {case_baseline.get('entity_counts')}",
+                )
+            )
+
+        for evidence_position, evidence in enumerate(bundle.get("evidence", [])):
+            document = documents_by_id.get(evidence.get("document_id"), {})
+            if document.get("role") != "case_material":
+                case_errors.append(
+                    _issue(
+                        "baseline_evidence_not_case_material",
+                        f"{prefix}.bundle.evidence[{evidence_position}].document_id",
+                        str(evidence.get("document_id")),
+                    )
+                )
+        for fact_position, fact in enumerate(bundle.get("facts", [])):
+            if not fact.get("evidence_ids"):
+                case_errors.append(
+                    _issue(
+                        "baseline_fact_evidence_missing",
+                        f"{prefix}.bundle.facts[{fact_position}].evidence_ids",
+                        str(fact.get("id")),
+                    )
+                )
+
+        source_bindings = case_baseline.get("source_bindings", [])
+        case_errors.extend(_baseline_conduct_period_issues(bundle, source_bindings, sources_by_id, prefix))
+        binding_ids = {item.get("source_id") for item in source_bindings}
+        bundle_source_ids = set(bundle.get("legal_source_ids", []))
+        if binding_ids != bundle_source_ids:
+            case_errors.append(
+                _issue(
+                    "baseline_source_coverage_mismatch",
+                    f"{prefix}.source_bindings",
+                    f"missing={sorted(bundle_source_ids - binding_ids)}, extra={sorted(binding_ids - bundle_source_ids)}",
+                )
+            )
+        for binding_position, binding in enumerate(source_bindings):
+            binding_path = f"{prefix}.source_bindings[{binding_position}]"
+            source = sources_by_id.get(binding.get("source_id"))
+            if source is None:
+                case_errors.append(_issue("baseline_source_unknown", f"{binding_path}.source_id", str(binding.get("source_id"))))
+                continue
+            for field in ("effective_from", "effective_to", "signoff_status"):
+                if binding.get(field) != source.get(field):
+                    case_errors.append(
+                        _issue(
+                            "baseline_source_metadata_mismatch",
+                            f"{binding_path}.{field}",
+                            f"catalog={source.get(field)}, binding={binding.get(field)}",
+                        )
+                    )
+            if binding.get("signoff_status") != "pending" or binding.get("public_eligible") is not False:
+                case_errors.append(
+                    _issue(
+                        "baseline_source_not_fail_closed",
+                        binding_path,
+                        "unsigned sources must remain pending and public_eligible=false",
+                    )
+                )
+            use_scope = binding.get("use_scope")
+            applicable_to_conduct = binding.get("applicable_to_conduct")
+            if use_scope in {"sentencing_reference", "current_review_audit_only"} and applicable_to_conduct is not False:
+                case_errors.append(
+                    _issue(
+                        "baseline_temporal_scope_unsafe",
+                        f"{binding_path}.applicable_to_conduct",
+                        f"{use_scope} must not be promoted to a conduct-time source",
+                    )
+                )
+
+        scenarios = case_baseline.get("scenarios", [])
+        path_kinds = {item.get("path_kind") for item in scenarios}
+        if "normal" not in path_kinds or not path_kinds.intersection({"missing_evidence", "conflicted_fact"}):
+            case_errors.append(
+                _issue(
+                    "baseline_scenario_pair_incomplete",
+                    f"{prefix}.scenarios",
+                    "one normal path and one missing-evidence/conflicted-fact path are required",
+                )
+            )
+        for scenario_position, scenario in enumerate(scenarios):
+            scenario_path = f"{prefix}.scenarios[{scenario_position}]"
+            if scenario.get("actor_id") not in actor_ids:
+                case_errors.append(_issue("baseline_actor_unknown", f"{scenario_path}.actor_id", str(scenario.get("actor_id"))))
+            case_errors.extend(_baseline_scenario_issues(scenario, facts_by_id, evidence_ids, scenario_path))
+
+        mapping = case_baseline.get("t1_mapping") or {}
+        if mapping.get("datasetCaseId") != bundle.get("case_code") or mapping.get("t3BundleId") != bundle.get("case_id"):
+            case_errors.append(
+                _issue(
+                    "baseline_t1_identity_mapping_invalid",
+                    f"{prefix}.t1_mapping",
+                    "datasetCaseId/t3BundleId must map to bundle.case_code/bundle.case_id",
+                )
+            )
+        required_trace_fields = {"datasetCaseId", "t3BundleId", "factsVersion", "sourceVersion"}
+        if set(mapping.get("requiredResultFields", [])) != required_trace_fields:
+            case_errors.append(
+                _issue(
+                    "baseline_t1_trace_fields_incomplete",
+                    f"{prefix}.t1_mapping.requiredResultFields",
+                    ", ".join(sorted(required_trace_fields)),
+                )
+            )
+
+        result = {
+            "case_code": case_code,
+            "case_id": bundle.get("case_id"),
+            "valid": not case_errors,
+            "errors": case_errors,
+            "entity_counts": actual_counts,
+            "source_count": len(source_bindings),
+            "scenario_count": len(scenarios),
+        }
+        results.append(result)
+        all_errors.extend(case_errors)
+
+    if seen_codes != {"A", "B", "C"}:
+        all_errors.append(
+            _issue(
+                "baseline_case_set_incomplete",
+                "baseline-scenarios.json.cases",
+                f"expected A/B/C, got {sorted(seen_codes)}",
+            )
+        )
+
+    return {
+        "valid": not all_errors,
+        "schema_version": baseline.get("schema_version"),
+        "dataset_id": baseline.get("dataset_id"),
+        "revision": baseline.get("revision"),
+        "public_release": baseline.get("public_release"),
+        "errors": all_errors,
+        "cases": results,
+    }
+
+
 def validate_case_dataset(root: Path | None = None) -> dict[str, Any]:
     """Validate the formal JSON shape and all cross-record references before import."""
 
@@ -398,6 +755,7 @@ def validate_case_dataset(root: Path | None = None) -> dict[str, Any]:
     safe_index = index if isinstance(index, dict) else {}
     template_registry = load_document_template_registry(dataset_root)
     template_validation = validate_document_template_registry(template_registry)
+    baseline_validation = validate_three_case_baseline(dataset_root)
     results: list[dict[str, Any]] = []
     errors: list[dict[str, str]] = list(index_schema_errors)
     seen_ids: set[str] = set()
@@ -439,14 +797,21 @@ def validate_case_dataset(root: Path | None = None) -> dict[str, Any]:
         semantic["valid"] = not semantic["errors"]
         results.append(semantic)
     return {
-        "valid": not errors and template_validation["valid"] and len(results) == 3 and all(item["valid"] for item in results),
+        "valid": (
+            not errors
+            and template_validation["valid"]
+            and baseline_validation["valid"]
+            and len(results) == 3
+            and all(item["valid"] for item in results)
+        ),
         "schema_version": safe_index.get("schema_version"),
         "producer_id": safe_index.get("producer_id"),
         "dataset_id": safe_index.get("dataset_id"),
         "revision": safe_index.get("revision"),
-        "errors": errors + template_validation["errors"],
+        "errors": errors + template_validation["errors"] + baseline_validation["errors"],
         "cases": results,
         "document_templates": template_validation,
+        "baseline_scenarios": baseline_validation,
         "expected_case_count": 3,
         "actual_case_count": len(results),
     }
