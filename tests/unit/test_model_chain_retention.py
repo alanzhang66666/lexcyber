@@ -12,7 +12,6 @@ import ast
 import re
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[2]
 ENV_EXAMPLE = ROOT / ".env.v03.example"
 COMPOSE_FILE = ROOT / "docker-compose.yml"
