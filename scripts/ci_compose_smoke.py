@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import io
 import json
 import secrets
@@ -12,6 +13,7 @@ import time
 import urllib.error
 import urllib.request
 import uuid
+import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
 
@@ -102,6 +104,45 @@ def _id(view, *names):
 
 def _sorted_items(items):
     return sorted(items, key=lambda item: (str(item.get("artifactVersionId")), str(item.get("role"))))
+
+
+def export_docx(token, case_id, artifact_id, body):
+    """Validate the real nginx → Java → Engine → MinIO export path."""
+    path = f"/v2/cases/{case_id}/artifact-versions/{artifact_id}/export.docx"
+    req = urllib.request.Request(BASE + path, headers={
+        "Authorization": f"Bearer {token}", "Accept": DOCX_TYPE,
+    })
+    with urllib.request.urlopen(req, timeout=30) as response:
+        assert response.status == 200
+        assert response.headers.get_content_type() == DOCX_TYPE, response.headers
+        assert "attachment" in response.headers.get("Content-Disposition", "")
+        assert "no-store" in response.headers.get("Cache-Control", "")
+        raw = response.read()
+    with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+        assert archive.testzip() is None
+        content_types = archive.read("[Content_Types].xml")
+        assert b"wordprocessingml.document.main+xml" in content_types
+        root = ET.fromstring(archive.read("word/document.xml"))
+    ns = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+    paragraphs = []
+    for paragraph in root.iter(ns + "p"):
+        parts = []
+        for node in paragraph.iter():
+            if node.tag == ns + "t":
+                parts.append(node.text or "")
+            elif node.tag == ns + "tab":
+                parts.append("\t")
+            elif node.tag in (ns + "br", ns + "cr"):
+                parts.append("\n")
+        paragraphs.append("".join(parts))
+    text = "\n".join(paragraphs)
+    # Title, auxiliary label and final immutable provenance are the only additions.
+    assert len(paragraphs) >= 3 and paragraphs[1] == "文书辅助稿，不替代司法裁量", text
+    assert paragraphs[-1].startswith("来源工件版本："), text
+    assert "\n".join(paragraphs[2:-1]) == body.replace("\r\n", "\n").replace("\r", "\n"), text
+    assert artifact_id in text, text
+    assert "文书辅助稿" in text and "不替代司法裁量" in text, text
+    return raw
 
 
 def wait_execution(token, execution_id):
@@ -217,6 +258,10 @@ def run_lifecycle(token):
     draft_artifact = request("GET", f"/v2/artifact-versions/{draft_artifact_id}", token=token)
     assert draft_artifact["outcomeStatus"] == "calculated", draft_artifact
     assert draft_artifact["payload"]["status"] == "rendered" and draft_artifact["payload"]["body"], draft_artifact
+    exported = export_docx(token, case_id, draft_artifact_id, draft_artifact["payload"]["body"])
+    assert export_docx(token, case_id, draft_artifact_id, draft_artifact["payload"]["body"]) == exported
+    request("GET", f"/v2/cases/{case_id}/artifact-versions/{draft_artifact_id}/export.docx", expected=401)
+    print("PASS rendered DOCX download, exact body/version and deterministic bytes", flush=True)
     dependencies = draft_artifact.get("dependencySnapshot", {}).get("artifacts", [])
     dependency_ids = {str(item.get("artifactVersionId")) for item in dependencies}
     assert dependency_ids == {str(modules["compliance"]["artifactVersionId"]),
@@ -238,6 +283,8 @@ def run_lifecycle(token):
                            expected=201, payload={"docType": "ci.review_note"})
     assert _id(render_again, "draftId") == draft_id, render_again
     wait_execution(token, _id(render_again, "executionId"))
+    current_draft_head = request("GET", f"/v2/drafts/{draft_id}", token=token)
+    assert str(current_draft_head["latestVersionId"]) != draft_artifact_id, current_draft_head
     request("PUT", f"/v2/cases/{case_id}/facts-entities/facts", token=token,
             expected=200, payload={"items": facts + [{
                 "key": "ci_after_archive_edit", "value": "changed", "verificationStatus": "candidate"}]})
@@ -247,6 +294,10 @@ def run_lifecycle(token):
             expected=200, payload={"expectedConfirmedFactsVersionId": version_one_id})
     stale_head = request("GET", f"/v2/cases/{case_id}/modules/compliance", token=token)
     assert stale_head["stale"] is True, stale_head
+    historical_export = export_docx(token, case_id, draft_artifact_id, draft_artifact["payload"]["body"])
+    assert historical_export == exported
+    assert request("GET", f"/v2/artifact-versions/{draft_artifact_id}", token=token) == draft_artifact
+    print("PASS historical stale DOCX retains identical bytes without changing the artifact", flush=True)
     request("POST", f"/v2/cases/{case_id}/archives", token=token,
             expected=409, payload={"archiveProfile": "case.full.v1"})
     print("PASS facts change propagates stale and blocks a mixed archive", flush=True)
@@ -257,13 +308,40 @@ def run_lifecycle(token):
     blocked_artifact = request("GET", f"/v2/artifact-versions/{_id(blocked_head, 'latestVersionId')}", token=token)
     assert blocked_artifact["outcomeStatus"] == "blocked"
     assert blocked_artifact["payload"]["status"] == "blocked" and blocked_artifact["payload"]["body"] is None, blocked_artifact
+    blocked_export = request("GET", f"/v2/cases/{case_id}/artifact-versions/{blocked_artifact['artifactVersionId']}/export.docx",
+                             token=token, expected=409)
+    assert blocked_export.get("code") == "DRAFT_EXPORT_BLOCKED", blocked_export
     print("PASS unresolved template fails closed without a document body", flush=True)
     other = request("POST", "/v1/auth/register", expected=201, payload={
         "username": "ci_other_" + uuid.uuid4().hex[:12],
         "password": secrets.token_urlsafe(24), "displayName": "CI other account",
     })
     request("GET", f"/v2/cases/{case_id}/facts-head", token=other["token"], expected=404)
+    request("GET", f"/v2/cases/{case_id}/artifact-versions/{draft_artifact_id}/export.docx",
+            token=other["token"], expected=404)
+    other_case = request("POST", "/v1/cases", token=token, expected=201,
+                         payload={"title": "CI cross-case export isolation", "jurisdiction": "CI"})
+    request("GET", f"/v2/cases/{other_case['id']}/artifact-versions/{draft_artifact_id}/export.docx",
+            token=token, expected=404)
     print("PASS archive create/read manifest consistency and cross-account denial", flush=True)
+
+    manual_body = "人工辅助稿\n被告人张某，涉案金额 100 元。\nA&B <source>\t核对来源。"
+    manual = request("POST", f"/v1/cases/{case_id}/drafts", token=token, expected=201,
+                     payload={"draftType": "手工核对记录", "body": manual_body})
+    manual_artifact_id = _id(manual, "artifactVersionId")
+    manual_export = export_docx(token, case_id, manual_artifact_id, manual_body)
+    updated = request("PUT", f"/v1/cases/{case_id}/drafts/{manual['id']}", token=token,
+                      payload={"body": manual_body + "\n第二版补充。", "version": manual["version"]})
+    assert _id(updated, "artifactVersionId") != manual_artifact_id
+    assert hashlib.sha256(export_docx(token, case_id, manual_artifact_id, manual_body)).digest() == hashlib.sha256(manual_export).digest()
+    export_docx(token, case_id, _id(updated, "artifactVersionId"), updated["body"])
+    for body in ("", "待核对【案件来源】"):
+        unavailable = request("POST", f"/v1/cases/{case_id}/drafts", token=token, expected=201,
+                              payload={"draftType": "未完整辅助稿", "body": body})
+        error = request("GET", f"/v2/cases/{case_id}/artifact-versions/{unavailable['artifactVersionId']}/export.docx",
+                        token=token, expected=409)
+        assert error.get("code") == "DRAFT_EXPORT_BLOCKED", error
+    print("PASS manual DOCX exact historical version, UTF-8/XML text and incomplete export denial", flush=True)
 
 
 def main():

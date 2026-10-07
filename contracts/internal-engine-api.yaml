@@ -5,6 +5,39 @@ info:
 servers:
   - url: http://engine:8100
 paths:
+  /internal/v1/draft-exports/docx:
+    post:
+      summary: Render an exact immutable draft body to deterministic DOCX bytes
+      description: >-
+        Java verifies the session, case ownership and artifact before calling. This service-only
+        formatter does not substitute templates, change artifact state, or accept object keys.
+        The output always identifies an auxiliary draft and its immutable source version.
+      security: [{ serviceToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [case_id, artifact_version_id, version, schema_version, doc_type, body, created_at]
+              properties:
+                case_id: { type: string, format: uuid }
+                artifact_version_id: { type: string, format: uuid }
+                version: { type: integer, minimum: 1 }
+                schema_version: { type: string, enum: [draft.v2, case.draft.v1] }
+                doc_type: { type: string, minLength: 1 }
+                body: { type: string, minLength: 1 }
+                created_at: { type: string, format: date-time }
+                facts_version_id: { type: [string, 'null'], format: uuid }
+      responses:
+        '200':
+          description: Deterministic editable DOCX containing the exact draft body.
+          content:
+            application/vnd.openxmlformats-officedocument.wordprocessingml.document:
+              schema: { type: string, format: binary }
+        '401': { description: Invalid service token. }
+        '422': { description: 'Invalid export metadata, empty body, unresolved placeholder or invalid XML character.' }
   /internal/v1/executions:
     post:
       summary: Submit one idempotent execution

@@ -88,3 +88,25 @@ def test_missing_doc_type():
     with pytest.raises(ModuleAnalysisError) as err:
         render(payload)
     assert err.value.code == "DOC_TYPE_MISSING"
+
+
+def test_chinese_placeholder_in_template_blocks_body(monkeypatch):
+    template = dict(TEMPLATE, bodyTemplate="被告人{{facts.defendant_name.value}}【待核实】")
+    monkeypatch.setattr(document_render.registry, "active_template", lambda dt: template)
+    out = render(_payload())["final_output"]
+    assert out["status"] == "blocked"
+    assert out["body"] is None
+    assert {"path": "body", "reason": "unresolved_placeholder"} in out["unresolved"]
+
+
+def test_chinese_placeholder_introduced_by_fact_blocks_body(monkeypatch):
+    monkeypatch.setattr(document_render.registry, "active_template", lambda dt: TEMPLATE)
+    payload = _payload()
+    payload["metadata"]["factsSnapshot"] = {
+        "items": [{"key": "defendant_name", "value": "张【待补充】", "verificationStatus": "confirmed"}],
+        "entities": {"amounts": [{"kind": "inflow", "value": "250000", "verificationStatus": "confirmed"}]},
+    }
+    out = render(payload)["final_output"]
+    assert out["status"] == "blocked"
+    assert out["body"] is None
+    assert {"path": "body", "reason": "unresolved_placeholder"} in out["unresolved"]

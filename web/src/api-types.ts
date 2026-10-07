@@ -281,6 +281,8 @@ export type DraftView = {
   updatedAt: string
   templateVersion?: string | null
   sourceVersion?: string | null
+  /** The immutable artifact version backing this manual draft, when available. */
+  artifactVersionId?: string | null
 }
 
 export type ModuleStateUpdate = {

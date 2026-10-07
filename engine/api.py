@@ -7,7 +7,7 @@ from pathlib import Path
 from uuid import UUID
 
 import dramatiq
-from fastapi import Depends, FastAPI, Header, HTTPException, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Response, status
 
 from engine.adapters.sources import SourceSearchUnavailable
 from engine.adapters.sources import search as search_sources_adapter
@@ -21,6 +21,7 @@ from engine.contracts import (
     SourceSearchResponse,
     canonical_input_hash,
 )
+from engine.docx_export import DOCX_MIME, DocxExportError, DocxExportRequest, render_docx
 from engine.import_package import ImportPackageValidationError, load_import_package
 from engine.object_store import fetch_object_bytes
 from engine.settings import settings
@@ -37,6 +38,24 @@ def require_service_token(x_service_token: str = Header(default="")) -> None:
 @app.get("/healthz")
 def healthz() -> dict[str, str]:
     return {"status": "ok", "service": "lexcyber-engine", "version": "0.8.0"}
+
+
+@app.post(
+    "/internal/v1/draft-exports/docx",
+    dependencies=[Depends(require_service_token)],
+    response_class=Response,
+)
+def export_draft_docx(payload: DocxExportRequest) -> Response:
+    """Render one exact immutable draft version; never consults a mutable head."""
+    try:
+        content = render_docx(payload.model_dump(mode="python"))
+    except DocxExportError as exc:
+        raise HTTPException(status_code=422, detail=exc.code) from exc
+    return Response(
+        content=content,
+        media_type=DOCX_MIME,
+        headers={"Content-Disposition": "attachment; filename=lexcyber-draft.docx", "Cache-Control": "no-store"},
+    )
 
 
 @app.post("/internal/v1/executions", status_code=status.HTTP_202_ACCEPTED, dependencies=[Depends(require_service_token)])

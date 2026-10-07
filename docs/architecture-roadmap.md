@@ -26,8 +26,12 @@
 - 提交 `829a6bc` 的 CI `37673310917` 五个 job 成功：Java/Postgres 110 项、0 跳过；Python 166 项非 integration、前端 110 项；完整 Compose 生命周期、§19 三项实际并发检查与注册表 8 项真实数据库测试通过。`8cb7de5` 曾暴露重复归档响应的顺序/类型不一致，已统一响应并保留等价性测试。
 - 续查量刑管道：INV-PIPE-001 要求有效定罪后才派发量刑，派发冻结精确定罪 ID，发布保留历史依赖，批准重验当前有效上游；量刑重试也必须校验原依赖。执行期间上游变化不会使真实完成回调无限 409 重试，而是保存旧依赖结果、拒绝后续确认。本地 Python 167 项、Ruff、Java test-compile 通过，新增数据库用例待 CI 验证。
 - 提交 `74b1aef` 的 CI `37674521616` 五个 job 成功：Java/Postgres 112 项、0 跳过；Python 167 项、web 110 项；完整 Compose/§19 与注册表 8 项数据库测试再次通过，包含量刑派发、迟到回调历史依赖和重试失效检查。
-- 归档清单进一步改为从核心工件沿正规化依赖表递归取 parse/supporting 历史版本，排除无关解析流的 latest；保持同案门闩与幂等。本次仅冻结已登记的显式依赖，不推测未记录的事实来源边。新增数据库用例待下一提交 CI 验证。
-- 已验证的提交 `7f87848`：CI `37665658080` 五个 job 成功；Java/Postgres 99 项测试、0 跳过，其中 V20→V21 历史迁移和文书上游发布/审批竞态均实际执行。后续新增的重试、归档、事实界面和完整 Compose/§19 验证仍待新提交 CI 收口。规则/模板正式会签、B/C 映射和量刑基准校正仍按法学待签清单办理，不能由代码修复代替。
+- 归档清单进一步改为从核心工件沿正规化依赖表递归取 parse/supporting 历史版本，排除无关解析流的 latest；保持同案门闩与幂等。本次仅冻结已登记的显式依赖，不推测未记录的事实来源边。
+- 提交 `d4cedb5` 的 CI `37675896176` 五个 job 成功：Java/Postgres 114 项、0 跳过；Python 167 项、web 110 项；完整 Compose/§19 与注册表 8 项数据库测试通过，新增递归历史解析依赖、多层 supporting 和跨案依赖阻断用例均已执行。
+- 文书下载实现：Java `/v2/cases/{caseId}/artifact-versions/{artifactVersionId}/export.docx` 校验属主、案件与精确工件版本，Engine 内部格式化器生成真实可编辑 DOCX，Java 经 MinIO 存储回读并校验。支持 `draft.v2` 和手工 `case.draft.v1`；blocked、空正文及未替换占位符禁止导出；历史/stale 版本仍可读取辅助稿，不改变工件、批准或归档状态。前端提供下载及切案请求隔离。新增真实 Compose 下载、中文内容、重复字节、历史版本和权限拒绝验收纳入本提交 CI；本节不提前宣称新提交 CI 已通过。
+- 本地 DOCX 修复验证：Python 非 integration 179 项、前端 122 项、Vue 类型检查与生产构建、三个 OpenAPI 均通过；Java 导出 client 4 项通过，数据库用例已编译待 CI 实跑。实际生成两页中文 DOCX，检查全部分页图片并确认正文逐字符相等（换行统一为 LF），包括制表符、空行和末尾换行。首轮发现 Title 默认蓝色边框并已移除；本机渲染器补充系统中文字体路径后完成视觉验收，未修改用户字体安装。
+- 规则/模板正式会签、B/C 映射和量刑基准校正仍按法学待签清单办理，不能由代码修复代替。
+- 移除已失效的旧 `tests/integration/test_registry.py`：该测试依赖已删除的根 `migrations/` 与 `skill.*` schema，并把任何错误都转为 skip。现役技能目录读取已有 `test_skill_runtime.py` 覆盖，真实 Engine V6 注册表继续执行 8 项数据库集成测试。历史 `storage/postgres` 代码保留供非 Engine 遗留路径使用；本次不恢复旧 schema，也不把旧技能目录错映射到法学规则包。
 
 本节记录进行中的工作，不替代下面的历史实测，也不证明全部功能已完成验证。
 
@@ -46,7 +50,7 @@
 | 8a | 法源/规则/模板注册与会签（P5 前置基建） | ✅ 代码完成并在真实库验证。engine/V6 注册表（legal_source + alias + supersession 链 + rule_package + template_package + signoff_record）+ `engine/rules/registry.py` + `/internal/v1/capabilities` 等 6 个内部端点 + `EngineCapabilitiesClient`；`/v2` 模块派发已接真实能力门闩（无 approved 规则 → `MODULE_EXECUTION_UNAVAILABLE`，有能力但适配器未实现 → `ENGINE_ADAPTER_PENDING`） |
 | 8b | 规则层（合规/定罪/界分执行体） | ✅ 第一片已验证：evaluator DSL + `module_analysis.py` → case.*.v2 payload + 逐条件 trace + fired 规则双时点法源解析；e2e 实测 calculated/not_applicable/blocked 三态。剩余：规则语料扩充（当前 7 条底稿） |
 | 8c | 可解释量刑（注册表化） | ✅ 第一片已验证：base_tiers 择档 + when-gated adjustments + 显式夹逼留痕 + ROUND_HALF_UP，产出 sentencing.v2；旧 metadata 重放保留兼容。剩余：地方细则插件、缓刑/罚金独立计算块 |
-| 8d | 文书渲染 | ✅ 第一片已验证：`draft.render` → draft.v2 + 占位符阻断 + 上游 payload 代入；模板按案型分（`indictment-assist` 通用 + `indictment-draft` 支付结算型，语料 `engine/rules/corpus/core_templates.json` + `seed --templates`）。剩余：下载导出 |
+| 8d | 文书渲染 | ✅ 渲染链已验证：`draft.render` → draft.v2 + 占位符阻断 + 上游 payload 代入；模板按案型分（`indictment-assist` 通用 + `indictment-draft` 支付结算型）。DOCX 下载代码与验收已补齐，精确新提交的 CI 结果以 PR 检查为准。当前输出是辅助正文排版，不宣称使用法学 DOCX 版式模板，也不包含 PDF 导出。 |
 | 9 | 法源层 + AI 边界 + 门闩双侧 + 可观测性 | 🔶 法源注册 + 双时点解析（`resolve_temporal`）已随 8a 落地；新旧链数据、AI 边界审计、可观测性未做 |
 
 ## 验证状态（2026-09-24 实测）
@@ -126,7 +130,7 @@
 6. **§19 并发脚本**：`scripts/concurrency_check.py`——双确认 CAS（409）、双发布重放（工件版本稳定）、归档/复核交错（无 5xx）；internal 用例需容器网内执行。
 7. **文档归档**：11 篇历史文档 + 根 `PLAN.md` → `docs/archive/`（git mv 保历史 + 归档横幅）；`AGENTS.md`/`README.md` 按现状重写；`docs/legal-signoff-checklist.md` 补法学待签清单。
 
-**仍待办**：案例 B/C 键化覆盖层（需法学审定映射）、真实法学负责人会签（当前 e2e 占位，含新增 `indictment-assist` 模板）、量刑基准档与案载裁量偏差校正（法学）、文书下载导出。§19 脚本已随 2026-10-08 修复纳入每次 CI 的 Compose 网络，成功证据见上节。
+**仍待办**：案例 B/C 键化覆盖层（需法学审定映射）、真实法学负责人会签（当前 e2e 占位，含新增 `indictment-assist` 模板）、量刑基准档与案载裁量偏差校正（法学）。文书 DOCX 下载与验收已补齐；§19 脚本已随 2026-10-08 修复纳入每次 CI 的 Compose 网络，已执行证据见上节。
 
 ## 关键不变量速查
 

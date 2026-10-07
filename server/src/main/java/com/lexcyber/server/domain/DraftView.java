@@ -12,9 +12,17 @@ public record DraftView(
         UUID updatedBy,
         OffsetDateTime updatedAt,
         String templateVersion,
-        String sourceVersion) {
+        String sourceVersion,
+        UUID artifactVersionId) {
     public DraftView(String id, String caseId, String draftType, String body, int version,
                      UUID updatedBy, OffsetDateTime updatedAt) {
         this(id, caseId, draftType, body, version, updatedBy, updatedAt, null, null);
+    }
+
+    public DraftView(String id, String caseId, String draftType, String body, int version,
+                     UUID updatedBy, OffsetDateTime updatedAt, String templateVersion,
+                     String sourceVersion) {
+        this(id, caseId, draftType, body, version, updatedBy, updatedAt,
+                templateVersion, sourceVersion, null);
     }
 }

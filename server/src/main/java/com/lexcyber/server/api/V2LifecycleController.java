@@ -2,10 +2,15 @@ package com.lexcyber.server.api;
 
 import com.lexcyber.server.auth.AuthAccount;
 import com.lexcyber.server.auth.AuthService;
+import com.lexcyber.server.domain.DraftExportService;
 import com.lexcyber.server.domain.V2LifecycleService;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -23,10 +28,13 @@ import org.springframework.web.bind.annotation.RestController;
 public class V2LifecycleController {
     private final V2LifecycleService lifecycle;
     private final AuthService auth;
+    private final DraftExportService draftExports;
 
-    public V2LifecycleController(V2LifecycleService lifecycle, AuthService auth) {
+    public V2LifecycleController(V2LifecycleService lifecycle, AuthService auth,
+                                 DraftExportService draftExports) {
         this.lifecycle = lifecycle;
         this.auth = auth;
+        this.draftExports = draftExports;
     }
 
     @PostMapping("/cases/{caseId}/facts-versions")
@@ -123,6 +131,25 @@ public class V2LifecycleController {
             @RequestHeader(value = "Authorization", required = false) String authorization) {
         AuthAccount account = auth.require(authorization);
         return lifecycle.artifactVersion(account.id(), artifactVersionId);
+    }
+
+    @GetMapping("/cases/{caseId}/artifact-versions/{artifactVersionId}/export.docx")
+    public ResponseEntity<byte[]> exportDraft(@PathVariable String caseId,
+            @PathVariable UUID artifactVersionId,
+            @RequestHeader(value = "Authorization", required = false) String authorization) {
+        AuthAccount account = auth.require(authorization);
+        DraftExportService.ExportedDocx export = draftExports.export(account.id(), caseId, artifactVersionId);
+        ContentDisposition disposition = ContentDisposition.attachment()
+                .filename(export.filename(), StandardCharsets.UTF_8).build();
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.parseMediaType(
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document"));
+        headers.setContentDisposition(disposition);
+        headers.setCacheControl("private, no-store");
+        headers.setETag('"' + export.sha256() + '"');
+        headers.set("X-Artifact-Version-Id", export.artifactVersionId().toString());
+        headers.set("X-Artifact-Version", Integer.toString(export.version()));
+        return new ResponseEntity<>(export.bytes(), headers, HttpStatus.OK);
     }
 
     @GetMapping("/cases/{caseId}/modules/{module}")

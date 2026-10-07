@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ApiError, api, apiV2 } from './api'
+import { ApiError, api, apiV2, safeDownloadFilename } from './api'
 
 afterEach(() => {
   vi.useRealTimers()
@@ -172,6 +172,56 @@ describe('typed API client', () => {
         method: 'POST',
         body: JSON.stringify({ docType: 'indictment' }),
       }))
+  })
+
+  it('downloads an immutable DOCX artifact with auth and RFC5987 filename', async () => {
+    localStorage.setItem('lexcyber.session', JSON.stringify({ token: 'sess-docx', username: 'tester', displayName: '测试员' }))
+    const fetchMock = vi.fn().mockResolvedValue(new Response(new Uint8Array([80, 75, 3, 4]), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'Content-Disposition': "attachment; filename*=UTF-8''%E5%AE%A1%E6%9F%A5%E6%8A%A5%E5%91%8A.docx",
+      },
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await apiV2.exportArtifactDocx('case/7', 'artifact-9')
+
+    expect(result.filename).toBe('审查报告.docx')
+    expect(result.blob.type).toBe('application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/v2/cases/case%2F7/artifact-versions/artifact-9/export.docx',
+      expect.objectContaining({ headers: expect.objectContaining({
+        Accept: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        Authorization: 'Bearer sess-docx',
+      }) }),
+    )
+  })
+
+  it('preserves structured JSON errors from DOCX export', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response({
+      code: 'DRAFT_EXPORT_UNAVAILABLE', message: '正文尚未具备导出条件。', traceId: 'trace-docx',
+    }, 409)))
+
+    await expect(apiV2.exportArtifactDocx('case-7', 'artifact-9')).rejects.toMatchObject({
+      status: 409, code: 'DRAFT_EXPORT_UNAVAILABLE', traceId: 'trace-docx',
+    } satisfies Partial<ApiError>)
+  })
+
+  it('rejects a successful response with the wrong media type', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('not a docx', {
+      status: 200, headers: { 'Content-Type': 'text/plain' },
+    })))
+
+    await expect(apiV2.exportArtifactDocx('case-7', 'artifact-9')).rejects.toMatchObject({
+      code: 'UNEXPECTED_CONTENT_TYPE', status: 200,
+    } satisfies Partial<ApiError>)
+  })
+
+  it('sanitizes plain filenames, path separators, and control characters', () => {
+    expect(safeDownloadFilename('报告/../\u0000草稿')).toBe('报告_..__草稿.docx')
+    expect(safeDownloadFilename('报告.docx')).toBe('报告.docx')
+    expect(safeDownloadFilename('')).toBe('lexcyber-draft.docx')
   })
 
   it('aborts a request that exceeds the client timeout', async () => {

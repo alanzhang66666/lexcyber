@@ -215,6 +215,44 @@ paths:
               schema: { $ref: '#/components/schemas/ArtifactVersionView' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /v2/cases/{caseId}/artifact-versions/{artifactVersionId}/export.docx:
+    get:
+      summary: 下载指定不可变文书版本的 Word 辅助稿
+      operationId: exportDraftDocx
+      security: [{ bearerAuth: [] }]
+      description: >-
+        仅属主可导出同案 draft.v2 或 case.draft.v1 工件。正文为空、blocked 或
+        含未替换占位符时返回 409。允许历史或 stale 版本下载，但不表示当前有效批准，
+        不推进 latest、approved 或复核状态。客户端不能指定对象键。
+      parameters:
+        - { $ref: '#/components/parameters/CaseId' }
+        - { $ref: '#/components/parameters/ArtifactVersionId' }
+      responses:
+        '200':
+          description: 精确工件版本的 DOCX 辅助稿，包含不可变来源标识
+          headers:
+            Content-Disposition:
+              description: attachment 与服务端生成的安全 UTF-8 文件名
+              schema: { type: string }
+            Cache-Control:
+              description: private, no-store
+              schema: { type: string }
+          content:
+            application/vnd.openxmlformats-officedocument.wordprocessingml.document:
+              schema: { type: string, format: binary }
+        '401':
+          description: 缺少有效会话
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503':
+          description: DOCX 渲染或对象存储不可用
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
   /v2/cases/{caseId}/modules/{module}:
     get:
       summary: 模块指针视图（latest / confirmed / stale；不复制正文）
@@ -379,6 +417,8 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
 
 components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer }
   parameters:
     CaseId:
       name: caseId

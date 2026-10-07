@@ -23,6 +23,7 @@ from engine.rules import registry
 from engine.rules.evaluator import _resolve, build_view
 
 _PLACEHOLDER = re.compile(r"\{\{\s*([^{}]+?)\s*\}\}")
+_CHINESE_PLACEHOLDER = re.compile(r"【[^】]*】")
 
 
 def render(payload: dict[str, Any]) -> dict[str, Any]:
@@ -80,6 +81,13 @@ def render(payload: dict[str, Any]) -> dict[str, Any]:
         return str(value)
 
     body = _PLACEHOLDER.sub(substitute, template["bodyTemplate"])
+
+    # Templates and substituted facts must never leak a human-facing
+    # placeholder into a published artifact.  This catches both the normal
+    # ``{{path}}`` form left unresolved and Chinese drafting markers such as
+    # ``【待核实】`` (including markers introduced by a fact value).
+    if _PLACEHOLDER.search(body) or _CHINESE_PLACEHOLDER.search(body):
+        unresolved.append({"path": "body", "reason": "unresolved_placeholder"})
 
     # 模板声明的必填字段校验（field_schema.required[] 也是路径）
     field_schema = template.get("fieldSchema") or {}

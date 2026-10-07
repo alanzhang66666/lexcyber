@@ -149,7 +149,8 @@ public class DraftService {
                 SELECT d.id, d.case_id, d.draft_type, d.updated_by, d.updated_at,
                        d.template_version, d.source_version,
                        COALESCE(v.payload ->> 'body', '') AS body,
-                       COALESCE(v.version, 0) AS version
+                       COALESCE(v.version, 0) AS version,
+                       v.artifact_version_id
                 FROM app.case_drafts d
                 LEFT JOIN app.draft_head h ON h.draft_id = d.id
                 LEFT JOIN app.artifact_stream s ON s.artifact_stream_id = h.artifact_stream_id
@@ -167,7 +168,8 @@ public class DraftService {
                 rs.getObject("updated_by", UUID.class),
                 rs.getObject("updated_at", OffsetDateTime.class),
                 rs.getString("template_version"),
-                rs.getString("source_version"));
+                rs.getString("source_version"),
+                rs.getObject("artifact_version_id", java.util.UUID.class));
     }
 
     private static String blankToNull(String value) {
