@@ -20,8 +20,8 @@ const error = ref('')
 const caseItem = ref<CaseView | null>(null)
 const sentencingResult = ref<SentencingResult | null>(null)
 const moduleAmounts = ref<SentencingResult['amounts']>([])
-const analysisStatus = ref('')
 const humanReviewRequired = ref(false)
+const factsConfirmed = ref<boolean | null>(null)
 
 const creating = ref(false)
 const createError = ref('')
@@ -34,6 +34,7 @@ const taskTerminal = computed(() => {
   return s === 'completed' || s === 'waiting_review' || s === 'failed' || s === 'timed_out' || s === 'rejected'
 })
 const resultBlocked = computed(() => Boolean(sentencingResult.value?.blockers?.length))
+const taskFailed = computed(() => task.value?.status === 'failed' || task.value?.status === 'timed_out')
 
 const workspaceTo = computed(() => (caseItem.value ? `/cases/${caseItem.value.id}` : '/cases'))
 
@@ -43,6 +44,7 @@ async function load() {
   caseItem.value = null
   sentencingResult.value = null
   moduleAmounts.value = []
+  factsConfirmed.value = null
   if (!caseId.value || isPlaceholderCaseId(caseId.value)) {
     loading.value = false
     return
@@ -54,6 +56,7 @@ async function load() {
       // 金额口径读已确认事实快照（定罪/量刑 payload 均不含金额明细）
       const factsHead = await apiV2.getFactsHead(caseId.value)
       const confirmedId = factsHead.confirmedFactsVersionId as string | null
+      factsConfirmed.value = Boolean(confirmedId)
       if (confirmedId) {
         const version = await apiV2.getFactsVersion(caseId.value, confirmedId)
         const payload = version.payload
@@ -92,8 +95,6 @@ watch(result, (payload) => {
     normalized.amounts = moduleAmounts.value
   }
   sentencingResult.value = normalized
-  analysisStatus.value = typeof rec.status === 'string' ? rec.status
-    : typeof rec.analysisStatus === 'string' ? rec.analysisStatus : ''
   humanReviewRequired.value = rec.human_review_required === true || rec.humanReviewRequired === true
 })
 
@@ -102,7 +103,6 @@ async function runSentencing() {
   creating.value = true
   createError.value = ''
   sentencingResult.value = null
-  analysisStatus.value = ''
   humanReviewRequired.value = false
   try {
     const created = await apiV2.dispatchModuleExecution(caseItem.value.id, 'sentencing')
@@ -157,6 +157,11 @@ watch(caseId, () => {
       <button class="button button-quiet" type="button" @click="load">重试</button>
     </div>
     <template v-else>
+      <p v-if="factsConfirmed === false" class="notice notice-warning" role="note">
+        <strong>案件事实尚未确认</strong>
+        <span>量刑分析以已确认事实快照为输入，请先在案件工作区确认事实，再运行。</span>
+        <RouterLink :to="workspaceTo">前往案件工作区</RouterLink>
+      </p>
       <section class="panel">
         <div class="panel-heading"><div><p class="section-index">01</p><h2>量刑分析</h2></div></div>
         <p class="panel-note">按已确认事实快照逐档计算量刑区间并留痕；需事实已确认且量刑规则已会签。结果为辅助意见，须人工复核。</p>
@@ -174,9 +179,10 @@ watch(caseId, () => {
         <p v-if="createError" class="notice notice-error" role="alert">{{ createError }}</p>
         <p v-if="taskError" class="notice notice-error" role="alert">{{ taskError }}</p>
         <p v-if="task && !taskTerminal" class="subtle-text">任务 {{ task.id }} · {{ task.currentStage || '排队中' }}…</p>
-        <p v-if="task && task.status === 'failed'" class="notice notice-error" role="alert">
-          重放失败：{{ task.error || task.errorCode || '未知错误' }}
+        <p v-if="taskFailed" class="notice notice-error" role="alert">
+          重放失败：{{ task?.error || task?.errorCode || '未知错误' }}
         </p>
+        <button v-if="taskFailed" class="button button-quiet" type="button" :disabled="creating" @click="runSentencing">重试</button>
         <p v-if="task && task.status === 'waiting_review'" class="notice notice-info" role="note">
           已核口径已重放，结果待人工复核。<RouterLink to="/reviews">前往复核队列</RouterLink>
         </p>
@@ -184,7 +190,7 @@ watch(caseId, () => {
 
       <section v-if="sentencingResult" class="panel">
         <div class="panel-heading"><div><p class="section-index">02</p><h2>已核对宣告口径</h2></div></div>
-        <p v-if="analysisStatus === 'blocked'" class="notice notice-warning" role="note">
+        <p v-if="resultBlocked" class="notice notice-warning" role="note">
           <strong>重放被阻断</strong>
           <span>输入未满足已复核口径要求，以下为待确认项，不输出刑期。</span>
         </p>

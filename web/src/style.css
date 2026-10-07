@@ -315,6 +315,14 @@ input:disabled, textarea:disabled, select:disabled { color: var(--lc-muted); bac
   animation: home-hub-glow 3.2s ease-in-out infinite;
 }
 .home-float-hub img { width: 100%; height: 100%; object-fit: contain; }
+.home-strips {
+  position: absolute; left: 50%; top: 50%; width: 168px; height: 168px;
+  transform: translate(-50%, -50%); pointer-events: none;
+}
+.home-strip-ring {
+  fill: none; stroke: #7554f6; stroke-width: 6; stroke-linecap: round; stroke-opacity: .5;
+  stroke-dasharray: 56 78.04; animation: home-strip-run 12s linear infinite;
+}
 @keyframes home-float-bob {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-7px); }
@@ -328,6 +336,9 @@ input:disabled, textarea:disabled, select:disabled { color: var(--lc-muted); bac
 }
 @keyframes home-ring-spin {
   to { transform: rotate(360deg); }
+}
+@keyframes home-strip-run {
+  to { stroke-dashoffset: -134.04; }
 }
 @keyframes home-ring-breathe {
   0%, 100% { opacity: .35; transform: scale(.92); }
@@ -554,8 +565,10 @@ input:disabled, textarea:disabled, select:disabled { color: var(--lc-muted); bac
   .home-hero-copy h1 { font-size: 36px; }
   .is-home .home-search { display: none; }
   .home-trace-scene { display: grid; gap: 10px; min-height: 0; }
-  .home-trace-links, .home-deco-dots, .home-float-hub { display: none; }
+  .home-trace-links, .home-deco-dots { display: none; }
   .home-float { position: static; width: 100%; animation: none; }
+  .home-float-hub { position: relative; left: auto; top: auto; transform: none; width: 64px; height: 64px; margin: 0 auto; order: -1; }
+  .home-strips { width: 120px; height: 120px; }
   .metric-card { padding: 14px 16px; }
   .inline-data { grid-template-columns: 1fr; }
   .record-list a, .matter-table a { align-items: start; flex-direction: column; }
