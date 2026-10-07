@@ -29,10 +29,10 @@ try:
         PASSED,
         RELEASE_GATE,
         SCAN_RULES,
+        SKIPPED,
         Check,
         CheckOutcome,
         ScanRule,
-        SKIPPED,
     )
 except ModuleNotFoundError:  # direct ``python scripts/quality_gate.py`` execution
     from quality_gate_checks import (  # type: ignore[no-redef]
@@ -43,10 +43,10 @@ except ModuleNotFoundError:  # direct ``python scripts/quality_gate.py`` executi
         PASSED,
         RELEASE_GATE,
         SCAN_RULES,
+        SKIPPED,
         Check,
         CheckOutcome,
         ScanRule,
-        SKIPPED,
     )
 
 MASK = "***MASKED***"
