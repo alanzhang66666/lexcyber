@@ -81,6 +81,7 @@ class V2RenderLifecycleTest {
         publications = new ArtifactPublicationService(jdbc, new StalePropagationService(jdbc));
         TaskService tasks = new TaskService(jdbc, MAPPER);
         EngineCapabilitiesClient capabilities = mock(EngineCapabilitiesClient.class);
+        when(capabilities.moduleAvailable(anyString())).thenReturn(true);
         when(capabilities.templateAvailable(anyString())).thenReturn(true);
         lifecycle = new V2LifecycleService(jdbc, cases, facts,
                 new ModuleConfirmationService(jdbc), new DraftApprovalService(jdbc),
@@ -126,6 +127,72 @@ class V2RenderLifecycleTest {
         assertEquals(Boolean.FALSE, jdbc.queryForObject(
                 "SELECT stale FROM app.module_head WHERE case_id = ?::uuid AND module = 'compliance'",
                 Boolean.class, caseView.id()));
+    }
+
+    @Test
+    void sentencingRequiresEffectiveConvictionAndFreezesItsArtifactDependency() throws Exception {
+        ApiException missingConviction = assertThrows(ApiException.class,
+                () -> lifecycle.dispatchModuleExecution(owner, caseView.id(), "sentencing"));
+        assertEquals("MODULE_NOT_CONFIRMED", missingConviction.code());
+        assertEquals(0, jdbc.queryForObject(
+                "SELECT COUNT(*) FROM app.task_dispatch_outbox WHERE task_id IN "
+                        + "(SELECT id FROM app.tasks WHERE case_id = ?::uuid)", Integer.class, caseView.id()));
+
+        UUID convictionV1 = insertConfirmedModuleVersion(caseView.id(), "conviction", "{\"rule\":\"v1\"}");
+        Map<String, Object> dispatched = lifecycle.dispatchModuleExecution(owner, caseView.id(), "sentencing");
+        UUID taskId = (UUID) dispatched.get("taskId");
+        Map<String, Object> task = jdbc.queryForMap(
+                "SELECT execution_id, request_id FROM app.tasks WHERE id = ?", taskId);
+        UUID executionId = (UUID) task.get("execution_id");
+        UUID requestId = (UUID) task.get("request_id");
+        JsonNode dispatch = MAPPER.readTree(jdbc.queryForObject(
+                "SELECT payload_json::text FROM app.task_dispatch_outbox WHERE task_id = ? AND execution_id = ?",
+                String.class, taskId, executionId));
+        assertEquals(convictionV1.toString(), dispatch.get("metadata").get("artifactVersions")
+                .get("conviction").asText());
+
+        String content = MAPPER.writeValueAsString(Map.of(
+                "schema_version", "sentencing.v2", "status", "calculated",
+                "dependency_snapshot", Map.of("facts_version_id", factsVersion.toString(),
+                        "artifacts", List.of(Map.of("module", "conviction",
+                                "artifactVersionId", convictionV1.toString()))),
+                "results", List.of()));
+        JsonNode dispatchIdentity = dispatch;
+        ResultEnvelope callback = new ResultEnvelope(executionId, taskId, requestId,
+                UUID.fromString(dispatchIdentity.get("result_id").asText()),
+                dispatchIdentity.get("result_version").asInt(), "sentencing.v2", "completed",
+                "sentencing", content, FactsBaselineService.sha256(content), null, null, false,
+                null, null, "sentencing-v1", Map.of("human_review_required", true));
+        // The frozen conviction is allowed to complete after the upstream has
+        // advanced; confirmation, rather than callback delivery, rejects it.
+        publications.publish(new ArtifactPublicationService.PublishRequest(
+                caseView.id(), "conviction", "module:conviction", "module.v2", "calculated",
+                "{\"rule\":\"v2\"}", "[]", "{}", factsVersion, List.of(), List.of(),
+                null, null, "conviction-v2"));
+        tx.execute(status -> {
+            results.accept(callback);
+            return null;
+        });
+
+        UUID sentencingV1 = jdbc.queryForObject("""
+                SELECT v.artifact_version_id FROM app.artifact_version v
+                JOIN app.artifact_stream s ON s.artifact_stream_id = v.artifact_stream_id
+                WHERE s.case_id = ?::uuid AND s.kind = 'sentencing'
+                  AND s.scope_key = 'module:sentencing'
+                """, UUID.class, caseView.id());
+        assertEquals(convictionV1, jdbc.queryForObject(
+                "SELECT depends_on_artifact_version_id FROM app.artifact_artifact_dependency "
+                        + "WHERE artifact_version_id = ?", UUID.class, sentencingV1));
+
+        Map<String, Object> opened = lifecycle.openReview(owner, sentencingV1, "review sentencing");
+        UUID reviewId = (UUID) opened.get("reviewId");
+        ApiException stale = assertThrows(ApiException.class, () -> tx.execute(status -> {
+            reviews.decide(owner, reviewId, "approve", 1, "owner", "approve");
+            return null;
+        }));
+        assertEquals("MODULE_NOT_CONFIRMED", stale.code());
+        assertEquals("pending", jdbc.queryForObject(
+                "SELECT status FROM app.review_records WHERE review_id = ?", String.class, reviewId));
     }
 
     @Test

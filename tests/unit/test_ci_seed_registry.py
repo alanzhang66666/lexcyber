@@ -71,7 +71,8 @@ def test_fixture_inputs_drive_all_real_adapters(monkeypatch):
         },
     }
     base = {"case_id": "case-ci", "input_snapshot_ref": "facts_version:00000000-0000-0000-0000-000000000002",
-            "metadata": {"factsSnapshot": snapshot}}
+            "metadata": {"factsSnapshot": snapshot,
+                         "artifactVersions": {"conviction": "00000000-0000-0000-0000-000000000003"}}}
     compliance = module_analysis.analyze({**base, "metadata": {**base["metadata"]}}, "compliance.analyze")["final_output"]
     conviction = module_analysis.analyze({**base, "metadata": {**base["metadata"]}}, "conviction.analyze")["final_output"]
     sentencing = sentencing_v2.calculate_v2(base)["final_output"]

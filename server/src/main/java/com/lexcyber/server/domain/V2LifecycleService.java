@@ -217,6 +217,10 @@ public class V2LifecycleService {
         metadata.put("module", module);
         metadata.put("factsVersionId", factsVersionId.toString());
         metadata.put("factsSnapshot", factsPayload);
+        if (ModulePolicies.SENTENCING.equals(module)) {
+            UUID convictionVersionId = moduleConfirmation.requireEffectiveConviction(caseId);
+            metadata.put("artifactVersions", Map.of("conviction", convictionVersionId.toString()));
+        }
         TaskView task = tasks.createModuleTask(
                 new TaskCreate("module:" + module, caseId, null, metadata));
         Map<String, Object> view = new LinkedHashMap<>();

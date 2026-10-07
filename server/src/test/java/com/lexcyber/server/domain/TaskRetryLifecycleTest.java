@@ -120,6 +120,37 @@ class TaskRetryLifecycleTest {
         assertFalse(metadata.contains("_dispatchOrigin"));
     }
 
+    @Test
+    void sentencingRetryRequiresItsOriginalConvictionToRemainEffective() {
+        when(capabilities.moduleAvailable("sentencing")).thenReturn(true);
+        ArtifactPublicationService publications = new ArtifactPublicationService(jdbc, new StalePropagationService(jdbc));
+        UUID conviction = publications.publish(new ArtifactPublicationService.PublishRequest(
+                caseId, "conviction", "module:conviction", "case.conviction.v2", "calculated",
+                "{}", "[]", "{}", factsVersion, java.util.List.of(), java.util.List.of(),
+                null, null, "conviction-first")).artifactVersionId();
+        new ModuleConfirmationService(jdbc).confirm(caseId, "conviction", owner);
+        UUID taskId = tasks.createModuleTask(new TaskCreate("module:sentencing", caseId, null,
+                Map.of("taskType", TaskPolicies.SENTENCING_CALCULATE, "module", "sentencing",
+                        "factsVersionId", factsVersion.toString(), "factsSnapshot", Map.of("items", java.util.List.of()),
+                        "artifactVersions", Map.of("conviction", conviction.toString())))).id();
+        jdbc.update("UPDATE app.tasks SET status='failed' WHERE id=?", taskId);
+        tasks.retry(taskId);
+        assertEquals(2, jdbc.queryForObject("SELECT COUNT(*) FROM app.task_dispatch_outbox WHERE task_id=?", Integer.class, taskId));
+        jdbc.update("UPDATE app.tasks SET status='failed' WHERE id=?", taskId);
+        publications.publish(new ArtifactPublicationService.PublishRequest(
+                caseId, "conviction", "module:conviction", "case.conviction.v2", "calculated",
+                "{\"changed\":true}", "[]", "{}", factsVersion, java.util.List.of(), java.util.List.of(),
+                null, null, "conviction-second"));
+        ApiException stale = assertThrows(ApiException.class, () -> tasks.retry(taskId));
+        assertEquals("DEPENDENCY_STALE", stale.code());
+        assertEquals(2, jdbc.queryForObject("SELECT COUNT(*) FROM app.task_dispatch_outbox WHERE task_id=?", Integer.class, taskId));
+        assertEquals("failed", jdbc.queryForObject("SELECT status FROM app.tasks WHERE id=?", String.class, taskId));
+        new ModuleConfirmationService(jdbc).confirm(caseId, "conviction", owner);
+        ApiException replaced = assertThrows(ApiException.class, () -> tasks.retry(taskId));
+        assertEquals("DEPENDENCY_STALE", replaced.code());
+        assertEquals(2, jdbc.queryForObject("SELECT COUNT(*) FROM app.task_dispatch_outbox WHERE task_id=?", Integer.class, taskId));
+    }
+
     private UUID createV2Task() {
         TaskView task = tasks.createModuleTask(new TaskCreate("module:compliance", caseId, null,
                 Map.of("taskType", TaskPolicies.COMPLIANCE_ANALYZE, "module", "compliance",

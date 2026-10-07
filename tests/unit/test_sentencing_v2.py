@@ -46,7 +46,8 @@ SNAPSHOT = {
 
 def _payload():
     return {"case_id": "c1", "input_snapshot_ref": "facts_version:fv-7",
-            "metadata": {"taskType": "sentencing.calculate", "factsSnapshot": SNAPSHOT}}
+            "metadata": {"taskType": "sentencing.calculate", "factsSnapshot": SNAPSHOT,
+                         "artifactVersions": {"conviction": "cv-3"}}}
 
 
 def test_calculated_with_steps_and_clamp(monkeypatch):
@@ -62,6 +63,9 @@ def test_calculated_with_steps_and_clamp(monkeypatch):
     assert ops[0] == "base_tier" and "fixed_months" in ops
     assert body["human_review_required"] is True
     assert body["dependency_snapshot"]["facts_version_id"] == "fv-7"
+    assert body["dependency_snapshot"]["artifacts"] == [
+        {"module": "conviction", "artifactVersionId": "cv-3"}
+    ]
 
 
 def test_no_tier_fires_blocked(monkeypatch):
@@ -100,3 +104,11 @@ def test_missing_snapshot_fails_closed():
     with pytest.raises(ModuleAnalysisError) as err:
         calculate_v2(payload)
     assert err.value.code == "FACTS_SNAPSHOT_MISSING"
+
+
+def test_missing_confirmed_conviction_fails_closed():
+    payload = _payload()
+    del payload["metadata"]["artifactVersions"]
+    with pytest.raises(ModuleAnalysisError) as err:
+        calculate_v2(payload)
+    assert err.value.code == "CONVICTION_NOT_CONFIRMED"

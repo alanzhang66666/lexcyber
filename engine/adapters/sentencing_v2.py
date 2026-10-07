@@ -37,6 +37,12 @@ def calculate_v2(payload: dict[str, Any]) -> dict[str, Any]:
     input_ref = payload.get("input_snapshot_ref") or ""
     facts_version_id = (input_ref[len("facts_version:"):]
                         if input_ref.startswith("facts_version:") else None)
+    artifact_versions = metadata.get("artifactVersions") or {}
+    conviction_version_id = artifact_versions.get("conviction")
+    if not isinstance(conviction_version_id, str) or not conviction_version_id:
+        raise ModuleAnalysisError(
+            "CONVICTION_NOT_CONFIRMED",
+            "量刑执行缺少派发时冻结的有效定罪工件版本")
 
     rules = registry.active_rules("sentencing")
     if not rules:
@@ -90,6 +96,8 @@ def calculate_v2(payload: dict[str, Any]) -> dict[str, Any]:
         "blockers": blockers,
         "dependency_snapshot": {
             "facts_version_id": facts_version_id,
+            "artifacts": [{"module": "conviction",
+                            "artifactVersionId": conviction_version_id}],
             "rules": [{"ruleId": r["ruleId"], "ruleVersion": r["ruleVersion"],
                        "contentHash": r["contentHash"]} for r in rules],
         },

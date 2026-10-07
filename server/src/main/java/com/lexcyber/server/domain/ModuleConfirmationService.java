@@ -32,9 +32,84 @@ public class ModuleConfirmationService {
     }
 
     public void requireEffectiveConfirmation(String caseId, String module) {
-        if (!isEffectivelyConfirmed(caseId, module)) {
+        requireEffectiveArtifactVersion(caseId, module);
+    }
+
+    /**
+     * Returns the exact effective version while holding the module stream and
+     * head shares.  Downstream execution gates use this method so a publisher
+     * cannot replace the upstream version between the gate and task creation.
+     */
+    public UUID requireEffectiveArtifactVersion(String caseId, String module) {
+        lockFactsHead(caseId);
+        List<UUID> streamIds = jdbc.query("""
+                SELECT artifact_stream_id FROM app.module_head
+                WHERE case_id = ?::uuid AND module = ?
+                """, (rs, ignored) -> rs.getObject(1, UUID.class), caseId, module);
+        if (streamIds.isEmpty()) {
             throw new ApiException(HttpStatus.CONFLICT, "MODULE_NOT_CONFIRMED",
                     "模块尚无有效确认（未确认或已失效）");
+        }
+        UUID streamId = streamIds.get(0);
+        // Explicit stream lock before head lock.  This makes the lock order
+        // visible and prevents the planner from taking the head first.
+        jdbc.queryForObject("""
+                SELECT artifact_stream_id FROM app.artifact_stream
+                WHERE artifact_stream_id = ? FOR SHARE
+                """, UUID.class, streamId);
+        Map<String, Object> head = jdbc.queryForMap("""
+                SELECT confirmed_version_id, stale FROM app.module_head
+                WHERE case_id = ?::uuid AND module = ? FOR SHARE
+                """, caseId, module);
+        UUID confirmed = (UUID) head.get("confirmed_version_id");
+        if (confirmed == null || Boolean.TRUE.equals(head.get("stale"))) {
+            throw new ApiException(HttpStatus.CONFLICT, "MODULE_NOT_CONFIRMED",
+                    "模块尚无有效确认（未确认或已失效）");
+        }
+        return confirmed;
+    }
+
+    private void lockFactsHead(String caseId) {
+        // Legacy demo artifacts may have no facts dependency/head. Lock an
+        // existing baseline without turning that compatibility path into 500.
+        // v2 dispatch separately requires a confirmed baseline.
+        jdbc.queryForList("""
+                SELECT case_id FROM app.facts_head
+                WHERE case_id = ?::uuid FOR SHARE
+                """, caseId);
+    }
+
+    /**
+     * Sentencing's upstream gate.  The conviction stream is locked before a
+     * sentencing stream can be published, preserving the ordered-stream lock
+     * rule.  The returned id is the exact frozen dependency to put in task
+     * metadata and the engine result.
+     */
+    public UUID requireEffectiveConviction(String caseId) {
+        return requireEffectiveArtifactVersion(caseId, ModulePolicies.CONVICTION);
+    }
+
+    /**
+     * Defensive confirmation check for a sentencing artifact.  The upstream
+     * share locks are held by the surrounding transaction until the head move.
+     */
+    private void requireSentencingDependency(String caseId, UUID sentencingVersionId,
+                                             UUID convictionVersionId) {
+        Long dependency = jdbc.queryForObject("""
+                SELECT COUNT(*)
+                FROM app.artifact_artifact_dependency d
+                JOIN app.artifact_version upstream
+                  ON upstream.artifact_version_id = d.depends_on_artifact_version_id
+                JOIN app.artifact_stream s
+                  ON s.artifact_stream_id = upstream.artifact_stream_id
+                WHERE d.artifact_version_id = ?
+                  AND d.depends_on_artifact_version_id = ?
+                  AND s.case_id = ?::uuid AND s.kind = 'conviction'
+                  AND s.scope_key = 'module:conviction'
+                """, Long.class, sentencingVersionId, convictionVersionId, caseId);
+        if (dependency == null || dependency != 1L) {
+            throw new ApiException(HttpStatus.CONFLICT, "DEPENDENCY_STALE",
+                    "量刑版本未冻结当前有效定罪工件，确认被阻断");
         }
     }
 
@@ -53,6 +128,16 @@ public class ModuleConfirmationService {
             throw new ApiException(HttpStatus.NOT_FOUND, "MODULE_NOT_FOUND", "模块 head 不存在");
         }
         UUID streamId = (UUID) heads.get(0).get("artifact_stream_id");
+
+        // Ordered stream locks: conviction (upstream) before sentencing
+        // (downstream), then the downstream head.  Other modules retain the
+        // existing stream → head confirmation path.
+        UUID convictionVersionId = null;
+        if (ModulePolicies.SENTENCING.equals(module)) {
+            convictionVersionId = requireEffectiveConviction(caseId);
+        } else {
+            lockFactsHead(caseId);
+        }
 
         Map<String, Object> stream = jdbc.queryForMap("""
                 SELECT latest_version_id FROM app.artifact_stream
@@ -99,6 +184,9 @@ public class ModuleConfirmationService {
                     """, module + "@" + caseId, caseId, module, latest.toString());
             throw new ApiException(HttpStatus.CONFLICT, "DEPENDENCY_STALE",
                     "依赖快照已失效（stale 传播漏网），已阻断并记录");
+        }
+        if (ModulePolicies.SENTENCING.equals(module)) {
+            requireSentencingDependency(caseId, latest, convictionVersionId);
         }
         jdbc.update("""
                 UPDATE app.module_head

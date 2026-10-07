@@ -252,21 +252,40 @@ public class TaskService {
         if (!frozen.equals(current)) {
             throw new ApiException(HttpStatus.CONFLICT, "DEPENDENCY_STALE", "案件事实已变更，必须重新派发");
         }
-        if (TaskPolicies.DRAFT_RENDER.equals(taskType)) requireFrozenDraftInputs(caseId, metadata);
+        if (TaskPolicies.SENTENCING_CALCULATE.equals(taskType)) {
+            Object versions = metadata.get("artifactVersions");
+            if (!(versions instanceof Map<?, ?> map) || map.size() != 1 || !map.containsKey("conviction")) {
+                throw new ApiException(HttpStatus.CONFLICT, "DEPENDENCY_STALE", "量刑重试缺少冻结定罪版本");
+            }
+        }
+        if (TaskPolicies.DRAFT_RENDER.equals(taskType) || TaskPolicies.SENTENCING_CALCULATE.equals(taskType)) {
+            requireFrozenArtifactInputs(caseId, metadata);
+        }
         return frozen;
     }
 
-    private void requireFrozenDraftInputs(String caseId, Map<String, Object> metadata) {
+    private void requireFrozenArtifactInputs(String caseId, Map<String, Object> metadata) {
         Object versions = metadata.get("artifactVersions");
         if (!(versions instanceof Map<?, ?> map)) {
-            throw new ApiException(HttpStatus.CONFLICT, "DEPENDENCY_STALE", "文书上游依赖快照缺失");
+            throw new ApiException(HttpStatus.CONFLICT, "DEPENDENCY_STALE", "上游依赖快照缺失");
         }
         for (Map.Entry<?, ?> entry : map.entrySet()) {
             UUID version;
             try {
                 version = UUID.fromString(String.valueOf(entry.getValue()));
             } catch (IllegalArgumentException ex) {
-                throw new ApiException(HttpStatus.CONFLICT, "DEPENDENCY_STALE", "文书上游依赖版本无效", ex);
+                throw new ApiException(HttpStatus.CONFLICT, "DEPENDENCY_STALE", "上游依赖版本无效", ex);
+            }
+            // Keep the upstream version effective until the new outbox entry is
+            // committed, using the same stream → head gate as first dispatch.
+            try {
+                UUID effective = new ModuleConfirmationService(jdbc)
+                        .requireEffectiveArtifactVersion(caseId, String.valueOf(entry.getKey()));
+                if (!version.equals(effective)) {
+                    throw new ApiException(HttpStatus.CONFLICT, "DEPENDENCY_STALE", "上游版本已变更，必须重新派发");
+                }
+            } catch (ApiException unavailable) {
+                throw new ApiException(HttpStatus.CONFLICT, "DEPENDENCY_STALE", "上游模块已失效，必须重新派发", unavailable);
             }
             Long valid = jdbc.queryForObject("""
                     SELECT COUNT(*) FROM app.module_head h
@@ -276,7 +295,7 @@ public class TaskService {
                       AND s.latest_version_id = ?
                     """, Long.class, caseId, String.valueOf(entry.getKey()), version, version);
             if (valid == null || valid == 0L) {
-                throw new ApiException(HttpStatus.CONFLICT, "DEPENDENCY_STALE", "文书上游模块已变更，必须重新派发");
+                throw new ApiException(HttpStatus.CONFLICT, "DEPENDENCY_STALE", "上游模块已变更，必须重新派发");
             }
         }
     }

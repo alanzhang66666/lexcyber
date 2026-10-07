@@ -256,6 +256,48 @@ public class EngineResultService {
                 throw new ResponseStatusException(HttpStatus.CONFLICT, "render facts snapshot mismatch");
             }
         }
+        if ("sentencing".equals(kind) && metadata.get("artifactVersions") instanceof Map<?, ?> frozen) {
+            Object frozenConviction = frozen.get("conviction");
+            List<?> returned = dep.get("artifacts") instanceof List<?> refs ? refs : List.of();
+            if (frozenConviction == null || returned.size() != 1) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "sentencing dependency snapshot mismatch");
+            }
+            Object entry = returned.get(0);
+            if (!(entry instanceof Map<?, ?> ref)
+                    || !"conviction".equals(String.valueOf(ref.get("module")))
+                    || !String.valueOf(frozenConviction).equals(String.valueOf(ref.get("artifactVersionId")))) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "sentencing dependency snapshot mismatch");
+            }
+            UUID convictionVersionId;
+            try {
+                convictionVersionId = UUID.fromString(String.valueOf(frozenConviction));
+            } catch (IllegalArgumentException invalidId) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "sentencing dependency snapshot mismatch", invalidId);
+            }
+            Long owned = jdbc.queryForObject("""
+                    SELECT COUNT(*)
+                    FROM app.artifact_version v
+                    JOIN app.artifact_stream s ON s.artifact_stream_id = v.artifact_stream_id
+                    WHERE v.artifact_version_id = ? AND s.case_id = ?::uuid
+                      AND s.kind = 'conviction' AND s.scope_key = 'module:conviction'
+                    """, Long.class, convictionVersionId, caseId);
+            if (owned == null || owned != 1L) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "sentencing dependency belongs to another stream");
+            }
+            Object frozenFacts = metadata.get("factsVersionId");
+            String inputRef = String.valueOf(task.get("input_snapshot_ref"));
+            if (frozenFacts == null || factsVersionId == null
+                    || !String.valueOf(frozenFacts).equals(String.valueOf(factsVersionId))
+                    || !inputRef.equals("facts_version:" + frozenFacts)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "sentencing facts snapshot mismatch");
+            }
+            artifactDeps.add(convictionVersionId);
+        }
 
         var result = artifacts.publish(new ArtifactPublicationService.PublishRequest(
                 caseId, kind, scopeKey, schemaVersion, outcome, payload.contentJson(),
