@@ -224,6 +224,9 @@ public class V2LifecycleService {
         view.put("executionId", task.executionId());
         view.put("status", task.status());
         view.put("module", module);
+        view.put("state", "queued");
+        view.put("caseId", caseId);
+        view.put("createdAt", task.createdAt());
         return view;
     }
 

@@ -4,11 +4,21 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lexcyber.server.domain.ArtifactPublicationService;
+import com.lexcyber.server.domain.CaseService;
+import com.lexcyber.server.domain.DraftApprovalService;
+import com.lexcyber.server.domain.IdempotencyService;
+import com.lexcyber.server.domain.ModuleConfirmationService;
 import com.lexcyber.server.domain.StalePropagationService;
+import com.lexcyber.server.review.ReviewService;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import javax.sql.DataSource;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
@@ -16,7 +26,9 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.server.ResponseStatusException;
 import org.testcontainers.containers.PostgreSQLContainer;
 
@@ -185,6 +197,89 @@ class EngineResultServiceTest {
         UUID unboundResult = UUID.randomUUID();
         assertThrows(ResponseStatusException.class,
                 () -> service.accept(envelope(currentExecution, unboundResult, "{\"x\":2}", false)));
+    }
+
+    @Test
+    void concurrentFirstAcceptPublishesOnceAndReplayAfterApprovalDoesNotReopenOrRegress() throws Exception {
+        UUID resultId = UUID.randomUUID();
+        addDispatch(currentExecution, resultId, 1);
+        String content = "{\"ok\":true,\"race\":true}";
+        ResultEnvelope callback = envelope(currentExecution, resultId, content, true);
+        TransactionTemplate boundedTx = new TransactionTemplate(
+                new DataSourceTransactionManager(jdbc.getDataSource()));
+        boundedTx.setTimeout(10);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            CyclicBarrier firstStart = new CyclicBarrier(2);
+            Future<Map<String, Object>> first = submitAccept(executor, firstStart, boundedTx, callback);
+            Future<Map<String, Object>> second = submitAccept(executor, firstStart, boundedTx, callback);
+            assertEquals(Boolean.FALSE, first.get(5, TimeUnit.SECONDS).get("stale"));
+            assertEquals(Boolean.FALSE, second.get(5, TimeUnit.SECONDS).get("stale"));
+
+            UUID artifactVersion = jdbc.queryForObject("""
+                    SELECT v.artifact_version_id
+                    FROM app.artifact_version v JOIN app.artifact_stream s
+                      ON s.artifact_stream_id = v.artifact_stream_id
+                    WHERE v.execution_id = ?
+                    """, UUID.class, currentExecution);
+            UUID reviewId = jdbc.queryForObject(
+                    "SELECT review_id FROM app.review_records WHERE artifact_version_id = ?",
+                    UUID.class, artifactVersion);
+            assertEquals(1L, jdbc.queryForObject(
+                    "SELECT count(*) FROM app.artifact_version WHERE execution_id = ?",
+                    Long.class, currentExecution));
+            assertEquals(1L, jdbc.queryForObject(
+                    "SELECT count(*) FROM app.execution_publication WHERE execution_id = ?",
+                    Long.class, currentExecution));
+            assertEquals(1L, jdbc.queryForObject(
+                    "SELECT count(*) FROM app.review_records WHERE artifact_version_id = ?",
+                    Long.class, artifactVersion));
+            assertEquals(artifactVersion, jdbc.queryForObject("""
+                    SELECT latest_version_id FROM app.artifact_stream
+                    WHERE case_id = ? AND kind = 'parse' AND scope_key = ?
+                    """, UUID.class, caseId, "document:" + documentId));
+
+            ReviewService reviews = new ReviewService(jdbc,
+                    new CaseService(jdbc, new ObjectMapper().findAndRegisterModules(),
+                            new IdempotencyService(jdbc)),
+                    new IdempotencyService(jdbc), new ModuleConfirmationService(jdbc),
+                    new DraftApprovalService(jdbc));
+            boundedTx.execute(status -> {
+                reviews.decide(account, reviewId, "approve", 1, "test", "approved after first publish");
+                return null;
+            });
+            assertEquals("approved", jdbc.queryForObject(
+                    "SELECT status FROM app.review_records WHERE review_id = ?", String.class, reviewId));
+
+            CyclicBarrier replayStart = new CyclicBarrier(2);
+            Future<Map<String, Object>> replayOne = submitAccept(executor, replayStart, boundedTx, callback);
+            Future<Map<String, Object>> replayTwo = submitAccept(executor, replayStart, boundedTx, callback);
+            replayOne.get(5, TimeUnit.SECONDS);
+            replayTwo.get(5, TimeUnit.SECONDS);
+            assertEquals(1L, jdbc.queryForObject(
+                    "SELECT count(*) FROM app.artifact_version WHERE execution_id = ?",
+                    Long.class, currentExecution));
+            assertEquals(1L, jdbc.queryForObject(
+                    "SELECT count(*) FROM app.execution_publication WHERE execution_id = ?",
+                    Long.class, currentExecution));
+            assertEquals(1L, jdbc.queryForObject(
+                    "SELECT count(*) FROM app.review_records WHERE artifact_version_id = ?",
+                    Long.class, artifactVersion));
+            assertEquals("approved", jdbc.queryForObject(
+                    "SELECT status FROM app.review_records WHERE review_id = ?", String.class, reviewId));
+            assertEquals("waiting_review", jdbc.queryForObject(
+                    "SELECT status FROM app.tasks WHERE id = ?", String.class, taskId));
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    private Future<Map<String, Object>> submitAccept(ExecutorService executor, CyclicBarrier start,
+            TransactionTemplate boundedTx, ResultEnvelope callback) {
+        return executor.submit(() -> {
+            start.await();
+            return boundedTx.execute(status -> service.accept(callback));
+        });
     }
 
     private ResultEnvelope envelope(UUID execution, UUID resultId, String content, boolean review) {

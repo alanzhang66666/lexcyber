@@ -2,6 +2,7 @@ import type {
   ApiErrorPayload,
   AuthLogin,
   AuthRegister,
+  ArchiveView,
   CaseCreate,
   CaseView,
   DocumentRole,
@@ -12,6 +13,8 @@ import type {
   DraftView,
   FactUpdate,
   FactView,
+  FactsDiffView,
+  FactsEntityKind,
   ModuleStateUpdate,
   ModuleStateView,
   ModelAccessConfigUpdate,
@@ -288,7 +291,7 @@ export const apiV2 = {
     return request<Record<string, unknown>>(`/v2/cases/${encodeURIComponent(caseId)}/facts-entities`)
   },
 
-  replaceFactsEntities(caseId: string, kind: string, items: unknown[]) {
+  replaceFactsEntities(caseId: string, kind: FactsEntityKind, items: unknown[]) {
     return request<Record<string, unknown>>(
       `/v2/cases/${encodeURIComponent(caseId)}/facts-entities/${encodeURIComponent(kind)}`,
       { method: 'PUT', body: JSON.stringify({ items }) },
@@ -299,6 +302,11 @@ export const apiV2 = {
     return request<Record<string, unknown>>(`/v2/cases/${encodeURIComponent(caseId)}/facts-versions`, {
       method: 'POST',
     })
+  },
+
+  diffFactsVersion(caseId: string, factsVersionId: string, againstFactsVersionId: string) {
+    return request<FactsDiffView>(
+      `/v2/cases/${encodeURIComponent(caseId)}/facts-versions/${encodeURIComponent(factsVersionId)}/diff?against=${encodeURIComponent(againstFactsVersionId)}`)
   },
 
   confirmFactsVersion(caseId: string, factsVersionId: string, expectedConfirmedId: string | null) {
@@ -377,5 +385,10 @@ export const apiV2 = {
     return request<Record<string, unknown>>(`/v2/cases/${encodeURIComponent(caseId)}/archives`, {
       method: 'POST', body: JSON.stringify({ archiveProfile }),
     })
+  },
+
+  getArchive(caseId: string, archiveId: string) {
+    return request<ArchiveView>(
+      `/v2/cases/${encodeURIComponent(caseId)}/archives/${encodeURIComponent(archiveId)}`)
   },
 }

@@ -91,9 +91,9 @@ describe('typed API client', () => {
     const fetchMock = vi.fn().mockResolvedValue(response({ items: [] }))
     vi.stubGlobal('fetch', fetchMock)
 
-    await apiV2.replaceFactsEntities('case-7', 'fact', [{ key: '涉案金额', value: '1000' }])
+    await apiV2.replaceFactsEntities('case-7', 'facts', [{ key: '涉案金额', value: '1000' }])
 
-    expect(fetchMock).toHaveBeenCalledWith('/v2/cases/case-7/facts-entities/fact',
+    expect(fetchMock).toHaveBeenCalledWith('/v2/cases/case-7/facts-entities/facts',
       expect.objectContaining({
         method: 'PUT',
         body: JSON.stringify({ items: [{ key: '涉案金额', value: '1000' }] }),
@@ -123,6 +123,32 @@ describe('typed API client', () => {
       expect.objectContaining({
         body: JSON.stringify({ expectedConfirmedFactsVersionId: null }),
       }))
+  })
+
+  it('uses the facts version diff contract with an against query', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(response({
+      caseId: 'case-7', fromFactsVersionId: 'fv-1', toFactsVersionId: 'fv-2', sections: {},
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await apiV2.diffFactsVersion('case-7', 'fv-2', 'fv-1')
+
+    expect(fetchMock).toHaveBeenCalledWith('/v2/cases/case-7/facts-versions/fv-2/diff?against=fv-1', expect.anything())
+  })
+
+  it('creates and reads a case archive through the v2 contract', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(response({ archiveId: 'arc-1' }, 201))
+      .mockResolvedValueOnce(response({ archiveId: 'arc-1', manifestHash: 'sha256:x' }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await apiV2.createArchive('case-7')
+    await apiV2.getArchive('case-7', 'arc-1')
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, '/v2/cases/case-7/archives', expect.objectContaining({
+      method: 'POST', body: JSON.stringify({ archiveProfile: 'case.full.v1' }),
+    }))
+    expect(fetchMock).toHaveBeenNthCalledWith(2, '/v2/cases/case-7/archives/arc-1', expect.anything())
   })
 
   it('dispatches a module execution through /v2', async () => {

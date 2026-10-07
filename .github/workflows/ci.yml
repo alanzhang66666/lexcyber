@@ -79,6 +79,7 @@ jobs:
       - name: Validate contracts
         run: |
           openapi-spec-validator contracts/public-api.yaml
+          openapi-spec-validator contracts/public-api-v2.yaml
           openapi-spec-validator contracts/internal-engine-api.yaml
           python scripts/check_openapi_snapshot.py
 
@@ -96,8 +97,13 @@ jobs:
       - uses: actions/checkout@v4
       - name: Start 0.8 stack
         run: docker compose -f docker-compose.yml up -d --build
-      - name: Exercise tasks, document storage and authenticated review
-        run: python3 scripts/ci_compose_smoke.py
+      - name: Exercise document storage and full v2 lifecycle
+        run: python3 scripts/ci_compose_smoke.py --with-lifecycle
+      - name: Verify concurrent confirmation, publication and archive
+        run: |
+          docker compose -f docker-compose.yml exec -T engine python - \
+            --base-url http://nginx:8080 --engine-url http://engine:8100 \
+            --java-url http://java:8080 --require-all < scripts/concurrency_check.py
       - if: always()
         run: docker compose -f docker-compose.yml logs --no-color
       - if: always()

@@ -28,6 +28,7 @@ paths:
       parameters: [{ $ref: '#/components/parameters/CaseId' }]
       responses:
         '200':
+          description: FactsVersion 历史列表（元数据，不含 payload）
           content:
             application/json:
               schema:
@@ -47,6 +48,7 @@ paths:
         - { $ref: '#/components/parameters/FactsVersionId' }
       responses:
         '200':
+          description: FactsVersion 明细（含不可变 payload 全文）
           content:
             application/json:
               schema: { $ref: '#/components/schemas/FactsVersionDetailView' }
@@ -66,6 +68,7 @@ paths:
           description: 基准版本 id；返回从 against 到 factsVersionId 的差异
       responses:
         '200':
+          description: 与另一版本逐条对比（added/removed/changed，按节分组）
           content:
             application/json:
               schema: { $ref: '#/components/schemas/FactsDiffView' }
@@ -125,6 +128,7 @@ paths:
       parameters: [{ $ref: '#/components/parameters/CaseId' }]
       responses:
         '200':
+          description: 当前可编辑工作副本（六类实体全集，与快照 payload 形状一致）
           content:
             application/json:
               schema: { $ref: '#/components/schemas/FactsEntitiesView' }
@@ -144,6 +148,7 @@ paths:
             schema: { $ref: '#/components/schemas/FactsEntitiesUpdate' }
       responses:
         '200':
+          description: 整组替换某类可编辑实体（确认后仍可编辑；只影响下一次快照）
           content:
             application/json:
               schema: { $ref: '#/components/schemas/FactsEntitiesView' }
@@ -161,6 +166,7 @@ paths:
       parameters: [{ $ref: '#/components/parameters/CaseId' }]
       responses:
         '200':
+          description: 当前事实基线指针
           content:
             application/json:
               schema: { $ref: '#/components/schemas/FactsHeadView' }
@@ -190,6 +196,7 @@ paths:
       parameters: [{ $ref: '#/components/parameters/ExecutionId' }]
       responses:
         '200':
+          description: 执行状态（技术态；不含业务结果）
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ExecutionView' }
@@ -202,6 +209,7 @@ paths:
       parameters: [{ $ref: '#/components/parameters/ArtifactVersionId' }]
       responses:
         '200':
+          description: 工件版本（payload + 依赖快照 + 来源 execution）
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ArtifactVersionView' }
@@ -216,6 +224,7 @@ paths:
         - { $ref: '#/components/parameters/ModuleName' }
       responses:
         '200':
+          description: 模块指针视图（latest / confirmed / stale；不复制正文）
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ModuleHeadView' }
@@ -233,6 +242,7 @@ paths:
             schema: { $ref: '#/components/schemas/ReviewOpenRequest' }
       responses:
         '201':
+          description: 在该工件版本上开复核
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ReviewView' }
@@ -244,6 +254,7 @@ paths:
       parameters: [{ $ref: '#/components/parameters/ArtifactVersionId' }]
       responses:
         '200':
+          description: 该工件版本的人审历史
           content:
             application/json:
               schema:
@@ -303,6 +314,7 @@ paths:
                   executionId: { type: string, format: uuid }
                   status: { type: string }
                   docType: { type: string }
+                  draftId: { type: string, format: uuid }
         '400': { description: DOC_TYPE_MISSING }
         '404': { $ref: '#/components/responses/NotFound' }
         '501': { description: DRAFT_RENDER_UNAVAILABLE（doc_type 无已会签模板） }
@@ -314,6 +326,7 @@ paths:
       parameters: [{ $ref: '#/components/parameters/DraftId' }]
       responses:
         '200':
+          description: 文书指针视图（approved / latest / stale）
           content:
             application/json:
               schema: { $ref: '#/components/schemas/DraftHeadView' }
@@ -334,9 +347,15 @@ paths:
                 archiveProfile: { type: string, default: case.full.v1 }
       responses:
         '201':
+          description: 创建案件级归档（锁内评估 + 固化 manifest）
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ArchiveView' }
+        '400':
+          description: INVALID_ARCHIVE_PROFILE — 不支持的归档类型
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409':
           description: ARCHIVE_PRECONDITION_FAILED + 可定位缺口
@@ -353,6 +372,7 @@ paths:
         - { $ref: '#/components/parameters/ArchiveId' }
       responses:
         '200':
+          description: 归档 manifest（可追溯 facts/module/review/规则/法源版本）
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ArchiveView' }

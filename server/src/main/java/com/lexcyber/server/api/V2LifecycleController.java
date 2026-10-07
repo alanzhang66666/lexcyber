@@ -103,11 +103,12 @@ public class V2LifecycleController {
     }
 
     @PostMapping("/cases/{caseId}/modules/{module}/executions")
-    public Map<String, Object> dispatchModuleExecution(@PathVariable String caseId,
+    public ResponseEntity<Map<String, Object>> dispatchModuleExecution(@PathVariable String caseId,
             @PathVariable String module,
             @RequestHeader(value = "Authorization", required = false) String authorization) {
         AuthAccount account = auth.require(authorization);
-        return lifecycle.dispatchModuleExecution(account.id(), caseId, module);
+        return ResponseEntity.status(HttpStatus.ACCEPTED)
+                .body(lifecycle.dispatchModuleExecution(account.id(), caseId, module));
     }
 
     @GetMapping("/executions/{executionId}")
@@ -150,13 +151,14 @@ public class V2LifecycleController {
     }
 
     @PostMapping("/cases/{caseId}/drafts/render")
-    public Map<String, Object> dispatchDraftRender(@PathVariable String caseId,
+    public ResponseEntity<Map<String, Object>> dispatchDraftRender(@PathVariable String caseId,
             @RequestBody(required = false) Map<String, Object> body,
             @RequestHeader(value = "Authorization", required = false) String authorization) {
         AuthAccount account = auth.require(authorization);
         String docType = body == null ? null
                 : (body.get("docType") == null ? null : String.valueOf(body.get("docType")));
-        return lifecycle.dispatchDraftRender(account.id(), caseId, docType);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(lifecycle.dispatchDraftRender(account.id(), caseId, docType));
     }
 
     @GetMapping("/cases/{caseId}/drafts")

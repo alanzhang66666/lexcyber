@@ -24,9 +24,11 @@ import argparse
 import json
 import os
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 TERMINAL_STATES = {"completed", "failed", "timed_out", "rejected"}
@@ -90,6 +92,10 @@ def setup_case(base: str, token: str) -> str:
                            token=token, json_body={"items": [
                                {"key": "knowledge_of_crime", "value": "true",
                                 "verificationStatus": "confirmed"},
+                               {"key": "ci_conviction_flag", "value": "true",
+                                "verificationStatus": "confirmed"},
+                               {"key": "ci_distinction_flag", "value": "true",
+                                "verificationStatus": "confirmed"},
                            ]})
     if status not in (200, 204):
         raise SystemExit(f"write facts {status} {body}")
@@ -101,18 +107,18 @@ def check_double_confirm(base: str, token: str, case_id: str) -> str:
     head = obj(*request(base, "GET", f"/v2/cases/{case_id}/facts-head", token=token),
                200, "facts head")
     expected = head.get("confirmedFactsVersionId")
+    # Create two draft versions while the same head is still current.  Both
+    # confirms below carry that exact expected head and execute concurrently.
     v1 = obj(*request(base, "POST", f"/v2/cases/{case_id}/facts-versions", token=token),
-             201, "create facts version")
+             201, "create facts version 1")
     v1_id = str(v1.get("factsVersionId") or v1.get("id"))
-    obj(*request(
-        base, "POST", f"/v2/cases/{case_id}/facts-versions/{v1_id}/confirm",
-        token=token, json_body={"expectedConfirmedFactsVersionId": expected}), 200,
-        "confirm v1")
-
-    # 事实再改一次 → v2 版本；用过期 expected head 确认，必须 409
     request(base, "PUT", f"/v2/cases/{case_id}/facts-entities/facts", token=token,
             json_body={"items": [
                 {"key": "knowledge_of_crime", "value": "true",
+                 "verificationStatus": "confirmed"},
+                {"key": "ci_conviction_flag", "value": "true",
+                 "verificationStatus": "confirmed"},
+                {"key": "ci_distinction_flag", "value": "true",
                  "verificationStatus": "confirmed"},
                 {"key": "concurrency_marker", "value": "v2",
                  "verificationStatus": "candidate"},
@@ -120,13 +126,28 @@ def check_double_confirm(base: str, token: str, case_id: str) -> str:
     v2 = obj(*request(base, "POST", f"/v2/cases/{case_id}/facts-versions", token=token),
              201, "create facts version 2")
     v2_id = str(v2.get("factsVersionId") or v2.get("id"))
-    status, body = request(
-        base, "POST", f"/v2/cases/{case_id}/facts-versions/{v2_id}/confirm",
-        token=token,
-        json_body={"expectedConfirmedFactsVersionId": "00000000-0000-0000-0000-000000000000"})
-    if status == 409 and isinstance(body, dict) and body.get("code") == "FACTS_HEAD_CONFLICT":
-        return "PASS double-confirm CAS → 409 FACTS_HEAD_CONFLICT"
-    return f"FAIL double-confirm CAS → expected 409 FACTS_HEAD_CONFLICT, got {status} {body}"
+    def confirm(version_id: str) -> tuple[int, Any]:
+        return request(base, "POST", f"/v2/cases/{case_id}/facts-versions/{version_id}/confirm",
+                       token=token, json_body={"expectedConfirmedFactsVersionId": expected})
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [pool.submit(confirm, version_id) for version_id in (v1_id, v2_id)]
+        outcomes = [future.result() for future in futures]
+    winners = [(version_id, status, body) for version_id, (status, body)
+               in zip((v1_id, v2_id), outcomes) if status == 200]
+    conflicts = [(version_id, status, body) for version_id, (status, body)
+                 in zip((v1_id, v2_id), outcomes)
+                 if status == 409 and isinstance(body, dict)
+                 and body.get("code") == "FACTS_HEAD_CONFLICT"]
+    if len(winners) != 1 or len(conflicts) != 1:
+        return f"FAIL double-confirm CAS → outcomes={outcomes}"
+    head_after = obj(*request(base, "GET", f"/v2/cases/{case_id}/facts-head", token=token),
+                     200, "facts head after concurrent confirm")
+    winner_id = winners[0][0]
+    actual = str(head_after.get("confirmedFactsVersionId"))
+    if actual != winner_id:
+        return f"FAIL double-confirm CAS → winner {winner_id} but head is {actual}"
+    return f"PASS double-confirm CAS → winner={winner_id}, loser=409 FACTS_HEAD_CONFLICT"
 
 
 def wait_execution(base: str, token: str, execution_id: str, limit: int = 80) -> dict[str, Any]:
@@ -144,7 +165,7 @@ def check_double_publish(base: str, token: str, case_id: str,
                          engine_url: str, java_url: str, service_token: str) -> str:
     """用例 2：同一 execution 结果回调重放，工件版本不得新增。"""
     created = obj(*request(base, "POST", f"/v2/cases/{case_id}/modules/conviction/executions",
-                           token=token), 200, "dispatch conviction")
+                           token=token), 202, "dispatch conviction")
     execution_id = str(created.get("executionId"))
     if execution_id in ("", "None"):
         return "FAIL double-publish → dispatch response missing executionId"
@@ -167,14 +188,17 @@ def check_double_publish(base: str, token: str, case_id: str,
                        200, "artifact version")
         version_before = artifact.get("version")
 
-    replays = []
-    for i in range(3):
-        status, body = request(
-            java_url, "POST", f"/internal/v1/executions/{execution_id}/result",
-            service_token=service_token, json_body=callback)
-        replays.append((status, body))
+    def replay(_: int) -> tuple[int, Any]:
+        return request(java_url, "POST", f"/internal/v1/executions/{execution_id}/result",
+                       service_token=service_token, json_body=callback)
+
+    # Start all callbacks together so this exercises the publication lock,
+    # rather than merely replaying the same request serially.
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        replays = list(pool.map(replay, range(3)))
+    for i, (status, body) in enumerate(replays):
         if status != 200:
-            return f"FAIL double-publish → replay {i + 1} returned {status} {body}"
+            return f"FAIL double-publish → concurrent replay {i + 1} returned {status} {body}"
 
     head_after = obj(*request(base, "GET", f"/v2/cases/{case_id}/modules/conviction",
                               token=token), 200, "module head after replay")
@@ -185,8 +209,15 @@ def check_double_publish(base: str, token: str, case_id: str,
                                 token=token), 200, "artifact after replay")
         version_after = artifact.get("version")
 
+    reviews_status, reviews = request(base, "GET", f"/v2/artifact-versions/{latest_after}/reviews",
+                                      token=token)
+    if reviews_status != 200 or not isinstance(reviews, dict):
+        return f"FAIL double-publish → reviews lookup {reviews_status} {reviews}"
+    reviews_items = reviews.get("items")
+    if not isinstance(reviews_items, list) or len(reviews_items) != 1:
+        return f"FAIL double-publish → expected one review, got {reviews_items}"
     if latest_after == latest and version_after == version_before:
-        return f"PASS double-publish → 3 次回调重放，工件版本稳定 v{version_after}"
+        return f"PASS double-publish → 3 concurrent replays, artifact/review stable v{version_after}"
     return (f"FAIL double-publish → 版本漂移 latest {latest}→{latest_after} "
             f"version {version_before}→{version_after}")
 
@@ -201,38 +232,100 @@ def check_archive_interleave(base: str, token: str, case_id: str) -> str:
     artifact = obj(*request(base, "GET", f"/v2/artifact-versions/{latest}", token=token),
                    200, "artifact")
     version = artifact.get("version")
+    facts_head = obj(*request(base, "GET", f"/v2/cases/{case_id}/facts-head", token=token),
+                     200, "facts head for archive")
+    confirmed_facts = facts_head.get("confirmedFactsVersionId")
 
-    opened = request(base, "POST", f"/v2/artifact-versions/{latest}/reviews",
-                     token=token, json_body={"comment": "concurrency interleave"})
-    if opened[0] not in (200, 201):
-        return f"FAIL archive-interleave → open review {opened[0]} {opened[1]}"
-    review_id = str((opened[1] or {}).get("reviewId") or (opened[1] or {}).get("id"))
+    listed_status, listed = request(base, "GET", f"/v2/artifact-versions/{latest}/reviews", token=token)
+    if listed_status != 200 or not isinstance(listed, dict):
+        return f"FAIL archive-interleave → list reviews {listed_status} {listed}"
+    pending = [item for item in listed.get("items", [])
+               if isinstance(item, dict) and item.get("status") == "pending"]
+    if pending:
+        review_id = str(pending[0].get("reviewId") or pending[0].get("id"))
+    else:
+        opened = request(base, "POST", f"/v2/artifact-versions/{latest}/reviews",
+                         token=token, json_body={"comment": "concurrency interleave"})
+        if opened[0] != 201:
+            return f"FAIL archive-interleave → open review {opened[0]} {opened[1]}"
+        review_id = str((opened[1] or {}).get("reviewId") or (opened[1] or {}).get("id"))
 
     pending_archive = request(base, "POST", f"/v2/cases/{case_id}/archives",
                               token=token, json_body={"archiveProfile": "case.full.v1"})
-    if isinstance(pending_archive[0], int) and pending_archive[0] >= 500:
-        return (f"FAIL archive-interleave → 复核未决归档 5xx: "
+    pending_body = pending_archive[1] if isinstance(pending_archive[1], dict) else {}
+    if pending_archive[0] != 409 or pending_body.get("code") != "ARCHIVE_PRECONDITION_FAILED":
+        return (f"FAIL archive-interleave → expected 409 ARCHIVE_PRECONDITION_FAILED, got "
                 f"{pending_archive[0]} {pending_archive[1]}")
     pending_outcome = f"{pending_archive[0]}"
 
     if review_id in ("", "None"):
         return ("SKIP archive-interleave → open review 未返回 reviewId；"
                 f"未决归档结果 {pending_outcome}")
-    decision = request(base, "POST", f"/v1/reviews/{review_id}/approve",
+    barrier = threading.Barrier(2)
+
+    def approve() -> tuple[int, Any]:
+        barrier.wait(timeout=10)
+        return request(base, "POST", f"/v1/reviews/{review_id}/approve",
                        token=token, reviewer="concurrency-check",
                        json_body={"resultVersion": version,
                                   "comment": "concurrency check approval"})
+
+    def race_archive() -> tuple[int, Any]:
+        barrier.wait(timeout=10)
+        return request(base, "POST", f"/v2/cases/{case_id}/archives",
+                       token=token, json_body={"archiveProfile": "case.full.v1"})
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        approve_future = pool.submit(approve)
+        archive_future = pool.submit(race_archive)
+        decision = approve_future.result()
+        race_archive_result = archive_future.result()
     if decision[0] != 200:
         return (f"FAIL archive-interleave → approve {decision[0]} {decision[1]}；"
                 f"未决归档结果 {pending_outcome}")
+    race_status, race_body = race_archive_result
+    if race_status == 409:
+        race_error = race_body if isinstance(race_body, dict) else {}
+        if race_error.get("code") != "ARCHIVE_PRECONDITION_FAILED":
+            return f"FAIL archive-interleave → race archive 409 has wrong code: {race_body}"
+    elif race_status == 201:
+        if not verify_archive_manifest(race_body, case_id, latest, confirmed_facts):
+            return f"FAIL archive-interleave → race archive manifest invalid: {race_body}"
+    else:
+        return f"FAIL archive-interleave → race archive unexpected {race_status} {race_body}"
 
     final_archive = request(base, "POST", f"/v2/cases/{case_id}/archives",
                             token=token, json_body={"archiveProfile": "case.full.v1"})
-    if isinstance(final_archive[0], int) and final_archive[0] >= 500:
-        return (f"FAIL archive-interleave → 批准后归档 5xx: "
+    if final_archive[0] != 201 or not isinstance(final_archive[1], dict):
+        return (f"FAIL archive-interleave → expected approved archive 201, got "
                 f"{final_archive[0]} {final_archive[1]}")
-    return (f"PASS archive-interleave → 未决归档 {pending_outcome}，"
-            f"批准后归档 {final_archive[0]}（无 5xx）")
+    archive_id = final_archive[1].get("archiveId")
+    if not archive_id or not final_archive[1].get("manifestHash"):
+        return f"FAIL archive-interleave → archive response lacks manifest: {final_archive[1]}"
+    if not verify_archive_manifest(final_archive[1], case_id, latest, confirmed_facts):
+        return f"FAIL archive-interleave → archive items/facts invalid: {final_archive[1]}"
+    manifest_status, manifest = request(
+        base, "GET", f"/v2/cases/{case_id}/archives/{archive_id}", token=token)
+    if manifest_status != 200 or not isinstance(manifest, dict) \
+            or manifest.get("archiveId") != archive_id \
+            or manifest.get("manifestHash") != final_archive[1].get("manifestHash") \
+            or not verify_archive_manifest(manifest, case_id, latest, confirmed_facts):
+        return f"FAIL archive-interleave → manifest verification {manifest_status} {manifest}"
+    return (f"PASS archive-interleave → pending 409, approve/archive race {race_status}, "
+            "final archive 201 and manifest verified")
+
+
+def verify_archive_manifest(body: Any, case_id: str, artifact_id: str,
+                            facts_version_id: Any) -> bool:
+    """Validate the case-full manifest shape for the isolated conviction case."""
+    if not isinstance(body, dict) or body.get("caseId") != case_id:
+        return False
+    if body.get("factsVersionId") != facts_version_id:
+        return False
+    items = body.get("items")
+    return isinstance(items, list) and len(items) == 1 and items[0] == {
+        "artifactVersionId": artifact_id, "role": "conviction"
+    }
 
 
 def main() -> int:
@@ -244,6 +337,8 @@ def main() -> int:
     parser.add_argument("--service-token",
                         default=os.environ.get("SERVICE_TOKEN")
                         or os.environ.get("ENGINE_SERVICE_TOKEN", ""))
+    parser.add_argument("--require-all", action="store_true",
+                        help="treat any required check SKIP as a failure")
     args = parser.parse_args()
 
     token = register(args.base_url)
@@ -265,7 +360,7 @@ def main() -> int:
     failed = False
     for line in results:
         print(line)
-        if line.startswith("FAIL"):
+        if line.startswith("FAIL") or (args.require_all and line.startswith("SKIP")):
             failed = True
     print("CONCURRENCY_" + ("FAIL" if failed else "OK"))
     return 1 if failed else 0

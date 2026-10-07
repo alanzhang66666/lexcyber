@@ -1,6 +1,7 @@
 package com.lexcyber.server.domain;
 
 import com.lexcyber.server.api.ApiException;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -32,11 +33,11 @@ public class CaseArchiveService {
     /** 归档前置评估：返回可定位缺口；空列表 = 可归档。 */
     public List<Gap> evaluate(String caseId, String profile) {
         List<Gap> gaps = new ArrayList<>();
-        Boolean factsOk = jdbc.queryForObject("""
+        List<Boolean> factsRows = jdbc.query("""
                 SELECT confirmed_facts_version_id IS NOT NULL
                 FROM app.facts_head WHERE case_id = ?::uuid
-                """, Boolean.class, caseId);
-        if (factsOk == null || !factsOk) {
+                """, (rs, ignored) -> rs.getBoolean(1), caseId);
+        if (factsRows.isEmpty() || !factsRows.get(0)) {
             gaps.add(new Gap("facts_not_confirmed", "事实基线未确认"));
         }
         jdbc.query("""
@@ -52,6 +53,10 @@ public class CaseArchiveService {
 
     @Transactional
     public Map<String, Object> create(String caseId, String profile, UUID createdBy) {
+        if (!PROFILE_CASE_FULL.equals(profile)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_ARCHIVE_PROFILE",
+                    "不支持的归档 profile");
+        }
         jdbc.queryForObject("SELECT id FROM app.cases WHERE id = ?::uuid FOR UPDATE",
                 String.class, caseId);
         // §4.8.6 steps 3-4：head 行 SHARE 锁，持有到 COMMIT
@@ -117,12 +122,14 @@ public class CaseArchiveService {
                 "SELECT next_archive_version FROM app.cases WHERE id = ?::uuid",
                 Integer.class, caseId);
         UUID archiveId = UUID.randomUUID();
-        jdbc.update("""
+        OffsetDateTime createdAt = jdbc.queryForObject("""
                 INSERT INTO app.case_archive(
                     archive_id, case_id, archive_version, archive_profile,
                     facts_version_id, manifest_hash, created_by)
                 VALUES (?, ?::uuid, ?, ?, ?, ?, ?)
-                """, archiveId, caseId, archiveVersion, profile, factsVersionId, manifestHash, createdBy);
+                RETURNING created_at
+                """, OffsetDateTime.class, archiveId, caseId, archiveVersion, profile,
+                factsVersionId, manifestHash, createdBy);
         for (Map<String, Object> item : items) {
             jdbc.update("""
                     INSERT INTO app.case_archive_item(archive_id, artifact_version_id, role)
@@ -140,7 +147,10 @@ public class CaseArchiveService {
         result.put("archiveProfile", profile);
         result.put("factsVersionId", factsVersionId);
         result.put("manifestHash", manifestHash);
-        result.put("items", items);
+        result.put("createdAt", createdAt);
+        result.put("items", items.stream().map(item -> Map.of(
+                "artifactVersionId", item.get("artifact_version_id"),
+                "role", item.get("role"))).toList());
         return result;
     }
 }
