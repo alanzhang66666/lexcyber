@@ -18,6 +18,12 @@ import com.lexcyber.server.review.ReviewService;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import javax.sql.DataSource;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterAll;
@@ -141,16 +147,6 @@ class V2RenderLifecycleTest {
         assertEquals(complianceV1.toString(), dispatch.get("metadata").get("artifactVersions")
                 .get("compliance").asText());
 
-        // A newer upstream version is published after dispatch. The callback must
-        // still bind the exact V1 id carried by its frozen dependency snapshot.
-        publications.publish(new ArtifactPublicationService.PublishRequest(
-                caseView.id(), "compliance", "module:compliance", "module.v2", "calculated",
-                "{\"rule\":\"v2\"}", "[]", "{}", factsVersion, List.of(), List.of(),
-                null, null, "upstream-v2"));
-        assertEquals(Boolean.TRUE, jdbc.queryForObject(
-                "SELECT stale FROM app.module_head WHERE case_id = ?::uuid AND module = 'compliance'",
-                Boolean.class, caseView.id()));
-
         String content = MAPPER.writeValueAsString(Map.of(
                 "schema_version", "draft.v2",
                 "status", "calculated",
@@ -181,18 +177,113 @@ class V2RenderLifecycleTest {
                 FROM app.artifact_version WHERE artifact_version_id = ?
                 """, UUID.class, renderedVersion));
 
+        // Publish after the callback, then verify the normal stale approval path.
+        publications.publish(new ArtifactPublicationService.PublishRequest(
+                caseView.id(), "compliance", "module:compliance", "module.v2", "calculated",
+                "{\"rule\":\"v2\"}", "[]", "{}", factsVersion, List.of(), List.of(),
+                null, null, "upstream-v2"));
+        assertEquals(Boolean.TRUE, jdbc.queryForObject(
+                "SELECT stale FROM app.module_head WHERE case_id = ?::uuid AND module = 'compliance'",
+                Boolean.class, caseView.id()));
         Map<String, Object> opened = lifecycle.openReview(owner, renderedVersion, "check frozen dependency");
+        UUID reviewId = (UUID) opened.get("reviewId");
         ApiException stale = assertThrows(ApiException.class, () -> tx.execute(status -> {
-            reviews.decide(owner, (UUID) opened.get("reviewId"), "approve", 1, "owner", "approve");
+            reviews.decide(owner, reviewId, "approve", 1, "owner", "approve");
             return null;
         }));
         assertEquals("DEPENDENCY_STALE", stale.code());
         assertEquals("pending", jdbc.queryForObject(
-                "SELECT status FROM app.review_records WHERE review_id = ?", String.class, opened.get("reviewId")));
+                "SELECT status FROM app.review_records WHERE review_id = ?", String.class, reviewId));
         assertTrue(jdbc.queryForObject(
                 "SELECT COUNT(*) FROM app.artifact_artifact_dependency WHERE artifact_version_id = ?",
                 Integer.class, renderedVersion) > 0);
     }
+
+    @Test
+    void approvalWaitsForUpstreamPublishBeforeCheckingFrozenDependency() throws Exception {
+        RenderReviewFixture fixture = createPendingRenderReview();
+        TransactionTemplate boundedTx = new TransactionTemplate(
+                new DataSourceTransactionManager(jdbc.getDataSource()));
+        boundedTx.setTimeout(10);
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        Future<ApiException> approval = null;
+        try {
+            Future<ApiException> future = boundedTx.execute(status -> {
+                jdbc.queryForObject("""
+                        SELECT artifact_stream_id FROM app.artifact_stream
+                        WHERE case_id = ?::uuid AND kind = 'compliance' AND scope_key = 'module:compliance'
+                        FOR UPDATE
+                        """, UUID.class, caseView.id());
+                CountDownLatch started = new CountDownLatch(1);
+                Future<ApiException> submitted = executor.submit(() -> {
+                    started.countDown();
+                    try {
+                        boundedTx.execute(inner -> {
+                            reviews.decide(owner, fixture.reviewId(), "approve", 1, "owner", "approve");
+                            return null;
+                        });
+                        return null;
+                    } catch (ApiException failure) {
+                        return failure;
+                    }
+                });
+                try {
+                    assertTrue(started.await(5, TimeUnit.SECONDS));
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException("approval start interrupted", interrupted);
+                }
+                assertThrows(TimeoutException.class, () -> submitted.get(200, TimeUnit.MILLISECONDS));
+                publications.publish(new ArtifactPublicationService.PublishRequest(
+                        caseView.id(), "compliance", "module:compliance", "module.v2", "calculated",
+                        "{\"rule\":\"v2\"}", "[]", "{}", factsVersion, List.of(), List.of(),
+                        null, null, "upstream-v2-concurrent"));
+                return submitted;
+            });
+            approval = future;
+            ApiException stale = approval.get(5, TimeUnit.SECONDS);
+            assertNotNull(stale, "approval unexpectedly succeeded before dependency publication");
+            assertEquals("DEPENDENCY_STALE", stale.code());
+            assertEquals("pending", jdbc.queryForObject(
+                    "SELECT status FROM app.review_records WHERE review_id = ?", String.class, fixture.reviewId()));
+        } finally {
+            executor.shutdownNow();
+            if (approval != null) approval.cancel(true);
+        }
+    }
+
+    private RenderReviewFixture createPendingRenderReview() throws Exception {
+        UUID complianceV1 = insertConfirmedModuleVersion(caseView.id(), "compliance", "{\"rule\":\"v1\"}");
+        Map<String, Object> dispatched = lifecycle.dispatchDraftRender(owner, caseView.id(), "judgment");
+        UUID taskId = (UUID) dispatched.get("taskId");
+        UUID draftId = (UUID) dispatched.get("draftId");
+        Map<String, Object> task = jdbc.queryForMap(
+                "SELECT execution_id, request_id FROM app.tasks WHERE id = ?", taskId);
+        UUID executionId = (UUID) task.get("execution_id");
+        UUID requestId = (UUID) task.get("request_id");
+        JsonNode dispatch = MAPPER.readTree(jdbc.queryForObject(
+                "SELECT payload_json::text FROM app.task_dispatch_outbox WHERE task_id = ? AND execution_id = ?",
+                String.class, taskId, executionId));
+        String content = MAPPER.writeValueAsString(Map.of(
+                "schema_version", "draft.v2", "status", "calculated",
+                "dependency_snapshot", Map.of("facts_version_id", factsVersion.toString(),
+                        "artifacts", List.of(Map.of("module", "compliance", "artifactVersionId", complianceV1.toString()))),
+                "body", "rendered with frozen V1"));
+        ResultEnvelope callback = new ResultEnvelope(executionId, taskId, requestId,
+                UUID.fromString(dispatch.get("result_id").asText()), dispatch.get("result_version").asInt(),
+                "draft.v2", "completed", "rendered", content, FactsBaselineService.sha256(content),
+                null, null, false, null, null, "render-concurrent", Map.of("human_review_required", true));
+        tx.execute(status -> { results.accept(callback); return null; });
+        UUID renderedVersion = jdbc.queryForObject("""
+                SELECT v.artifact_version_id FROM app.artifact_version v
+                JOIN app.artifact_stream s ON s.artifact_stream_id = v.artifact_stream_id
+                WHERE s.case_id = ?::uuid AND s.kind = 'draft' AND s.scope_key = ?
+                """, UUID.class, caseView.id(), "draft:" + draftId);
+        Map<String, Object> opened = lifecycle.openReview(owner, renderedVersion, "concurrency");
+        return new RenderReviewFixture((UUID) opened.get("reviewId"));
+    }
+
+    private record RenderReviewFixture(UUID reviewId) {}
 
     private UUID insertConfirmedModuleVersion(String caseId, String module, String payload) {
         UUID streamId = UUID.randomUUID();

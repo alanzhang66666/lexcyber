@@ -55,6 +55,23 @@ public class DraftApprovalService {
                 WHERE artifact_stream_id = ? FOR SHARE
                 """, streamId);
         UUID latest = (UUID) stream.get("latest_version_id");
+        // Hold upstream pointers stable before locking the draft head. Publishers
+        // lock upstream streams before propagating stale to downstream heads.
+        // Acquiring these shares afterwards would both race and invert that order.
+        jdbc.queryForList("""
+                SELECT case_id FROM app.facts_head WHERE case_id = ?::uuid FOR SHARE
+                """, caseId);
+        jdbc.queryForList("""
+                SELECT s.artifact_stream_id FROM app.artifact_stream s
+                WHERE s.artifact_stream_id IN (
+                    SELECT upstream.artifact_stream_id
+                    FROM app.artifact_artifact_dependency d
+                    JOIN app.artifact_version upstream
+                      ON upstream.artifact_version_id = d.depends_on_artifact_version_id
+                    WHERE d.artifact_version_id = ?
+                )
+                ORDER BY s.artifact_stream_id FOR SHARE OF s
+                """, latest);
         jdbc.queryForMap("""
                 SELECT approved_version_id FROM app.draft_head
                 WHERE draft_id = ? AND case_id = ?::uuid FOR UPDATE
