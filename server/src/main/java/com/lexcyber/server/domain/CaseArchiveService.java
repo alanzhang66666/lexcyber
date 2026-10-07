@@ -36,12 +36,20 @@ public class CaseArchiveService {
     /** 归档前置评估：返回可定位缺口；空列表 = 可归档。 */
     public List<Gap> evaluate(String caseId, String profile) {
         List<Gap> gaps = new ArrayList<>();
-        List<Boolean> factsRows = jdbc.query("""
-                SELECT confirmed_facts_version_id IS NOT NULL
+        List<UUID> factsRows = jdbc.query("""
+                SELECT confirmed_facts_version_id
                 FROM app.facts_head WHERE case_id = ?::uuid
-                """, (rs, ignored) -> rs.getBoolean(1), caseId);
-        if (factsRows.isEmpty() || !factsRows.get(0)) {
+                """, (rs, ignored) -> rs.getObject(1, UUID.class), caseId);
+        if (factsRows.isEmpty() || factsRows.get(0) == null) {
             gaps.add(new Gap("facts_not_confirmed", "事实基线未确认"));
+        } else {
+            try {
+                new FactsBaselineService(jdbc, new StalePropagationService(jdbc))
+                        .validateVersionReferences(caseId, factsRows.get(0));
+            } catch (ApiException invalid) {
+                if (!"FACTS_REFERENCE_INVALID".equals(invalid.code())) throw invalid;
+                gaps.add(new Gap("facts_reference_invalid", invalid.getMessage()));
+            }
         }
         // case.full.v1 requires every module, including a confirmed not_applicable
         // compliance artifact, and an approved draft.
@@ -163,6 +171,8 @@ public class CaseArchiveService {
                 throw new ApiException(HttpStatus.CONFLICT, "ARCHIVE_ITEM_CROSS_CASE",
                         "归档清单包含跨案件工件，已阻断");
             }
+            LegalAnalysisContext.requireCurrent(jdbc, caseId,
+                    UUID.fromString(String.valueOf(item.get("artifact_version_id"))));
         }
 
         // canonicalize → manifest_hash

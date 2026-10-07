@@ -157,6 +157,101 @@ def wait_execution(token, execution_id):
     raise RuntimeError(f"execution {execution_id} did not complete")
 
 
+def run_reference_integrity(token):
+    """Keep actual entity links intact through individual collection edits."""
+    case = request("POST", "/v1/cases", token=token, expected=201, payload={
+        "title": "CI entity reference fixture", "jurisdiction": "CI", "asOfDate": "2026-01-01",
+        "metadata": {"purpose": "LEXCYBER_CI_FIXTURES"},
+    })
+    case_id = _id(case, "id", "caseId")
+    base = f"/v2/cases/{case_id}"
+    actor = {"id": "reference-actor", "type": "person", "name": "original",
+             "verificationStatus": "confirmed"}
+    proof = {"id": "reference-evidence", "type": "document", "label": "original",
+             "verificationStatus": "confirmed"}
+    collections = {
+        "actors": [actor], "evidence": [proof],
+        "facts": [{"id": "reference-fact", "key": "reference_marker", "value": "yes",
+                   "actorId": actor["id"], "evidenceIds": [proof["id"]],
+                   "verificationStatus": "confirmed"}],
+        "events": [{"id": "reference-event", "date": "2026-01-01", "actorId": actor["id"]}],
+        "amounts": [{"id": "reference-amount", "kind": "crime_amount", "value": 5,
+                     "evidenceIds": [proof["id"]], "verificationStatus": "confirmed"}],
+        "jurisdiction-connections": [{"id": "reference-jurisdiction", "type": "territory",
+                                      "value": "CI", "evidenceIds": [proof["id"]],
+                                      "verificationStatus": "confirmed"}],
+    }
+    for kind, items in collections.items():
+        request("PUT", f"{base}/facts-entities/{kind}", token=token, payload={"items": items})
+    original = request("POST", f"{base}/facts-versions", token=token, expected=201)
+    original_id = _id(original, "factsVersionId")
+    original_detail = request("GET", f"{base}/facts-versions/{original_id}", token=token)
+    frozen = original_detail["payload"]
+    request("POST", f"{base}/facts-versions/{original_id}/confirm", token=token,
+            payload={"expectedConfirmedFactsVersionId": None})
+    original_detail = request("GET", f"{base}/facts-versions/{original_id}", token=token)
+    actor_id = frozen["entities"]["actors"][0]["entityId"]
+    proof_id = frozen["entities"]["evidence"][0]["entityId"]
+
+    def assert_links(working):
+        entities = working["entities"]
+        assert entities["actors"][0]["entityId"] == actor_id, working
+        assert entities["evidence"][0]["entityId"] == proof_id, working
+        assert working["items"][0]["actorId"] == actor_id, working
+        assert entities["events"][0]["actorId"] == actor_id, working
+        for item in [working["items"][0], entities["amounts"][0],
+                     entities["jurisdictionConnections"][0]]:
+            assert item["evidenceIds"] == [proof_id], item
+
+    # Same logical identifiers, then canonical snapshot rows, each repeated.
+    for _ in range(2):
+        request("PUT", f"{base}/facts-entities/actors", token=token,
+                payload={"items": [{**actor, "name": "renamed"}]})
+        request("PUT", f"{base}/facts-entities/evidence", token=token,
+                payload={"items": [{**proof, "label": "updated"}]})
+        assert_links(request("GET", f"{base}/facts-entities", token=token))
+    for _ in range(2):
+        for kind in ("actors", "evidence"):
+            request("PUT", f"{base}/facts-entities/{kind}", token=token,
+                    payload={"items": frozen["entities"][kind]})
+        assert_links(request("GET", f"{base}/facts-entities", token=token))
+    before = request("GET", f"{base}/facts-entities", token=token)
+    for kind in ("actors", "evidence"):
+        error = request("PUT", f"{base}/facts-entities/{kind}", token=token,
+                        expected=409, payload={"items": []})
+        assert error.get("code") == "ENTITY_REFERENCED", error
+        assert request("GET", f"{base}/facts-entities", token=token) == before
+    assert request("GET", f"{base}/facts-versions/{original_id}", token=token) == original_detail
+    print("PASS stable evidence and actor identities, canonical roundtrip and atomic referenced deletion rejection",
+          flush=True)
+
+    foreign_case = request("POST", "/v1/cases", token=token, expected=201, payload={
+        "title": "CI foreign reference fixture", "jurisdiction": "CI", "asOfDate": "2026-01-01",
+    })
+    foreign_id = _id(foreign_case, "id", "caseId")
+    foreign = request("PUT", f"/v2/cases/{foreign_id}/facts-entities/evidence", token=token,
+                      payload={"items": [{"id": "foreign-evidence", "type": "document"}]})
+    foreign_proof_id = foreign["entities"]["evidence"][0]["entityId"]
+    versions_before = request("GET", f"{base}/facts-versions", token=token)
+    for invalid_ref in ("missing-evidence", foreign_proof_id):
+        request("PUT", f"{base}/facts-entities/facts", token=token, payload={
+            "items": [{**collections["facts"][0], "evidenceIds": [invalid_ref]}],
+        })
+        invalid_working = request("GET", f"{base}/facts-entities", token=token)
+        error = request("POST", f"{base}/facts-versions", token=token, expected=409)
+        assert error.get("code") == "FACTS_REFERENCE_INVALID", error
+        assert request("GET", f"{base}/facts-entities", token=token) == invalid_working
+        assert request("GET", f"{base}/facts-versions", token=token) == versions_before
+        assert request("GET", f"{base}/facts-head", token=token)["confirmedFactsVersionId"] == original_id
+    request("POST", f"{base}/facts-versions/{original_id}/clone", token=token)
+    restored = request("GET", f"{base}/facts-entities", token=token)
+    assert_links(restored)
+    assert restored["items"] == frozen["items"] and restored["entities"] == frozen["entities"]
+    assert request("GET", f"{base}/facts-head", token=token)["confirmedFactsVersionId"] == original_id
+    print("PASS unknown and cross-case proof snapshot rejection, frozen history and valid clone restoration",
+          flush=True)
+
+
 def run_lifecycle(token):
     """Exercise the v2 facts → modules → draft → archive chain through nginx."""
     case = request("POST", "/v1/cases", token=token, expected=201, payload={
@@ -601,6 +696,7 @@ def run_lifecycle(token):
                                 token=token, payload={"resultVersion": confirmed_artifact["version"]})
     assert approved_evidence.get("status") == "approved", approved_evidence
     print("PASS evidence missing/candidate blockers, confirmed evidence calculation and frozen CAS binding", flush=True)
+    run_reference_integrity(token)
 
 
 def main():

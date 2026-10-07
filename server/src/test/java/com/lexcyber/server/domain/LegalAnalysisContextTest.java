@@ -83,6 +83,64 @@ class LegalAnalysisContextTest {
     }
 
     @Test
+    void confirmationRejectsDamagedFrozenProofsEvenWhenWorkingCopyContainsEvidence() {
+        insertCase("2026-09-06");
+        FactsBaselineService baseline = new FactsBaselineService(jdbc, new StalePropagationService(jdbc));
+        baseline.replaceEntities(caseId.toString(), "evidence", java.util.List.of(
+                java.util.Map.of("id", "live-proof", "type", "document")));
+        UUID version = insertModuleArtifact("case.compliance.v2", "2026-09-06");
+        insertModuleHead("compliance", version);
+        String damaged = "{\"items\":[{\"key\":\"k\",\"value\":\"v\","
+                + "\"evidenceIds\":[\"live-proof\"]}],\"entities\":{\"evidence\":[]}}";
+        UUID facts = bindConfirmedFacts(version, damaged);
+
+        ApiException error = assertThrows(ApiException.class,
+                () -> new ModuleConfirmationService(jdbc).confirm(caseId.toString(), "compliance", account));
+
+        assertEquals("FACTS_REFERENCE_INVALID", error.code());
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM app.module_head WHERE case_id = ? AND confirmed_version_id IS NOT NULL",
+                Integer.class, caseId));
+        assertEquals(facts, jdbc.queryForObject("SELECT confirmed_facts_version_id FROM app.facts_head WHERE case_id = ?",
+                UUID.class, caseId));
+        assertEquals(Boolean.TRUE, jdbc.queryForObject("SELECT payload = ?::jsonb FROM app.facts_version WHERE facts_version_id = ?",
+                Boolean.class, damaged, facts));
+    }
+
+    @Test
+    void confirmationUsesValidFrozenEvidenceAfterWorkingCopyEvidenceWasRemoved() {
+        insertCase("2026-09-06");
+        UUID version = insertModuleArtifact("case.compliance.v2", "2026-09-06");
+        insertModuleHead("compliance", version);
+        UUID proof = UUID.randomUUID();
+        String frozen = "{\"items\":[{\"key\":\"k\",\"value\":\"v\",\"evidenceIds\":[\""
+                + proof + "\"]}],\"entities\":{\"evidence\":[{\"entityId\":\""
+                + proof + "\",\"id\":\"archived-proof\",\"verificationStatus\":\"confirmed\"}]}}";
+        bindConfirmedFacts(version, frozen);
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM app.case_evidence WHERE case_id = ?",
+                Integer.class, caseId));
+
+        assertEquals(version, new ModuleConfirmationService(jdbc)
+                .confirm(caseId.toString(), "compliance", account));
+    }
+
+    private UUID bindConfirmedFacts(UUID artifact, String payload) {
+        UUID facts = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO app.facts_version(facts_version_id, case_id, version, content_hash,
+                    payload, created_by, confirmed_by, confirmed_at)
+                VALUES (?, ?, 1, 'proof-history', ?::jsonb, ?, ?, now())
+                """, facts, caseId, payload, account, account);
+        jdbc.update("""
+                INSERT INTO app.facts_head(case_id, confirmed_facts_version_id)
+                VALUES (?, ?) ON CONFLICT (case_id) DO UPDATE
+                SET confirmed_facts_version_id = EXCLUDED.confirmed_facts_version_id
+                """, caseId, facts);
+        jdbc.update("INSERT INTO app.artifact_facts_dependency(artifact_version_id, facts_version_id) VALUES (?, ?)",
+                artifact, facts);
+        return facts;
+    }
+
+    @Test
     void approvalRejectsLateV2CompletionWithOldFrozenDate() {
         insertCase("2026-09-07");
         UUID draftId = UUID.randomUUID();

@@ -27,5 +27,15 @@ public final class LegalAnalysisContext {
             throw new ApiException(HttpStatus.CONFLICT, "DEPENDENCY_STALE",
                     "结果基准日期缺失或已变更，请按当前基准日期重新执行");
         }
+        // A previously confirmed baseline may contain dangling references from
+        // older collection replacements. Validate its frozen payload, not the
+        // present working copy, before any result is approved again.
+        FactsBaselineService baseline = new FactsBaselineService(jdbc, new StalePropagationService(jdbc));
+        for (UUID factsVersionId : jdbc.query("""
+                SELECT facts_version_id FROM app.artifact_facts_dependency
+                WHERE artifact_version_id = ?
+                """, (rs, ignored) -> rs.getObject(1, UUID.class), artifactVersionId)) {
+            baseline.validateVersionReferences(caseId, factsVersionId);
+        }
     }
 }

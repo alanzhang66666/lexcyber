@@ -106,6 +106,34 @@ class CaseArchiveServiceTest {
     }
 
     @Test
+    void damagedConfirmedFactsCannotBeArchivedAndHistoryRemainsUnchanged() {
+        UUID facts = seedFacts(1, "damaged-proof");
+        String damaged = "{\"items\":[{\"key\":\"k\",\"value\":\"v\","
+                + "\"evidenceIds\":[\"missing-proof\"]}],\"entities\":{\"evidence\":[]}}";
+        jdbc.update("UPDATE app.facts_version SET payload = ?::jsonb WHERE facts_version_id = ?",
+                damaged, facts);
+        seedModule("compliance");
+        seedModule("conviction");
+        seedModule("sentencing");
+        seedDraft();
+
+        ApiException error = assertThrows(ApiException.class,
+                () -> archives.create(caseId, CaseArchiveService.PROFILE_CASE_FULL, account));
+
+        assertEquals("ARCHIVE_PRECONDITION_FAILED", error.code());
+        assertTrue(archives.evaluate(caseId, CaseArchiveService.PROFILE_CASE_FULL).stream()
+                .anyMatch(gap -> "facts_reference_invalid".equals(gap.code())));
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM app.case_archive WHERE case_id = ?::uuid",
+                Integer.class, caseId));
+        assertEquals(1, jdbc.queryForObject("SELECT next_archive_version FROM app.cases WHERE id = ?::uuid",
+                Integer.class, caseId));
+        assertEquals(facts, jdbc.queryForObject("SELECT confirmed_facts_version_id FROM app.facts_head WHERE case_id = ?::uuid",
+                UUID.class, caseId));
+        assertEquals(Boolean.TRUE, jdbc.queryForObject("SELECT payload = ?::jsonb FROM app.facts_version WHERE facts_version_id = ?",
+                Boolean.class, damaged, facts));
+    }
+
+    @Test
     void missingRequiredModuleReturns定位Gap() {
         seedFacts(1, "facts");
         seedModule("compliance");

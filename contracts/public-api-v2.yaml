@@ -51,6 +51,10 @@ paths:
     post:
       summary: 固化当前事实编辑态为新的 draft FactsVersion（六类实体全量快照）
       operationId: createFactsVersion
+      description: >-
+        每个 facts/amounts/jurisdictionConnections 的 evidenceIds 必须能唯一解析到本快照证据，
+        facts/events 的 actorId 必须能唯一解析到本快照参与人。
+        未知、跨案件或歧义引用返回 409 FACTS_REFERENCE_INVALID；不创建版本或推进计数。
       parameters: [{ $ref: '#/components/parameters/CaseId' }]
       responses:
         '201':
@@ -116,6 +120,9 @@ paths:
     post:
       summary: 把该版本内容回写为当前工作副本（不改 head，不改动任何已存版本）
       operationId: cloneFactsVersion
+      description: >-
+        回写前校验冻结快照的证据引用闭包，并把合法 id/externalId 别名解析到 entityId。
+        无效引用返回 409 FACTS_REFERENCE_INVALID，不改变现有工作副本或 confirmed head。
       parameters:
         - { $ref: '#/components/parameters/CaseId' }
         - { $ref: '#/components/parameters/FactsVersionId' }
@@ -132,6 +139,9 @@ paths:
     post:
       summary: 原子确认 FactsVersion 并推进 facts_head（expected-head CAS）
       operationId: confirmFactsVersion
+      description: >-
+        在推进 head 前验证该冻结版本的证据引用闭包，不能使用当前工作副本补足缺失引用。
+        无效引用返回 409 FACTS_REFERENCE_INVALID；既有 CAS 冲突仍返回 FACTS_HEAD_CONFLICT。
       parameters:
         - { $ref: '#/components/parameters/CaseId' }
         - { $ref: '#/components/parameters/FactsVersionId' }
@@ -176,6 +186,10 @@ paths:
     put:
       summary: 整组替换某类可编辑实体（确认后仍可编辑；只影响下一次快照）
       operationId: replaceFactsEntities
+      description: >-
+        actors/evidence 中同案同逻辑实体保留稳定 entityId，支持从快照重复提交
+        entityId/id/externalId。不得删除仍被其他工作副本实体引用的参与人或证据；
+        这种删除返回 409 ENTITY_REFERENCED，原有数据与引用不变。
       parameters:
         - { $ref: '#/components/parameters/CaseId' }
         - { $ref: '#/components/parameters/FactsEntityKind' }
@@ -191,11 +205,12 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/FactsEntitiesView' }
         '400':
-          description: 字段缺失或 amount.kind 不在封闭集
+          description: 字段缺失、身份冲突或 amount.kind 不在封闭集
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
 
   /v2/cases/{caseId}/facts-head:
     get:
