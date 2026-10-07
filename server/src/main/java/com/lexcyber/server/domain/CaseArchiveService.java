@@ -3,6 +3,7 @@ package com.lexcyber.server.domain;
 import com.lexcyber.server.api.ApiException;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -117,6 +118,10 @@ public class CaseArchiveService {
                 """, (rs, ignored) -> items.add(Map.of(
                 "artifact_version_id", rs.getString(1), "role", "parse")), caseId);
 
+        // Return a stable item order on both creation and idempotent replay.
+        items.sort(Comparator.comparing((Map<String, Object> item) -> String.valueOf(item.get("role")))
+                .thenComparing(item -> String.valueOf(item.get("artifact_version_id"))));
+
         // 同案校验（§4.6.11：FK 表达不了，领域服务在事务内校验）
         for (Map<String, Object> item : items) {
             Long sameCase = jdbc.queryForObject("""
@@ -201,14 +206,14 @@ public class CaseArchiveService {
                                                  List<Map<String, Object>> items) {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("archiveId", archive.get("archive_id"));
-        result.put("caseId", archive.get("case_id"));
+        result.put("caseId", String.valueOf(archive.get("case_id")));
         result.put("archiveVersion", archive.get("archive_version"));
         result.put("archiveProfile", archive.get("archive_profile"));
         result.put("factsVersionId", archive.get("facts_version_id"));
         result.put("manifestHash", archive.get("manifest_hash"));
         result.put("createdAt", archive.get("created_at"));
         result.put("items", items.stream().map(item -> Map.of(
-                "artifactVersionId", item.get("artifact_version_id"),
+                "artifactVersionId", String.valueOf(item.get("artifact_version_id")),
                 "role", item.get("role"))).toList());
         return result;
     }
