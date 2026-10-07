@@ -465,17 +465,26 @@ def run_lifecycle(token):
     request("PUT", f"/v2/cases/{case_id}/analysis-date", token=other["token"], expected=404,
             payload={"asOfDate": "2026-01-02", "expectedAsOfDate": "2026-01-01"})
     assert component_artifact["payload"]["dependency_snapshot"]["as_of_date"] == "2026-01-01"
-    request("POST", f"/v2/cases/{component_case_id}/modules/conviction/confirm", token=token)
+    component_artifact_id = _id(component_artifact, "artifactVersionId")
+    component_review = request("POST", f"/v2/artifact-versions/{component_artifact_id}/reviews", token=token,
+                               expected=201, payload={"comment": "CI dated conviction review"})
+    request("POST", f"/v1/reviews/{_id(component_review, 'reviewId')}/approve", token=token,
+            payload={"resultVersion": component_artifact["version"]})
     before_date_head = request("GET", f"/v2/cases/{component_case_id}/modules/conviction", token=token)
+    assert before_date_head["effectivelyConfirmed"] is True, before_date_head
     changed = request("PUT", f"/v2/cases/{component_case_id}/analysis-date", token=token,
                       payload={"asOfDate": "2026-01-02", "expectedAsOfDate": "2026-01-01"})
     assert changed["asOfDate"] == "2026-01-02", changed
     after_date_head = request("GET", f"/v2/cases/{component_case_id}/modules/conviction", token=token)
     assert after_date_head["confirmedVersionId"] == before_date_head["confirmedVersionId"]
     assert after_date_head["effectivelyConfirmed"] is False
-    request("POST", f"/v2/cases/{component_case_id}/modules/conviction/confirm", token=token, expected=409)
+    stale_date_review = request("POST", f"/v2/artifact-versions/{component_artifact_id}/reviews", token=token,
+                                expected=201, payload={"comment": "CI old-date reapproval rejection"})
+    rejected = request("POST", f"/v1/reviews/{_id(stale_date_review, 'reviewId')}/approve", token=token,
+                       expected=409, payload={"resultVersion": component_artifact["version"]})
+    assert rejected["code"] == "DEPENDENCY_STALE", rejected
     # Earlier artifact payload and already-created archive stay immutable.
-    unchanged_artifact = request("GET", f"/v2/artifact-versions/{_id(head, 'latestVersionId')}", token=token)
+    unchanged_artifact = request("GET", f"/v2/artifact-versions/{component_artifact_id}", token=token)
     assert unchanged_artifact["payload"] == component_artifact["payload"]
     print("PASS explicit analysis date binding, missing-date gate, CAS and stale old-date confirmation", flush=True)
 
