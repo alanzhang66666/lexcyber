@@ -677,8 +677,10 @@ def run_lifecycle(token):
     assert any(item.get("code") == "RULE_EVIDENCE_UNCONFIRMED"
                for item in candidate_artifact["payload"]["blockers"]), candidate_artifact
 
+    # Update the existing business id; entityId is the canonical UUID returned
+    # by the API, not an arbitrary fixture label.
     request("PUT", f"/v2/cases/{evidence_case_id}/facts-entities/evidence", token=token,
-            expected=200, payload={"items": [{"entityId": "ci-confirmed-log", "type": "service_log",
+            expected=200, payload={"items": [{"id": "ci-candidate-log", "type": "service_log",
                                                 "verificationStatus": "confirmed"}]})
     confirmed_version_id = _confirm_evidence_version(candidate_version_id)
     confirmed_execution = request("POST", f"/v2/cases/{evidence_case_id}/modules/compliance/executions",

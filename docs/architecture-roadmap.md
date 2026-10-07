@@ -56,6 +56,7 @@
 - 续查 A23/A24：证据重建 UUID 使 facts/amount/jurisdiction 引用悬空，参与人替换会清空 facts/events 关联。修复保持同案逻辑 actor/evidence 的 UUID，支持 snapshot 的 entityId/id/externalId 及 UUID 形状业务别名；引用中的实体删除明确 409，输入身份冲突提前拒绝。draft/确认/clone/已确认基线复用、模块/文书批准和归档都验证冻结证据与参与人引用闭包，不用当前工作副本替代旧快照。V24 根据坏快照沿正规化依赖递归失效旧确认/批准 head，保留全部历史与指针；有效历史实体即使当前已删仍可还原。
 - 此补丁独立复审修正了共享门槛漏 actor、UUID 业务别名丢失及迁移漏非数组身份集合；Java test-compile、Python 非 integration 258 项、Ruff、三个 OpenAPI/快照通过。新增真实数据库损坏旧版本确认/clone/批准/归档拒绝、稳定身份/删除/别名回归、V23→V24 带数据升级，以及两项 HTTP/Compose 引用往返与跨案阻断检查。本机无 PostgreSQL，实际数据库与 Compose 行为须以新精确提交的 CI 为准，未提前认定完成；A22 仍未修。
 - `4cc3d4e` 的 [CI 37702331958](https://github.com/alanzhang66666/lexcyber/actions/runs/37702331958)：Python258/web134/契约成功；Java/PostgreSQL162项、0失败、9错误、0跳过，Compose未执行。证据删除检查三个 EXISTS 的嵌套括号遗漏，各个证据写入回归均触发 SQL syntax error；现补闭合括号，未改引用政策、约束或测试断言。真实 V23→V24 带数据升级、坏旧快照归档阻断、有效冻结历史批准等测试已通过；整体仍须新精确提交 CI。
+- `acf20de` 的 [CI 37702670252](https://github.com/alanzhang66666/lexcyber/actions/runs/37702670252)：Java、Python、web、契约成功。Compose 前17项业务检查通过，随后旧证据 fixture 用非 UUID 业务编号填 entityId，被新的身份校验返回400；新增引用检查、并发和注册表步骤尚未执行。fixture 改为用同一业务 id 将已有 candidate 证据更新为 confirmed，保留原缺失/未确认/已确认断言和严格 UUID 校验，须由后续精确提交重新验收。
 - 未扩张旧 prompt 数据库模型：追溯证明 PromptRegistry 只由未挂载到当前图的 worker 节点调用，当前 reserved 任务均直接进入 Engine adapter。该遗留副作用与现役路径不同，本轮未创建第二套 schema 或把旧库脚本当现役启动前置。
 
 ## 阶段状态
