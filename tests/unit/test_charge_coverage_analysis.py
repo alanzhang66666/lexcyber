@@ -246,8 +246,8 @@ def test_temporal_false_no_plan_coverage_reaches_resolver_and_source_versions(mo
 
 
 @pytest.mark.parametrize("requested", [
-    [{"requestedCharge": "raw-name"}, {"requestedCharge": "keyed-name", "chargeKey": "charge.alpha"}],
-    [{"requestedCharge": "keyed-name", "chargeKey": "charge.alpha"}, {"requestedCharge": "raw-name"}],
+    [{"requestedCharge": "same-name"}, {"requestedCharge": "same-name", "chargeKey": "charge.alpha"}],
+    [{"requestedCharge": "same-name", "chargeKey": "charge.alpha"}, {"requestedCharge": "same-name"}],
 ])
 def test_raw_name_and_keyed_charge_permutations_preserve_input_order(monkeypatch, requested):
     payload = _base_payload(requested=requested, include_requested=True)
@@ -256,19 +256,20 @@ def test_raw_name_and_keyed_charge_permutations_preserve_input_order(monkeypatch
     assert [item["requested_charge"] for item in body["charge_coverage"]] == [
         item["requestedCharge"] for item in requested
     ]
-    raw = next(item for item in body["charge_coverage"] if item["requested_charge"] == "raw-name")
+    raw = next(item for item in body["charge_coverage"] if item["charge_key"] is None)
     assert raw["charge_key"] is None and raw["covered"] is False
 
 
-def test_whitespace_raw_name_is_preserved_and_never_auto_matched(monkeypatch):
-    requested = [{"requestedCharge": "  charge.alpha  "}]
+def test_whitespace_charge_key_is_preserved_without_normalized_match(monkeypatch):
+    requested = [{"requestedCharge": "Alpha", "chargeKey": "  charge.alpha  "}]
     body = _body(monkeypatch, payload=_base_payload(requested=requested, include_requested=True),
                  rules_by_date={"2026-01-01": [_rule()]})
     check = body["charge_coverage"][0]
-    assert check["requested_charge"] == "  charge.alpha  "
-    assert check["charge_key"] is None
+    assert check["requested_charge"] == "Alpha"
+    assert check["charge_key"] == "  charge.alpha  "
     assert check["covered"] is False
-    assert body["missing_items"][0]["requested_charge"] == "  charge.alpha  "
+    assert body["missing_items"][0]["requested_charge"] == "Alpha"
+    assert body["missing_items"][0]["charge_key"] == "  charge.alpha  "
 
 
 @pytest.mark.parametrize("date_key", ["conduct_date", "judgment_date"])
