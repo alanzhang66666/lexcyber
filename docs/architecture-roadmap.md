@@ -10,6 +10,60 @@
 - `competition_submission/`、`本科生组+…/`：冻结快照，不再与主树同步
 - `/v1` 契约：冻结为读取兼容层；新生命周期端点走 `/v2`
 
+## 2026-10-08 main 修复验证（进行中）
+
+审核基线为 `8aadc846174436f88b5ab388e3c5a5d1fe755e01`。该提交 CI 五项全通过，但遗漏了文书批准、旧 execution 迟到发布、渲染输入依赖竞态及多规则量刑阻断展示。
+
+最近完整验收提交 `dd61e5b7df67df8f1216da5fd6ec2326947f13ee` 的 [CI 37693953565](https://github.com/alanzhang66666/lexcyber/actions/runs/37693953565) 五个 job 全部成功：Java/Postgres 141 项，0 失败/错误/跳过（包含 V21→V22 带数据升级）；Python 非 integration 224 项；web 126 项、实际 Vue 页面类型检查及生产构建；三个 OpenAPI。Compose 16 项业务检查、§19 三项实际并发、注册表数据库 12 项均通过，含缺失日期阻断、日期 CAS、旧日期批准拒绝和历史指针保留。该结果证明此提交的已测行为，后续新增修复仍须独立验收；PR #15 仍为 draft，main 未合入。
+
+- 修复分支 `codex/repair-main-lifecycle`：渲染文书使用 UUID 描述符与 head；V21 前向迁移保留旧流及历史版本，将不可验证的旧待审稿关闭为 superseded，要求重新生成。
+- 派发冻结有效已确认模块的 payload 和 artifact version ID；渲染回调仅绑定实际输入版本，审批再次校验事实与模块依赖。未会签能力继续 fail-closed。
+- 旧 execution 不发布；失败回调不发布；回调重放不新建复核或回退已完成执行。复核决策校验请求版本。
+- 前端整体 blocked 不输出刑期，各规则结果可追溯；开发服务器同时代理 `/v1` 和 `/v2`；任务轮询隔离旧路由响应。
+- 事实工作副本新增历史、diff 和版本回写入口；切案后清理旧编辑及请求，工作副本与已确认快照比对后再显示确认状态。事实写入使用契约中的复数实体路径。复核详情改用案件归档，展示固化的 manifest，不再调用退役的单条复核归档。
+- 空案件归档返回可定位的事实缺口；未知 archive profile 拒绝。归档创建与读取使用一致的公开字段。v2 模块/文书派发响应状态与公开契约一致。v2 任务重试重验能力、保留冻结输入，依赖变更后要求重新派发；不能混用旧快照与新事实引用。
+- v2 OpenAPI 响应补齐必需描述并接入合同 CI。Compose 验证使用明确标注的隔离 CI 规则/模板，实际驱动模块、文书、批准和归档；§19 检查要求确认、回调重放及复核/归档并发，必需检查 SKIP 不再算验收成功。测试 fixture 不构成正式法学批准。
+- 续查归档：按照权威 §5.11 强制要求三个有效模块与批准文书，不能仅有 facts 就创建完整归档；已有过期文书继续阻断。同一 manifest 在案件行锁内复用原归档，不增加版本号。并发脚本使用完整四工件 fixture，注册表 8 项数据库集成测试接入迁移后的 Compose 环境，数据库不可达即失败。
+- 提交 `3adfe52` 的 CI `37670947026`：Python、web、contracts 成功；Java 107 项中 1 错误，重复归档触发 manifest 唯一约束；Compose 因此前置失败未运行。本次补丁修复该真实错误，不通过删约束或放宽测试绕过。
+- 提交 `829a6bc` 的 CI `37673310917` 五个 job 成功：Java/Postgres 110 项、0 跳过；Python 166 项非 integration、前端 110 项；完整 Compose 生命周期、§19 三项实际并发检查与注册表 8 项真实数据库测试通过。`8cb7de5` 曾暴露重复归档响应的顺序/类型不一致，已统一响应并保留等价性测试。
+- 续查量刑管道：INV-PIPE-001 要求有效定罪后才派发量刑，派发冻结精确定罪 ID，发布保留历史依赖，批准重验当前有效上游；量刑重试也必须校验原依赖。执行期间上游变化不会使真实完成回调无限 409 重试，而是保存旧依赖结果、拒绝后续确认。本地 Python 167 项、Ruff、Java test-compile 通过，新增数据库用例待 CI 验证。
+- 提交 `74b1aef` 的 CI `37674521616` 五个 job 成功：Java/Postgres 112 项、0 跳过；Python 167 项、web 110 项；完整 Compose/§19 与注册表 8 项数据库测试再次通过，包含量刑派发、迟到回调历史依赖和重试失效检查。
+- 归档清单进一步改为从核心工件沿正规化依赖表递归取 parse/supporting 历史版本，排除无关解析流的 latest；保持同案门闩与幂等。本次仅冻结已登记的显式依赖，不推测未记录的事实来源边。
+- 提交 `d4cedb5` 的 CI `37675896176` 五个 job 成功：Java/Postgres 114 项、0 跳过；Python 167 项、web 110 项；完整 Compose/§19 与注册表 8 项数据库测试通过，新增递归历史解析依赖、多层 supporting 和跨案依赖阻断用例均已执行。
+- 文书下载实现：Java `/v2/cases/{caseId}/artifact-versions/{artifactVersionId}/export.docx` 校验属主、案件与精确工件版本，Engine 内部格式化器生成真实可编辑 DOCX，Java 经 MinIO 存储回读并校验。支持 `draft.v2` 和手工 `case.draft.v1`；blocked、空正文及未替换占位符禁止导出；历史/stale 版本仍可读取辅助稿，不改变工件、批准或归档状态。前端提供下载及切案请求隔离。新增真实 Compose 下载、中文内容、重复字节、历史版本和权限拒绝验收纳入本提交 CI；本节不提前宣称新提交 CI 已通过。
+- 本地 DOCX 修复验证：Python 非 integration 179 项、前端 122 项、Vue 类型检查与生产构建、三个 OpenAPI 均通过；Java 导出 client 4 项通过，数据库用例已编译待 CI 实跑。实际生成两页中文 DOCX，检查全部分页图片并确认正文逐字符相等（换行统一为 LF），包括制表符、空行和末尾换行。首轮发现 Title 默认蓝色边框并已移除；本机渲染器补充系统中文字体路径后完成视觉验收，未修改用户字体安装。
+- 提交 `1000103` 的 CI `37682223967`：Java/Postgres 123 项、Python 179 项、web 122 项与三个 OpenAPI 成功；Compose 首次 DOCX 下载失败，后续 §19/注册表步骤未执行。原因已复现：自定义 JDK 客户端默认 h2c 升级导致 Uvicorn 接收不到请求正文（422），DOCX Accept 下错误响应再因媒体协商变成 500。修复为 HTTP/1.1、显式 JSON 请求与 JSON 错误响应；用实际 Java 客户端→FastAPI 验证中文 DOCX 和两次字节一致，31 项 HTTP/client 回归通过。当前补丁的完整 Compose 验收仍以新提交 CI 为准。
+- 补齐架构 §9.4 的管辖门槛：定罪只认可不可变事实快照中 `jurisdictionConnections[].verificationStatus=confirmed`，缺失/候选/拒绝/未知状态输出定位明确的 blocked 结果；不改变合规行为，也不推定合规适用性。Python 非 integration 187 项与 Ruff 通过；新增真实 Compose 的空连接点、candidate 结果及批准阻断检查，待新提交运行。
+- 提交 `e875d8d` 的 CI `37685380267` 五个 job 全部通过：Java/Postgres 128 项、0 跳过；Python 187 项；web 122 项；三个 OpenAPI；真实 DOCX 存储/下载、历史版本与权限、完整生命周期、缺失/candidate 管辖阻断、§19 三项并发和注册表数据库 8 项均执行成功。
+- 续查 INV-DATA-001 发现金额总项与组成部分重复累计，120000 + 其中 80000 被错误聚合为 200000、误触发仓库谓词。修复按 kind 分组、按各聚合的有效数字与确认状态沿 componentOf 去重；不同口径保持独立，候选总项不吞掉已确认子项。支持真实 Java 快照 entityId UUID 与外部 id 别名。无效/循环图和非有限值以明确不可重试错误关闭执行，不输出可批准的数字。工作副本金额引用在删除前验证，未知/跨案/自引用/循环/重复身份拒绝，合法 UUID 关系可读回再保存。entityId 仅作本次输入图别名，父引用只写入新建同案节点；补测不可变历史快照连续两次相同 PUT，避免第一次替换删除原 UUID 后第二次报 400。Python 205 项、Ruff、Java test-compile 通过；新增真实 Compose 金额规则追溯、UUID 读写和拒绝后原数据保留，以及数据库校验用例，完整验证待本次提交 CI。
+
+
+- 规则/模板正式会签、B/C 映射和量刑基准校正仍按法学待签清单办理，不能由代码修复代替。
+- 移除已失效的旧 `tests/integration/test_registry.py`：该测试依赖已删除的根 `migrations/` 与 `skill.*` schema，并把任何错误都转为 skip。现役技能目录读取已有 `test_skill_runtime.py` 覆盖，真实 Engine V6 注册表继续执行 8 项数据库集成测试。历史 `storage/postgres` 代码保留供非 Engine 遗留路径使用；本次不恢复旧 schema，也不把旧技能目录错映射到法学规则包。
+
+本节记录进行中的工作，不替代下面的历史实测，也不证明全部功能已完成验证。
+
+- 续查 INV-LEGAL-002：v2 派发未绑定 `cases.as_of_date`，`active_rules` 实际回退到数据库当天日期；同一任务跨日可选不同规则。现冻结 `metadata.asOfDate` 与输入哈希/outbox，Engine 严格解析并传参，删除 `current_date`/检索 `date.today()` 回退；输出依赖记录日期。缺失/无效日期明确阻断且不可重试。案例既有未填日期可通过带 expected-date CAS 的 `/v2/cases/{id}/analysis-date` 补填；变更保留历史与批准指针、使模块/文书失效。确认/批准持案件锁后重验日期，旧日期完成保存历史但不可批准；V22 前向迁移使历史未绑定日期的 v2 确认/批准失效。未改已应用迁移或法学规则。
+- 日期修复本地 Python 224 项、Ruff、前端 126 项及实际 Vue 页面类型检查、TypeScript/Vite build、三个 OpenAPI 通过；Java test-compile 通过，新增数据库/真实 Compose 日期拒绝、CAS、依赖追溯与旧日期批准拒绝，以及 12 项注册表数据库检查，待本次提交完整 CI。
+- 日期验收负面记录：`4204f5a` 的 CI 暴露新失效原因未纳入数据库 CHECK，以及重试夹具漏填日期依赖；修正 V22 在失效旧数据前扩展闭合枚举，并补带数据 V21→V22 升级回归。`9e93aca` 的 Java/Postgres 141 项全过、0 跳过（含真实升级测试），Python 224、web 126 和三个契约通过；Compose 在既有 15 项 PASS 后因新增脚本调用不存在的 v2 confirm 端点返回 404，后续并发/注册表未执行。脚本已改为现役开启复核→批准流程，精确断言旧日期批准返回 `DEPENDENCY_STALE`；完整新 head 验收仍待 CI。
+- 本次审计还发现 `vue-tsc --noEmit` 在空根 references 配置下漏检页面；改为明确检查 `tsconfig.app.json`，修正文书刷新按钮把点击事件当 caseId 的实际缺陷并加点击验收。默认 env 演示改为完全 stub，文档说明注册/登录后 `/tasks` 入口与真实模型前置；修复六处已归档文档链接。
+- 续查 A20/INV-LEGAL-003、006、007：旧模块将法源冲突/覆盖缺口写入 divergence 却仍 calculated，量刑遗漏双时点解析。现在按确认行为/裁判日期分别执行批准规则，保留两条未选定路径和实际规则/法源版本依赖；法源缺失、有效期重叠、覆盖缺口、语义不同及任一分支失败均阻断整体。候选/非法/冲突日期明确定位，缺失时保留显式基准日期路径与缺点信息。Java 拒绝携带冲突或 blockers 的确认并去重版本依赖；V23 前向迁移使旧 divergence 工件及显式依赖后代的确认/批准失效，保留不可变载荷和历史指针。
+- 续查 A21/§14.1：requiredEvidenceKinds 原先只读未校验。现在仅对命中规则按既有 `entities.evidence[].type` 精确种类及 confirmed 状态检查，缺失/未核实/非法身份和容器阻断；没有引入别名映射或把类型匹配当司法证据充分性。前端显示双时点法源和规则版本、分支缺口及待核实种类；整体未择定时显示路径对照提示，失败分支隐藏数字。
+- 本次新补丁经独立复审，修正了分支计算错误只存在结果级 blockers 而未提升整体状态，以及 Compose 脚本误取首条未命中规则的错误。最终本地 Python 非 integration 258 项、Ruff、三个 OpenAPI/快照、web 133 项及实际页面类型/生产构建通过；Java test-compile 通过。本机未运行真实 PostgreSQL；V22→V23 带数据迁移、版本依赖去重、真实双时点/证据缺失→candidate→confirmed 和既有全链路验证以此次新提交 CI 为准，尚未提前认定成功。
+- `81c42d7` 的 CI `37698158027`：Python 258、web 133 和契约通过；Java/Postgres 145 项中两个新增依赖发布测试失败、0 跳过，Compose 未执行。真实 V22→V23 升级及冲突确认拒绝已通过。失败原因是共享 document.parse 夹具绕过模块发布，未测到新增法源依赖逻辑；现改为 compliance 回调并断言发布类型，不放宽依赖数量或拒绝断言。浏览器真实组件验收另发现异常载荷可同时展示缺证据和计算数字，已防御性检查嵌套规则阻断/缺失/未核实种类，并让状态标签与数字隐藏保持一致；窄屏提示改为纵向排列。本轮修正须通过新 head 完整 CI。
+- `70d29b9c539d40a75b01b95ad00f7b9297a75c7d` 的 [CI 37698787047](https://github.com/alanzhang66666/lexcyber/actions/runs/37698787047) 五个 job 成功。完整日志：Java/PostgreSQL 145 项、0 失败/错误/跳过，含真实 V22→V23 升级、两个法源依赖回归；Python 258、web 134、真实页面类型/生产构建、三个 OpenAPI；Compose 18 项业务检查（新增双时点两分支/来源版本/批准拒绝，证据缺失→candidate→confirmed 与 CAS 绑定）、§19 三项真实并发、注册表数据库14项执行通过。桌面/390px窄屏真实组件检查覆盖有效未选定路径、非法嵌套证据状态下数字隐藏与提示排版；临时页面、依赖链接及本机服务已清理。
+- 完整目标仍未完成：续查 A22，唯一权威 v1.3 §9.5 要求参数本身 confirmed 且有 evidence。当前证据种类检查不验证具体参数；在 main 与 70d29b9 实际运行仓库量刑语料，全部必需种类 confirmed、金额200000 confirmed，但 candidate 的 has_surrender=true 仍使12月基准变成8.4月，status calculated且无blockers（registry读取夹具，无真实数据库）。独立代理也复现该缺口。下一修复必须覆盖实际输入确认/证据关联、适用谓词/基准/调节与双时点，并核对文书取值和重复fact key，不能靠改阈值或“某种证据存在”放行。正式会签、B/C映射、真实供应商验证及合入仍未完成。
+- 续查 A23/A24：证据重建 UUID 使 facts/amount/jurisdiction 引用悬空，参与人替换会清空 facts/events 关联。修复保持同案逻辑 actor/evidence 的 UUID，支持 snapshot 的 entityId/id/externalId 及 UUID 形状业务别名；引用中的实体删除明确 409，输入身份冲突提前拒绝。draft/确认/clone/已确认基线复用、模块/文书批准和归档都验证冻结证据与参与人引用闭包，不用当前工作副本替代旧快照。V24 根据坏快照沿正规化依赖递归失效旧确认/批准 head，保留全部历史与指针；有效历史实体即使当前已删仍可还原。
+- 此补丁独立复审修正了共享门槛漏 actor、UUID 业务别名丢失及迁移漏非数组身份集合；Java test-compile、Python 非 integration 258 项、Ruff、三个 OpenAPI/快照通过。新增真实数据库损坏旧版本确认/clone/批准/归档拒绝、稳定身份/删除/别名回归、V23→V24 带数据升级，以及两项 HTTP/Compose 引用往返与跨案阻断检查。本机无 PostgreSQL，实际数据库与 Compose 行为须以新精确提交的 CI 为准，未提前认定完成；A22 仍未修。
+- `4cc3d4e` 的 [CI 37702331958](https://github.com/alanzhang66666/lexcyber/actions/runs/37702331958)：Python258/web134/契约成功；Java/PostgreSQL162项、0失败、9错误、0跳过，Compose未执行。证据删除检查三个 EXISTS 的嵌套括号遗漏，各个证据写入回归均触发 SQL syntax error；现补闭合括号，未改引用政策、约束或测试断言。真实 V23→V24 带数据升级、坏旧快照归档阻断、有效冻结历史批准等测试已通过；整体仍须新精确提交 CI。
+- `acf20de` 的 [CI 37702670252](https://github.com/alanzhang66666/lexcyber/actions/runs/37702670252)：Java、Python、web、契约成功。Compose 前17项业务检查通过，随后旧证据 fixture 用非 UUID 业务编号填 entityId，被新的身份校验返回400；新增引用检查、并发和注册表步骤尚未执行。fixture 改为用同一业务 id 将已有 candidate 证据更新为 confirmed，保留原缺失/未确认/已确认断言和严格 UUID 校验，须由后续精确提交重新验收。
+- `e1e0775c94d3026041a38cc30225e09d3fff1dc7` 的 [CI 37703520801](https://github.com/alanzhang66666/lexcyber/actions/runs/37703520801) 五个 job 成功：Java/PostgreSQL162项、0失败/错误/跳过，Python258、web134及页面类型/构建、三个OpenAPI；Compose20项实际业务检查，包括稳定身份/引用往返、受引用删除原子拒绝、未知/跨案证据快照拒绝及有效历史clone恢复；§19三项并发和注册表真实数据库14项执行通过。V23→V24带数据升级和旧冻结引用/批准/归档防御已有实际数据库证据。A23/A24在该修复提交验收通过，仍draft/unmerged；main未变，A22独立缺口继续修复。
+- A22 新增实际读取参数验证：保持 DSL lazy 真值/原规则阈值比例，普通谓词（包括 false）、基准档、调节项、日期、文书及两时点路径记录输入/证据身份、阶段和时点；候选、重复键、缺失/未核实/歧义证明均阻断。聚合沿原组成去重算法校验真实贡献行和非法数字；计数按实际行核验，空贡献不冒充已核实零。存在性缺失可作显式可选 guard，有值不能绕过核实。管辖至少一个 confirmed 且有有效证明连接，候选顺序不影响结果；actors/events 缺原生证明时不杜撰关联。顶层 marker 汇总全部已执行路径，阻断时量刑数字/步骤和文书正文均隐藏。
+- v2 确认/批准校验严格 input_validation 版本、状态和数组形状，并检查同案递归上游；V25 前向失效缺少/损坏证明的有效 head 和正规化后代，保留全部载荷、确认/批准指针与已归档历史，legacy v1 保留。新增真实 V24→V25 带数据升级回归。仅 CI 合成规则的可选 selector 增加 exists 前置，成功 fixtures 显式关联 confirmed 参数证据；A21 service_log 种类缺失/candidate 用独立 document 参数证明隔离，不改真实 corpus 或生成正式批准。
+- A22 本地 Python 非 integration295项、Ruff、Java21 test-compile、三个 OpenAPI/快照通过；真实 corpus 的9项回归确认 candidate 自首 true/false 均 blocked，全部已核实有证明时原8.4/12月结果保持，缺证据日期/重复日期和仅行为分支读到候选参数遮蔽全部数字。独立复审修正结构→强读取去重误放行、重复证据 canonical 首行裁决、嵌套缺值、非法金额数组、管辖顺序和跨案递归过滤；externalId-only 仅作别名不能冒充 canonical，id-only 兼容保留。实际 Postgres/Compose 新验收仍待精确新提交 CI，不以本地编译代替。
+- `851bbf9` 的 [CI 37705034459](https://github.com/alanzhang66666/lexcyber/actions/runs/37705034459)：Python295/web134/契约成功，Java/PostgreSQL167项、3失败、1错误、0跳过，Compose未执行。V24→V25带数据升级已经执行，但载荷保真误比JSONB字段顺序；另有坏marker循环fixture重复scope、divergence fixture缺合法参数marker而遮蔽原MODULE_BLOCKED，以及归档递归证明校验遮蔽原ARCHIVE_ITEM_CROSS_CASE。现分别改JSON结构比较、独立fixture scope、证明与择法门闩隔离，并将完整归档同案校验置于证明校验之前；保持所有原业务/历史保真断言、唯一约束和严格证明门槛，实际回归须由新提交CI确认。
+- 未扩张旧 prompt 数据库模型：追溯证明 PromptRegistry 只由未挂载到当前图的 worker 节点调用，当前 reserved 任务均直接进入 Engine adapter。该遗留副作用与现役路径不同，本轮未创建第二套 schema 或把旧库脚本当现役启动前置。
+
 ## 阶段状态
 
 | 阶段 | 内容 | 状态 |
@@ -25,7 +79,7 @@
 | 8a | 法源/规则/模板注册与会签（P5 前置基建） | ✅ 代码完成并在真实库验证。engine/V6 注册表（legal_source + alias + supersession 链 + rule_package + template_package + signoff_record）+ `engine/rules/registry.py` + `/internal/v1/capabilities` 等 6 个内部端点 + `EngineCapabilitiesClient`；`/v2` 模块派发已接真实能力门闩（无 approved 规则 → `MODULE_EXECUTION_UNAVAILABLE`，有能力但适配器未实现 → `ENGINE_ADAPTER_PENDING`） |
 | 8b | 规则层（合规/定罪/界分执行体） | ✅ 第一片已验证：evaluator DSL + `module_analysis.py` → case.*.v2 payload + 逐条件 trace + fired 规则双时点法源解析；e2e 实测 calculated/not_applicable/blocked 三态。剩余：规则语料扩充（当前 7 条底稿） |
 | 8c | 可解释量刑（注册表化） | ✅ 第一片已验证：base_tiers 择档 + when-gated adjustments + 显式夹逼留痕 + ROUND_HALF_UP，产出 sentencing.v2；旧 metadata 重放保留兼容。剩余：地方细则插件、缓刑/罚金独立计算块 |
-| 8d | 文书渲染 | ✅ 第一片已验证：`draft.render` → draft.v2 + 占位符阻断 + 上游 payload 代入；模板按案型分（`indictment-assist` 通用 + `indictment-draft` 支付结算型，语料 `engine/rules/corpus/core_templates.json` + `seed --templates`）。剩余：下载导出 |
+| 8d | 文书渲染 | ✅ 渲染链已验证：`draft.render` → draft.v2 + 占位符阻断 + 上游 payload 代入；模板按案型分（`indictment-assist` 通用 + `indictment-draft` 支付结算型）。DOCX 下载代码与验收已补齐，精确新提交的 CI 结果以 PR 检查为准。当前输出是辅助正文排版，不宣称使用法学 DOCX 版式模板，也不包含 PDF 导出。 |
 | 9 | 法源层 + AI 边界 + 门闩双侧 + 可观测性 | 🔶 法源注册 + 双时点解析（`resolve_temporal`）已随 8a 落地；新旧链数据、AI 边界审计、可观测性未做 |
 
 ## 验证状态（2026-09-24 实测）
@@ -105,7 +159,16 @@
 6. **§19 并发脚本**：`scripts/concurrency_check.py`——双确认 CAS（409）、双发布重放（工件版本稳定）、归档/复核交错（无 5xx）；internal 用例需容器网内执行。
 7. **文档归档**：11 篇历史文档 + 根 `PLAN.md` → `docs/archive/`（git mv 保历史 + 归档横幅）；`AGENTS.md`/`README.md` 按现状重写；`docs/legal-signoff-checklist.md` 补法学待签清单。
 
-**仍待办**：案例 B/C 键化覆盖层（需法学审定映射）、真实法学负责人会签（当前 e2e 占位，含新增 `indictment-assist` 模板）、量刑基准档与案载裁量偏差校正（法学）、文书下载导出、§19 脚本在 CI/容器网内定期执行。
+**仍待办**：案例 B/C 键化覆盖层（需法学审定映射）、真实法学负责人会签（当前 e2e 占位，含新增 `indictment-assist` 模板）、量刑基准档与案载裁量偏差校正（法学）。文书 DOCX 下载与验收已补齐；§19 脚本已随 2026-10-08 修复纳入每次 CI 的 Compose 网络，已执行证据见上节。
+
+## 2026-10-08 定罪路径完成度续查
+
+- A22 修正提交 `90024da128fc04291b2c4e92caca971478914eae` 的 [CI 37705884129](https://github.com/alanzhang66666/lexcyber/actions/runs/37705884129) 五个 job 全部成功：Java/PostgreSQL167项、0失败/错误/跳过（真实V24→V25升级及历史载荷保真），Python295、web134、三个OpenAPI；Compose21项业务检查，含实际参数candidate真假/缺失或候选proof阻断→有效linked proof批准，§19三项并发及注册表数据库14项通过。
+- A25：兼容T1投影和页面原本丢弃已有 `exclusion_reason`；补丁原样保留蛇形/驼峰字段并独立展示，保留概述、排除状态、双方证据和原始输入。没有推定排除理由或修改冻结/演示法学底稿；无理由时保持缺失，不伪造文本。新增两项真实构建器回归与既有页面读取/组件展示断言。新补丁验收独立于以上90024da结果。
+- 本次补充明确声明的 `outcome.candidate_paths` 通用执行能力，见 [定罪路径契约](conviction-path-plan.md)：按冻结参与人绑定路径，保留规范证据身份、双方证据、排除理由、规则/法源版本及独立时点；主观路径有相反证明输出 conflicted，整体 blocked 时清空可裁断位置。页面严格读取且保留诊断，不把未复核路径显示为确认排除。false 分支必须由计划明确声明，不从旧字段推定法律含义；仅标签变更不构成择法业务分歧。
+- A26/P1：V6 只保护 UPDATE/DELETE，注册 API 与直接 INSERT 可写入 approved/signed_off，绕过正常 signoff。新增 V7 首次插入守卫及有批准记录的有效视图；执行读取还要求引用法源已签署，旧绕过行留在历史但不进入有效集合。原 V6 与历史载荷不修改。真实 V6→V7 升级、降级和数据库守卫等待本次精确提交 CI。
+- 本地 Python 非 integration323、web142、真实 Vue 页面类型/生产构建、三个 OpenAPI/快照及 Ruff 通过。新增 HTTP 用例待 CI 验证：2200/2201 隔离合成计划、已核实路径批准、未核实证明与主观冲突拒绝批准、历史不变。CI 规则与签署均仅是技术夹具。
+- INV-CONV-001/002/004 仍未完整交付正式语料映射，INV-CONV-005 请求罪名覆盖接口在后续补丁实现，尚待完整CI；没有路径计划的旧规则保持诊断与空候选路径。真实法学会签、B/C键化映射及量刑基准校正仍待负责人资料，不通过改默认501或生成测试签署冒充完成。
 
 ## 关键不变量速查
 
@@ -124,3 +187,28 @@
 - 错误码完整目录
 - 审计事件统一 schema、checkpoint 粒度、execution 重试策略
 - 部署拓扑 / HA / DR / RPO / RTO / NFR
+
+## 2026-10-08 显式罪名请求与后续完整性续查
+
+- 为INV-CONV-005补可选请求体、Java冻结metadata/输入哈希/重试和页面名称+可选标识编辑，严格保留明确输入，不推定名称映射。Engine逐已知法律时点按同批有效approved规则的coverage.covers精确匹配，未覆盖返回charge_out_of_coverage且不得生成该罪名候选。单侧已知日期也执行，不填补未知日期。真实数据库冻结/重试和HTTP覆盖/缺口拒绝验收等待本次精确CI。
+- 独立复核发现并修正请求重跑丢失、跨案表单带入、无请求名的计划缺口格式、false覆盖规则（含无请求时跨规则候选覆盖）的法源版本遗漏、非法JSON路径键崩溃及Java/Engine重复判断差异。完整分析器回归另由独立测试角色编写，不能以辅助函数测试替代。
+- 新确认A27/P1：已有工件虽记录app.artifact_external_dependency，但会签降级/退役后，确认、文书批准与归档没有重新验证其规则/法源/模板依赖，head也不会因此stale。189740a的V7只保护未来有效读取，不能声称已解决旧工件。下一修复必须通过内部API及一致性协调处理，保留历史和批准指针，不跨schema直读，不自行解释法律。
+- 正式法学会签、真实语料多路径/B/C映射与基准校正仍待负责人资料；技术测试批准不能替代法学批准。
+
+- 本地完整分析器回归曾触发新增分支的UnboundLocalError（path循环变量作用域错误）；已修正并保留回归断言。前端请求键校验误用snake字段、空白/过长标识容错也已修正。首次失败记录不计为既有main缺陷，后续通过须以最终提交CI为准。
+
+## 2026-10-08 注册表撤回与旧工件防御
+
+- A27 前向补丁新增 engine V8 / app V26，不改已应用迁移、旧载荷或历史批准指针。Engine 保存可靠撤回事件；Java 在应用事务提交后 ACK，重复事件以 UUID receipt 幂等，按正规化外部身份和工件依赖闭包传播 stale。
+- 确认、批准、归档、下游首次派发及重试先获取同库全局事务 shared advisory barrier，再按案件/事实/head/review 原有锁序操作。注册表 UPDATE/DELETE 与会签变更的 BEFORE STATEMENT trigger 获取 exclusive barrier。Java 通过内部 API 核验精确规则/模板/法源版本和间接法源闭包；Engine 验证同数据库、同 backend PID 持有 global + 随机 challenge 双 ShareLock，不在 HTTP 验证事务内再次请求 barrier，避免排队 writer 引起锁互等。
+- 读取 confirmed/approved head 也同步检查有效性；失效保留指针并递归传播，首次响应重读事务内新状态。缺失版本不推定 latest；验证故障返回503，真实失效返回409。兼容历史空外部依赖不补造法律版本。
+- 事件与新工件使用实际插入时刻 clock_timestamp，撤回事件只匹配发生前已创建的根工件，防止旧事件重放误伤恢复原内容后新执行的结果。锁住案件后重查闭包，不能遗漏等待期间新发布的后代。
+- V8 同时冻结 signed_off/disputed/unsupported 法源版本的全部内容字段；已撤回法源不可原版本改写、重置初审或删除。原内容可以依法重新会签；内容变化必须新版本。会签备注变化或多份批准中删除一份、仍有有效批准时不误发撤回。复合身份从所有者原始字段读取，包含@的ID不拆分。
+- 新回归包括实际数据库双锁证明、blocked writer释放/rollback、V7→V8带历史升级、source/rule/template失效、递归/空版本/事件时间/UUID receipt，以及公开HTTP待审审批原子拒绝、历史归档和DOCX字节不变、审批与直接数据库规则停用并发。新增测试尚待本补丁精确SHA的完整CI验收；本地缺Docker的数据库用例不计为通过。
+- 正式法学会签、真实语料按人路径/B/C映射及量刑校正继续依赖负责人资料；本补丁不伪造批准或更改遗留501门闩。
+
+- 首次A27 CI 37742100182（6ed00ba）Java184项中1失败/3错误：重试失效模块返回码偏离原DEPENDENCY_STALE、新测试引用已退役case_drafts.body/version字段。修正为仅转换MODULE_NOT_CONFIRMED（不把Registry503伪装409）和现役文书描述符字段，保留数据库/并发/历史业务断言；首轮Compose因Java失败未运行。后续成功必须以新SHA完整CI为准。
+
+- 第二轮CI 37742761809（dd92e6b）Java184项及其他三个基础job全部成功，Compose既有blocked模板诊断遇409：收紧下游检查时误将事实更替造成的普通stale一律拒绝。修正为先验证全部confirmed头的外部依赖，再只冻结原本eligible的NOT stale/latest版本；事实型模板和缺资料blocked诊断继续可执行，法源撤回不能通过省略stale头绕过。既有HTTP断言保持不变。
+
+- 第三轮CI 37744000470（fe697a5）四项基础job及原23项Compose检查通过；新增2202定罪fixture审批因输入证明blocked被拒。完整HTTP日志定位为2201候选计划effective_to=NULL延伸进2202，缺少其专属actor/proof参数。将CI-only冲突计划结束日期明确为2201-12-31，使2200/2201与2202/2203撤回夹具真正隔离；增加新fixture审批前calculated/verified断言。未更改生产规则、Engine/Java证明校验或既有业务断言。

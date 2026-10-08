@@ -8,6 +8,7 @@ import com.lexcyber.server.domain.IdempotencyService;
 import com.lexcyber.server.domain.IdentityService;
 import com.lexcyber.server.domain.ModuleConfirmationService;
 import com.lexcyber.server.domain.ModulePolicies;
+import com.lexcyber.server.engine.EngineRegistryClient;
 import java.nio.charset.StandardCharsets;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -33,13 +34,14 @@ public class ReviewService {
             FROM app.review_records r
             JOIN app.artifact_version v ON v.artifact_version_id = r.artifact_version_id
             JOIN app.artifact_stream s ON s.artifact_stream_id = v.artifact_stream_id
+            LEFT JOIN app.draft_head dh ON dh.artifact_stream_id = s.artifact_stream_id
             JOIN app.cases c ON c.owner_account_id = ? AND c.id = r.case_id
             """;
     private static final String OWNED_SELECT = """
             SELECT r.review_id AS id, r.artifact_version_id, r.case_id,
                    v.version AS result_version, r.status, r.decision,
                    r.actor_id, r.comment, r.decided_at, r.created_at,
-                   s.kind AS module, s.scope_key
+                   s.kind AS module, s.scope_key, dh.draft_id AS head_draft_id
             """ + OWNED_FROM;
 
     private final JdbcTemplate jdbc;
@@ -48,16 +50,25 @@ public class ReviewService {
     private final IdempotencyService idempotency;
     private final ModuleConfirmationService moduleConfirmation;
     private final DraftApprovalService draftApproval;
+    private final EngineRegistryClient registry;
 
     public ReviewService(JdbcTemplate jdbc, CaseService cases, IdempotencyService idempotency,
                          ModuleConfirmationService moduleConfirmation,
                          DraftApprovalService draftApproval) {
+        this(jdbc, cases, idempotency, moduleConfirmation, draftApproval, new EngineRegistryClient());
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public ReviewService(JdbcTemplate jdbc, CaseService cases, IdempotencyService idempotency,
+                         ModuleConfirmationService moduleConfirmation,
+                         DraftApprovalService draftApproval, EngineRegistryClient registry) {
         this.jdbc = jdbc;
         this.cases = cases;
         this.ids = new IdentityService(jdbc);
         this.idempotency = idempotency;
         this.moduleConfirmation = moduleConfirmation;
         this.draftApproval = draftApproval;
+        this.registry = registry;
     }
 
     @Transactional(readOnly = true)
@@ -123,6 +134,7 @@ public class ReviewService {
 
     @Transactional
     public Map<String, Object> open(UUID ownerAccountId, String caseId, ReviewOpen request, String idempotencyKey) {
+        registry.lockBarrier(jdbc);
         caseId = cases.lockOwned(ownerAccountId, caseId).id();
         String module = ModulePolicies.requireReviewModule(request.module());
         UUID taskId = request.taskId();
@@ -222,11 +234,16 @@ public class ReviewService {
     @Transactional
     public Map<String, Object> decide(UUID ownerAccountId, UUID reviewId, String decision, int resultVersion,
                                       String actor, String comment) {
+        registry.lockBarrier(jdbc);
         Map<String, Object> current = requireOwned(ownerAccountId, reviewId);
         String caseId = (String) current.get("caseId");
         cases.lockOwned(ownerAccountId, caseId);
         String nextStatus = "approve".equals(decision) ? "approved" : "rejected";
         UUID artifactVersionId = (UUID) current.get("artifactVersionId");
+        Number currentVersion = (Number) current.get("resultVersion");
+        if (currentVersion == null || currentVersion.intValue() != resultVersion) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "RESULT_VERSION_CONFLICT");
+        }
         // 锁序 stream → review（与 publish 的 stream→review 同序防互等死锁）：
         // SHARE 期间 stream.latest 不会变，下面的 live 检查在该锁内稳定成立。
         List<Map<String, Object>> streamLock = jdbc.queryForList("""
@@ -263,20 +280,13 @@ public class ReviewService {
         if ("approved".equals(nextStatus)) {
             String module = (String) current.get("module");
             if ("draft".equals(module)) {
-                UUID draftId = parseScopeId((String) current.get("scopeKey"), "draft:");
+                UUID draftId = draftIdForVersion(caseId, artifactVersionId);
                 draftApproval.approve(caseId, draftId, ownerAccountId);
             } else if (ModulePolicies.MODULES.contains(module)) {
                 moduleConfirmation.confirm(caseId, module, ownerAccountId);
             }
         }
         return requireOwned(ownerAccountId, reviewId);
-    }
-
-    private static UUID parseScopeId(String scopeKey, String prefix) {
-        if (scopeKey != null && scopeKey.startsWith(prefix)) {
-            return UUID.fromString(scopeKey.substring(prefix.length()));
-        }
-        throw new IllegalStateException("unexpected scope_key: " + scopeKey);
     }
 
     private static String reviewRequestHash(ReviewOpen request) {
@@ -342,8 +352,10 @@ public class ReviewService {
         result.put("module", module);
         result.put("archiveStatus", "open");
         // scope 反算展示字段（不持久化，INV-REVIEW-003）
-        if (scopeKey != null && scopeKey.startsWith("draft:")) {
-            result.put("draftId", scopeKey.substring("draft:".length()));
+        UUID headDraftId = rs.getObject("head_draft_id", UUID.class);
+        if (headDraftId != null || (scopeKey != null && scopeKey.startsWith("draft:"))) {
+            result.put("draftId", headDraftId == null
+                    ? scopeKey.substring("draft:".length()) : headDraftId.toString());
             result.put("draftVersion", rs.getInt("result_version"));
             result.put("returnTarget", "/cases/" + caseId + "/drafts");
         } else {
@@ -359,6 +371,20 @@ public class ReviewService {
             result.put("moduleVersion", null);
         }
         return result;
+    }
+
+    private UUID draftIdForVersion(String caseId, UUID artifactVersionId) {
+        List<UUID> drafts = jdbc.query("""
+                SELECT h.draft_id
+                FROM app.draft_head h
+                JOIN app.artifact_version v ON v.artifact_stream_id = h.artifact_stream_id
+                WHERE h.case_id = ?::uuid AND v.artifact_version_id = ?
+                """, (rs, ignored) -> rs.getObject(1, UUID.class), caseId, artifactVersionId);
+        if (drafts.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "draft head is not bound to the reviewed artifact version");
+        }
+        return drafts.get(0);
     }
 
     private UUID taskFor(UUID artifactVersionId) {

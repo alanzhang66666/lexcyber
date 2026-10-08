@@ -7,6 +7,7 @@ import type { SourceSearchHit } from '../api-types'
 const route = useRoute()
 const query = ref('')
 const asOfDate = ref('')
+const resultDate = ref('')
 const topK = ref(5)
 const hits = ref<SourceSearchHit[]>([])
 const searched = ref(false)
@@ -15,18 +16,25 @@ const error = ref('')
 
 async function search() {
   if (!query.value.trim() || loading.value) return
+  if (!asOfDate.value) {
+    error.value = '请填写法律分析基准日期。'
+    return
+  }
   loading.value = true
   error.value = ''
   searched.value = true
+  const requestedDate = asOfDate.value
   try {
     const res = await api.searchSources({
       query: query.value.trim(),
-      asOfDate: asOfDate.value || null,
+      asOfDate: requestedDate,
       topK: topK.value,
     })
     hits.value = res.items
+    resultDate.value = requestedDate
   } catch (caught) {
     hits.value = []
+    resultDate.value = ''
     if (caught instanceof ApiError && caught.status === 501) {
       error.value = '法源检索尚未开放。'
     } else if (caught instanceof ApiError && caught.status === 401) {
@@ -72,7 +80,7 @@ onMounted(() => {
       </label>
       <label>
         <span>有效日期</span>
-        <input v-model="asOfDate" type="date" />
+        <input v-model="asOfDate" type="date" required />
       </label>
       <label>
         <span>条数</span>
@@ -82,6 +90,7 @@ onMounted(() => {
         {{ loading ? '检索中…' : '检索' }}
       </button>
     </div>
+    <p v-if="hits.length">结果基准日期：{{ resultDate }}</p>
     <p v-if="error" class="notice notice-error" role="alert">{{ error }}</p>
     <div v-if="loading" class="panel empty-state">正在检索…</div>
     <div v-else-if="searched && !hits.length && !error" class="panel empty-state">

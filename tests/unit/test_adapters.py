@@ -26,3 +26,12 @@ def test_internal_search_endpoint_is_unavailable(monkeypatch: pytest.MonkeyPatch
         search_endpoint(SourceSearchRequest(query="民法典"))
     assert error.value.status_code == 501
     assert error.value.detail == "SOURCE_SEARCH_UNAVAILABLE"
+
+
+@pytest.mark.parametrize("value", [None, "", "2024-1-1", "2024-02-30"])
+def test_enabled_source_search_requires_explicit_date(monkeypatch, value):
+    monkeypatch.setattr("engine.adapters.sources.settings.legal_source_search_enabled", True)
+    with pytest.raises(HTTPException) as error:
+        search_endpoint(SourceSearchRequest(query="刑法", as_of_date=value))
+    assert error.value.status_code == 400
+    assert error.value.detail["code"] == "INVALID_AS_OF_DATE"

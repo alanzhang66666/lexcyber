@@ -44,6 +44,7 @@ public class CaseService {
 
     @Transactional
     public CaseView create(UUID ownerAccountId, CaseCreate request, String idempotencyKey) {
+        requireSupportedDate(request.asOfDate());
         String title = request.title().trim();
         Map<String, Object> metadata = request.metadata() == null ? Map.of() : request.metadata();
         String key = normalizeIdempotencyKey(idempotencyKey);
@@ -106,6 +107,44 @@ public class CaseService {
             throw new ApiException(HttpStatus.NOT_FOUND, "CASE_NOT_FOUND", "案件不存在或不可访问");
         }
         return rows.get(0);
+    }
+
+    private static void requireSupportedDate(LocalDate date) {
+        if (date != null && (date.getYear() < 1 || date.getYear() > 9999)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "AS_OF_DATE_INVALID", "基准日期年份须在 0001–9999 范围内");
+        }
+    }
+
+    /** Freeze analysis context per execution; changing it invalidates effective heads only. */
+    @Transactional
+    public CaseView updateAnalysisDate(UUID ownerAccountId, String caseId, CaseAnalysisDateUpdate request) {
+        CaseView current = lockOwned(ownerAccountId, caseId);
+        caseId = current.id();
+        if (request.asOfDate() == null) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "AS_OF_DATE_REQUIRED", "需要法律分析基准日期");
+        }
+        requireSupportedDate(request.asOfDate());
+        if (request.asOfDate().equals(current.asOfDate())) return current;
+        if (!java.util.Objects.equals(current.asOfDate(), request.expectedAsOfDate())) {
+            throw new ApiException(HttpStatus.CONFLICT, "ANALYSIS_DATE_CONFLICT", "基准日期已变更，请刷新后再提交");
+        }
+        jdbc.update("UPDATE app.cases SET as_of_date = ?, updated_at = now() WHERE id = ?::uuid",
+                request.asOfDate(), caseId);
+        jdbc.update("""
+                UPDATE app.module_head SET stale = true, stale_reason = 'analysis_date_changed', updated_at = now()
+                WHERE case_id = ?::uuid
+                """, caseId);
+        jdbc.update("""
+                UPDATE app.draft_head SET stale = true, stale_reason = 'analysis_date_changed', updated_at = now()
+                WHERE case_id = ?::uuid
+                """, caseId);
+        jdbc.update("""
+                INSERT INTO app.business_audit(actor, action, resource_type, resource_id, payload_json)
+                VALUES (?, 'case.analysis_date_changed', 'case', ?,
+                  jsonb_build_object('previousAsOfDate', ?::text, 'asOfDate', ?::text))
+                """, "account:" + ownerAccountId, caseId,
+                current.asOfDate() == null ? null : current.asOfDate().toString(), request.asOfDate().toString());
+        return requireOwned(ownerAccountId, caseId);
     }
 
     @Transactional

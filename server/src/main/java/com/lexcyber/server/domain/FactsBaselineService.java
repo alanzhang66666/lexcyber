@@ -5,11 +5,15 @@ import com.lexcyber.server.api.ApiException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -67,8 +71,23 @@ public class FactsBaselineService {
 
     /** 规则执行/门闩入口：必须有 confirmed FactsVersion，否则 409。 */
     public UUID requireConfirmedVersionId(String caseId) {
-        return confirmedVersionId(caseId).orElseThrow(() ->
+        UUID versionId = confirmedVersionId(caseId).orElseThrow(() ->
                 new ApiException(HttpStatus.CONFLICT, "FACTS_NOT_CONFIRMED", "事实基线未确认"));
+        validateVersionReferences(caseId, versionId);
+        return versionId;
+    }
+
+    /** Validate a frozen version without consulting or mutating the working copy. */
+    public void validateVersionReferences(String caseId, UUID versionId) {
+        List<String> payloadRows = jdbc.query(
+                "SELECT payload::text FROM app.facts_version WHERE facts_version_id = ? AND case_id = ?::uuid",
+                (rs, ignored) -> rs.getString(1), versionId, caseId);
+        if (payloadRows.isEmpty()) {
+            throw invalidReference("facts version is missing or belongs to another case");
+        }
+        Map<String, Object> payload = castMap(readJson(payloadRows.get(0)));
+        canonicalizeAndValidateReferenceClosure(caseId, payload);
+        validateCloneActorReferences(caseId, payload);
     }
 
     /**
@@ -93,6 +112,8 @@ public class FactsBaselineService {
             entities.put(e.getValue(), readJsonArray(snapshotQuery(e.getKey()), caseId));
         }
         payload.put("entities", entities);
+        canonicalizeAndValidateReferenceClosure(caseId, payload);
+        validateCloneActorReferences(caseId, payload);
         String payloadJson = writeJson(payload);
         String contentHash = sha256(payloadJson);
 
@@ -135,6 +156,12 @@ public class FactsBaselineService {
             throw new ApiException(HttpStatus.CONFLICT, "FACTS_VERSION_NOT_CONFIRMABLE",
                     "事实版本不存在、不属于该案件或已确认");
         }
+        String payloadJson = jdbc.queryForObject(
+                "SELECT payload::text FROM app.facts_version WHERE facts_version_id = ? AND case_id = ?::uuid",
+                String.class, factsVersionId, caseId);
+        Map<String, Object> payload = castMap(readJson(payloadJson));
+        canonicalizeAndValidateReferenceClosure(caseId, payload);
+        validateCloneActorReferences(caseId, payload);
         jdbc.update("""
                 UPDATE app.facts_version SET confirmed_by = ?, confirmed_at = now()
                 WHERE facts_version_id = ? AND confirmed_at IS NULL
@@ -253,6 +280,8 @@ public class FactsBaselineService {
     public void cloneIntoWorkingCopy(String caseId, UUID versionId) {
         Map<String, Object> payload =
                 (Map<String, Object>) versionDetail(caseId, versionId).get("payload");
+        canonicalizeAndValidateReferenceClosure(caseId, payload);
+        validateCloneActorReferences(caseId, payload);
         deleteWorkingCopy(caseId);
         Map<String, Object> entities = (Map<String, Object>) payload.getOrDefault("entities", Map.of());
         for (Map<String, Object> item : itemsOf(entities, "actors")) {
@@ -346,8 +375,8 @@ public class FactsBaselineService {
 
     /**
      * 按种类整组替换可编辑实体（与 /v1 facts PUT 同语义：删除+重建该案件该类的全部行）。
-     * amount.kind 受封闭集约束；引用字段（actorId/componentOf/documentId/evidenceIds）
-     * 先按同案 external_id 解析，再按 uuid/legacy 解析，均失败置 NULL 不伪造。
+     * amount.kind 受封闭集约束；componentOf 必须是同案本次替换中的有效无环引用。
+     * 其他遗留引用字段按 external_id / uuid 解析，不伪造不存在的实体。
      */
     @Transactional
     public void replaceEntities(String caseId, String pathKind, List<Map<String, Object>> items) {
@@ -395,17 +424,38 @@ public class FactsBaselineService {
     }
 
     private void replaceActors(String caseId, List<Map<String, Object>> items) {
-        jdbc.update("UPDATE app.case_event SET actor_id = NULL WHERE case_id = ?::uuid", caseId);
-        jdbc.update("UPDATE app.case_fact SET actor_id = NULL WHERE case_id = ?::uuid", caseId);
-        jdbc.update("DELETE FROM app.case_actor WHERE case_id = ?::uuid", caseId);
+        Map<Map<String, Object>, String> incomingIds = resolveIncomingIds(caseId, "actor", items);
+        Set<String> retained = new HashSet<>(incomingIds.values());
+        List<String> referencedRemoved = jdbc.query("""
+                SELECT a.actor_id::text
+                FROM app.case_actor a
+                WHERE a.case_id = ?::uuid
+                  AND NOT (a.actor_id::text = ANY(?::text[]))
+                  AND (EXISTS (SELECT 1 FROM app.case_event e WHERE e.case_id = a.case_id AND e.actor_id = a.actor_id)
+                       OR EXISTS (SELECT 1 FROM app.case_fact f WHERE f.case_id = a.case_id AND f.actor_id = a.actor_id))
+                """, (rs, ignored) -> rs.getString(1), caseId,
+                retained.toArray(String[]::new));
+        if (!referencedRemoved.isEmpty()) {
+            throw entityReferenced("actor", referencedRemoved);
+        }
+        // Validate every incoming actor before changing any row. Existing rows are
+        // updated in place so event/fact foreign keys remain stable.
+        validateUniqueIncomingAliases(caseId, "actor", items, incomingIds);
+        jdbc.update("DELETE FROM app.case_actor WHERE case_id = ?::uuid AND NOT (actor_id::text = ANY(?::text[]))",
+                caseId, retained.toArray(String[]::new));
         for (Map<String, Object> item : items) {
+            String actorId = incomingIds.get(item);
             jdbc.update("""
-                    INSERT INTO app.case_actor(case_id, external_id, actor_type, name, role,
+                    INSERT INTO app.case_actor(actor_id, case_id, external_id, actor_type, name, role,
                                                attributes, verification_status)
-                    VALUES (?::uuid, ?, ?, ?, ?, ?::jsonb, ?)
-                    """, caseId, str(item.get("id")), str(item.get("type")), str(item.get("name")),
-                    str(item.get("role")), writeJson(item.getOrDefault("attributes", Map.of())),
-                    str(item.get("verificationStatus")));
+                    VALUES (?::uuid, ?::uuid, ?, ?, ?, ?, ?::jsonb, ?)
+                    ON CONFLICT (actor_id) DO UPDATE SET external_id = EXCLUDED.external_id,
+                        actor_type = EXCLUDED.actor_type, name = EXCLUDED.name, role = EXCLUDED.role,
+                        attributes = EXCLUDED.attributes, verification_status = EXCLUDED.verification_status,
+                        updated_at = now()
+                    """, actorId, caseId, incomingExternalId(item, actorId), str(item.get("type")),
+                    str(item.get("name")), str(item.get("role")),
+                    writeJson(item.getOrDefault("attributes", Map.of())), str(item.get("verificationStatus")));
         }
     }
 
@@ -423,13 +473,27 @@ public class FactsBaselineService {
     }
 
     private void replaceEvidence(String caseId, List<Map<String, Object>> items) {
-        jdbc.update("DELETE FROM app.case_evidence WHERE case_id = ?::uuid", caseId);
+        Map<Map<String, Object>, String> incomingIds = resolveIncomingIds(caseId, "evidence", items);
+        Set<String> retained = new HashSet<>(incomingIds.values());
+        List<String> referencedRemoved = referencedEvidenceIds(caseId, retained);
+        if (!referencedRemoved.isEmpty()) {
+            throw entityReferenced("evidence", referencedRemoved);
+        }
+        validateUniqueIncomingAliases(caseId, "evidence", items, incomingIds);
+        jdbc.update("DELETE FROM app.case_evidence WHERE case_id = ?::uuid AND NOT (evidence_id::text = ANY(?::text[]))",
+                caseId, retained.toArray(String[]::new));
         for (Map<String, Object> item : items) {
+            String evidenceId = incomingIds.get(item);
             jdbc.update("""
-                    INSERT INTO app.case_evidence(case_id, external_id, evidence_type, label,
+                    INSERT INTO app.case_evidence(evidence_id, case_id, external_id, evidence_type, label,
                                                   document_id, locator, attributes, verification_status)
-                    VALUES (?::uuid, ?, ?, ?, ?::uuid, ?::jsonb, ?::jsonb, ?)
-                    """, caseId, str(item.get("id")), str(item.get("type")), str(item.get("label")),
+                    VALUES (?::uuid, ?::uuid, ?, ?, ?, ?::uuid, ?::jsonb, ?::jsonb, ?)
+                    ON CONFLICT (evidence_id) DO UPDATE SET external_id = EXCLUDED.external_id,
+                        evidence_type = EXCLUDED.evidence_type, label = EXCLUDED.label,
+                        document_id = EXCLUDED.document_id, locator = EXCLUDED.locator,
+                        attributes = EXCLUDED.attributes, verification_status = EXCLUDED.verification_status,
+                        updated_at = now()
+                    """, evidenceId, caseId, incomingExternalId(item, evidenceId), str(item.get("type")), str(item.get("label")),
                     resolveDocumentId(item.get("documentId")),
                     item.get("locator") == null ? null : writeJson(item.get("locator")),
                     writeJson(item.getOrDefault("attributes", Map.of())), str(item.get("verificationStatus")));
@@ -437,6 +501,7 @@ public class FactsBaselineService {
     }
 
     private void replaceAmounts(String caseId, List<Map<String, Object>> items) {
+        Map<String, Integer> amountAliases = validateAmountComponentGraph(items);
         jdbc.update("DELETE FROM app.case_amount WHERE case_id = ?::uuid", caseId);
         for (Map<String, Object> item : items) {
             String kind = str(item.get("kind"));
@@ -457,7 +522,7 @@ public class FactsBaselineService {
         }
         // 第二遍回填 component_of（同案 external_id → uuid），避免插入顺序依赖
         for (Map<String, Object> item : items) {
-            String componentOf = resolveEntityRef(caseId, "amount", item.get("componentOf"));
+            String componentOf = resolveReplacementAmountRef(caseId, item.get("componentOf"), amountAliases, items);
             if (componentOf != null) {
                 jdbc.update("""
                         UPDATE app.case_amount SET component_of = ?::uuid
@@ -465,6 +530,116 @@ public class FactsBaselineService {
                         """, componentOf, caseId, str(item.get("id")));
             }
         }
+    }
+
+    private String resolveReplacementAmountRef(String caseId, Object raw,
+            Map<String, Integer> amountAliases, List<Map<String, Object>> items) {
+        String value = str(raw);
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        Integer aliasIndex = amountAliases.get(amountReferenceKey(value));
+        if (aliasIndex != null) {
+            value = str(items.get(aliasIndex).get("id"));
+        }
+        List<String> exact = jdbc.query("""
+                SELECT amount_id::text FROM app.case_amount
+                WHERE case_id = ?::uuid AND trim(external_id) = ?
+                """, (rs, ignored) -> rs.getString(1), caseId, value.trim());
+        if (!exact.isEmpty()) {
+            return exact.get(0);
+        }
+        if (IdentityService.isUuid(value.trim())) {
+            List<String> uuidInsensitive = jdbc.query("""
+                    SELECT amount_id::text FROM app.case_amount
+                    WHERE case_id = ?::uuid AND lower(trim(external_id)) = lower(?)
+                    """, (rs, ignored) -> rs.getString(1), caseId, value.trim());
+            if (!uuidInsensitive.isEmpty()) {
+                return uuidInsensitive.get(0);
+            }
+        }
+        throw invalidAmountComponent("componentOf could not resolve to its replacement row");
+    }
+
+    /** Validate the complete incoming amount graph before deleting the existing working copy. */
+    private Map<String, Integer> validateAmountComponentGraph(List<Map<String, Object>> items) {
+        Map<String, Integer> idsByKey = new HashMap<>();
+        Map<Integer, Integer> parentByIndex = new HashMap<>();
+        for (int i = 0; i < items.size(); i++) {
+            Map<String, Object> item = items.get(i);
+            String kind = str(item.get("kind"));
+            if (kind == null || !AMOUNT_KINDS.contains(kind)) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_REQUEST",
+                        "amount kind must be one of " + AMOUNT_KINDS);
+            }
+            if (item.containsKey("id") && (str(item.get("id")) == null || str(item.get("id")).isBlank())) {
+                throw invalidAmountComponent("amount id cannot be blank when provided");
+            }
+            String id = str(item.get("id"));
+            if (id != null && !id.isBlank()) {
+                String key = amountReferenceKey(id);
+                if (idsByKey.putIfAbsent(key, i) != null) {
+                    throw invalidAmountComponent("amount ids must be unique");
+                }
+            }
+            String entityId = str(item.get("entityId"));
+            if (entityId != null && !entityId.isBlank()) {
+                if (!IdentityService.isUuid(entityId)) {
+                    throw invalidAmountComponent("amount entityId must be a uuid");
+                }
+                String key = amountReferenceKey(entityId);
+                Integer previous = idsByKey.putIfAbsent(key, i);
+                if (previous != null && previous != i) {
+                    throw invalidAmountComponent("amount ids must be unique");
+                }
+                // entityId is an incoming graph alias, not a mutable-row lookup or a
+                // caller-supplied primary key. Historical snapshots remain retryable;
+                // references resolve only to newly inserted rows in this case.
+            }
+        }
+        for (int i = 0; i < items.size(); i++) {
+            String parent = str(items.get(i).get("componentOf"));
+            if (parent == null || parent.isBlank()) {
+                continue;
+            }
+            String childId = str(items.get(i).get("id"));
+            if (childId == null || childId.isBlank()) {
+                throw invalidAmountComponent("componentOf child must have an id");
+            }
+            String key = amountReferenceKey(parent);
+            Integer parentIndex = idsByKey.get(key);
+            if (parentIndex == null) {
+                throw invalidAmountComponent("componentOf must refer to an amount in this replacement");
+            }
+            if (parentIndex == i) {
+                throw invalidAmountComponent("amount componentOf cannot refer to itself");
+            }
+            String parentId = str(items.get(parentIndex).get("id"));
+            if (parentId == null || parentId.isBlank()) {
+                throw invalidAmountComponent("componentOf parent must have an id");
+            }
+            parentByIndex.put(i, parentIndex);
+        }
+        for (int i = 0; i < items.size(); i++) {
+            Set<Integer> path = new HashSet<>();
+            Integer cursor = i;
+            while (cursor != null) {
+                if (!path.add(cursor)) {
+                    throw invalidAmountComponent("amount componentOf relationships cannot contain cycles");
+                }
+                cursor = parentByIndex.get(cursor);
+            }
+        }
+        return idsByKey;
+    }
+
+    private static String amountReferenceKey(String raw) {
+        String value = raw.trim();
+        return IdentityService.isUuid(value) ? value.toLowerCase(java.util.Locale.ROOT) : value;
+    }
+
+    private static ApiException invalidAmountComponent(String message) {
+        return new ApiException(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", message);
     }
 
     private void replaceJurisdiction(String caseId, List<Map<String, Object>> items) {
@@ -685,6 +860,368 @@ public class FactsBaselineService {
     private void ensureHeadRow(String caseId) {
         jdbc.update("INSERT INTO app.facts_head(case_id) VALUES (?::uuid) ON CONFLICT (case_id) DO NOTHING",
                 caseId);
+    }
+
+    /**
+     * Resolve the stable primary key for each incoming actor/evidence row.  A
+     * snapshot carries both entityId and the human-facing id/externalId; all
+     * aliases must identify the same row. An explicit entityId is a canonical
+     * identity; id/externalId may also be a new UUID-shaped external alias.
+     */
+    private Map<Map<String, Object>, String> resolveIncomingIds(
+            String caseId, String kind, List<Map<String, Object>> items) {
+        Map<Map<String, Object>, String> result = new IdentityHashMap<>();
+        Set<String> seen = new HashSet<>();
+        for (Map<String, Object> item : items) {
+            List<String> aliases = new ArrayList<>();
+            String entityId = str(item.get("entityId"));
+            String id = str(item.get("id"));
+            String externalId = str(item.get("externalId"));
+            String canonical = null;
+            if (entityId != null && !entityId.isBlank()) {
+                if (!IdentityService.isUuid(entityId)) {
+                    throw invalidInput("entityId must be a UUID");
+                }
+                canonical = findCanonicalEntityId(caseId, kind, entityId.trim());
+                if (canonical == null) {
+                    throw invalidInput("unknown or cross-case " + kind + " entityId: " + entityId);
+                }
+            }
+            if (externalId != null && !externalId.isBlank()) {
+                aliases.add(externalId.trim());
+            }
+            if (id != null && !id.isBlank()) {
+                aliases.add(id.trim());
+            }
+            for (String alias : aliases) {
+                String resolved = findIncomingAlias(caseId, kind, alias);
+                if (resolved != null && canonical != null && !canonical.equalsIgnoreCase(resolved)) {
+                    throw invalidInput("ambiguous " + kind + " aliases");
+                }
+                if (resolved != null) {
+                    canonical = resolved;
+                }
+            }
+            if (externalId != null && !externalId.isBlank()
+                    && id != null && !id.isBlank()
+                    && !externalId.trim().equals(id.trim())
+                    && findIncomingAlias(caseId, kind, externalId.trim()) == null
+                    && findIncomingAlias(caseId, kind, id.trim()) == null) {
+                throw invalidInput("id and externalId do not identify the same " + kind);
+            }
+            if (canonical == null) {
+                canonical = UUID.randomUUID().toString();
+            }
+            if (!seen.add(canonical.toLowerCase(java.util.Locale.ROOT))) {
+                throw invalidInput("duplicate " + kind + " identity");
+            }
+            result.put(item, canonical);
+        }
+        return result;
+    }
+
+    private void validateUniqueIncomingAliases(String caseId, String kind,
+            List<Map<String, Object>> items, Map<Map<String, Object>, String> resolved) {
+        Set<String> external = new HashSet<>();
+        for (Map<String, Object> item : items) {
+            String value = incomingExternalId(item, resolved.get(item));
+            if (value != null && !external.add(value)) {
+                throw invalidInput("duplicate " + kind + " externalId");
+            }
+            // A caller may provide an externalId that belongs to another row;
+            // resolveIncomingIds already detects the differing canonical ids.
+            if (resolved.get(item) == null) {
+                throw invalidInput("missing " + kind + " identity");
+            }
+        }
+    }
+
+    private String incomingExternalId(Map<String, Object> item, String canonicalId) {
+        String external = str(item.get("externalId"));
+        if (external != null && !external.isBlank()) {
+            return external.trim();
+        }
+        String id = str(item.get("id"));
+        if (id == null || id.isBlank()) {
+            return null;
+        }
+        String entityId = str(item.get("entityId"));
+        if (entityId != null && IdentityService.isUuid(entityId)
+                && entityId.trim().equalsIgnoreCase(canonicalId)
+                && id.trim().equalsIgnoreCase(canonicalId)) {
+            return null;
+        }
+        return id.trim();
+    }
+
+    private String findEntityId(String caseId, String kind, String alias) {
+        String table = entityTable(kind);
+        String pk = entityPrimaryKey(kind);
+        List<String> rows;
+        if (IdentityService.isUuid(alias)) {
+            rows = jdbc.query("SELECT " + pk + "::text FROM app." + table
+                            + " WHERE case_id = ?::uuid AND " + pk + " = ?::uuid",
+                    (rs, ignored) -> rs.getString(1), caseId, alias.trim());
+        } else {
+            rows = jdbc.query("SELECT " + pk + "::text FROM app." + table
+                            + " WHERE case_id = ?::uuid AND external_id = ?",
+                    (rs, ignored) -> rs.getString(1), caseId, alias.trim());
+        }
+        if (rows.size() > 1) {
+            throw invalidInput("ambiguous " + kind + " identity: " + alias);
+        }
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    private String findCanonicalEntityId(String caseId, String kind, String entityId) {
+        String table = entityTable(kind);
+        String pk = entityPrimaryKey(kind);
+        List<String> rows = jdbc.query("SELECT " + pk + "::text FROM app." + table
+                        + " WHERE case_id = ?::uuid AND " + pk + " = ?::uuid",
+                (rs, ignored) -> rs.getString(1), caseId, entityId);
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    /** id/externalId may themselves be UUID-shaped external identifiers. */
+    private String findIncomingAlias(String caseId, String kind, String alias) {
+        String table = entityTable(kind);
+        String pk = entityPrimaryKey(kind);
+        Set<String> rows = new HashSet<>();
+        rows.addAll(jdbc.query("SELECT " + pk + "::text FROM app." + table
+                        + " WHERE case_id = ?::uuid AND external_id = ?",
+                (rs, ignored) -> rs.getString(1), caseId, alias.trim()));
+        if (IdentityService.isUuid(alias)) {
+            rows.addAll(jdbc.query("SELECT " + pk + "::text FROM app." + table
+                            + " WHERE case_id = ?::uuid AND " + pk + " = ?::uuid",
+                    (rs, ignored) -> rs.getString(1), caseId, alias.trim()));
+        }
+        if (rows.size() > 1) {
+            throw invalidReference("ambiguous " + kind + " identity: " + alias);
+        }
+        return rows.isEmpty() ? null : rows.iterator().next();
+    }
+
+    private String entityTable(String kind) {
+        return switch (kind) {
+            case "actor" -> "case_actor";
+            case "evidence" -> "case_evidence";
+            default -> throw new IllegalArgumentException("unsupported stable entity " + kind);
+        };
+    }
+
+    private String entityPrimaryKey(String kind) {
+        return switch (kind) {
+            case "actor" -> "actor_id";
+            case "evidence" -> "evidence_id";
+            default -> throw new IllegalArgumentException("unsupported stable entity " + kind);
+        };
+    }
+
+    private List<String> referencedEvidenceIds(String caseId, Set<String> retained) {
+        List<String> rows = jdbc.query("""
+                SELECT DISTINCT e.evidence_id::text
+                FROM app.case_evidence e
+                WHERE e.case_id = ?::uuid
+                  AND NOT (e.evidence_id::text = ANY(?::text[]))
+                  AND (
+                    EXISTS (SELECT 1 FROM app.case_fact f WHERE f.case_id = e.case_id
+                           AND (f.evidence_ids @> jsonb_build_array(e.evidence_id::text)
+                                OR (e.external_id IS NOT NULL AND f.evidence_ids @> jsonb_build_array(e.external_id))))
+                    OR EXISTS (SELECT 1 FROM app.case_amount a WHERE a.case_id = e.case_id
+                           AND (a.evidence_ids @> jsonb_build_array(e.evidence_id::text)
+                                OR (e.external_id IS NOT NULL AND a.evidence_ids @> jsonb_build_array(e.external_id))))
+                    OR EXISTS (SELECT 1 FROM app.case_jurisdiction_connection j WHERE j.case_id = e.case_id
+                           AND (j.evidence_ids @> jsonb_build_array(e.evidence_id::text)
+                                OR (e.external_id IS NOT NULL AND j.evidence_ids @> jsonb_build_array(e.external_id))))
+                  )
+                """, (rs, ignored) -> rs.getString(1), caseId,
+                retained.toArray(String[]::new));
+        return rows;
+    }
+
+    private ApiException entityReferenced(String kind, List<String> ids) {
+        return new ApiException(HttpStatus.CONFLICT, "ENTITY_REFERENCED",
+                kind + " rows are still referenced by the working copy",
+                Map.of("kind", kind, "entityIds", ids));
+    }
+
+    private ApiException invalidReference(String message) {
+        return new ApiException(HttpStatus.CONFLICT, "FACTS_REFERENCE_INVALID", message);
+    }
+
+    private ApiException invalidInput(String message) {
+        return new ApiException(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", message);
+    }
+
+    /** Validate and normalize JSON evidence references before a payload is persisted. */
+    @SuppressWarnings("unchecked")
+    private void canonicalizeAndValidateReferenceClosure(String caseId, Map<String, Object> payload) {
+        Object rawEntities = payload.get("entities");
+        if (!(rawEntities instanceof Map<?, ?>)) {
+            ensureNoUnresolvableLegacyReferences(itemsOf(payload, "items"));
+            return;
+        }
+        Map<String, Object> entities = castMap(rawEntities);
+        Map<String, String> evidenceAliases = snapshotAliasMap(caseId,
+                snapshotItems(entities, "evidence", "evidence"), "evidence");
+        List<Map<String, Object>> facts = itemsOf(payload, "items");
+        for (Map<String, Object> item : facts) {
+            item.put("evidenceIds", canonicalEvidenceList(item.get("evidenceIds"), evidenceAliases));
+        }
+        for (String key : List.of("amounts", "jurisdictionConnections")) {
+            for (Map<String, Object> item : itemsOf(entities, key)) {
+                item.put("evidenceIds", canonicalEvidenceList(item.get("evidenceIds"), evidenceAliases));
+            }
+        }
+    }
+
+    private void ensureNoUnresolvableLegacyReferences(List<Map<String, Object>> facts) {
+        for (Map<String, Object> item : facts) {
+            Object raw = item.get("evidenceIds");
+            if (raw != null && (!(raw instanceof List<?> list) || !list.isEmpty())) {
+                throw invalidReference("legacy facts payload has no evidence identity table");
+            }
+        }
+    }
+
+    private List<Object> canonicalEvidenceList(Object raw, Map<String, String> evidenceAliases) {
+        if (raw == null) {
+            return List.of();
+        }
+        if (!(raw instanceof List<?> list)) {
+            throw invalidReference("evidenceIds must be an array");
+        }
+        List<Object> canonical = new ArrayList<>();
+        for (Object entry : list) {
+            if (!(entry instanceof String)) {
+                throw invalidReference("evidenceIds entries must be strings");
+            }
+            String value = str(entry);
+            if (value == null || value.isBlank()) {
+                throw invalidReference("evidenceIds contains a blank reference");
+            }
+            String resolved = evidenceAliases.get(aliasKey(value));
+            if (resolved == null) {
+                throw invalidReference("unknown evidence reference in frozen payload: " + value);
+            }
+            canonical.add(resolved);
+        }
+        return canonical;
+    }
+
+    private void validateCloneActorReferences(String caseId, Map<String, Object> payload) {
+        Object rawEntities = payload.get("entities");
+        if (!(rawEntities instanceof Map<?, ?>)) {
+            for (Map<String, Object> item : itemsOf(payload, "items")) {
+                if (str(item.get("actorId")) != null && !str(item.get("actorId")).isBlank()) {
+                    throw invalidReference("legacy facts payload has no actor identity table");
+                }
+            }
+            return;
+        }
+        Map<String, Object> entities = castMap(rawEntities);
+        Map<String, String> actorAliases = snapshotAliasMap(caseId,
+                snapshotItems(entities, "actors", "actor"), "actor");
+        for (Map<String, Object> item : itemsOf(entities, "events")) {
+            item.put("actorId", canonicalActorReference(item.get("actorId"), actorAliases));
+        }
+        for (Map<String, Object> item : itemsOf(payload, "items")) {
+            item.put("actorId", canonicalActorReference(item.get("actorId"), actorAliases));
+        }
+    }
+
+    private String canonicalActorReference(Object raw, Map<String, String> actorAliases) {
+        if (raw != null && !(raw instanceof String)) {
+            throw invalidReference("actorId must be a string");
+        }
+        String value = str(raw);
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        String canonical = actorAliases.get(aliasKey(value));
+        if (canonical == null) {
+            throw invalidReference("unknown actor reference in frozen payload: " + value);
+        }
+        return canonical;
+    }
+
+    /** Build aliases exclusively from the immutable payload, never the mutable working copy. */
+    private Map<String, String> snapshotAliasMap(String caseId, List<Map<String, Object>> items, String kind) {
+        Map<String, String> aliases = new HashMap<>();
+        Set<String> entityIds = new HashSet<>();
+        for (Map<String, Object> item : items) {
+            String entityId = str(item.get("entityId"));
+            if (entityId == null || !IdentityService.isUuid(entityId)) {
+                throw invalidReference(kind + " snapshot row has no canonical entityId");
+            }
+            validateSnapshotEntityOwnership(caseId, kind, entityId);
+            String canonical = entityId.toLowerCase(java.util.Locale.ROOT);
+            if (!entityIds.add(canonical)) {
+                throw invalidReference("duplicate " + kind + " snapshot entityId");
+            }
+            String rawId = str(item.get("id"));
+            String rawExternalId = str(item.get("externalId"));
+            for (String raw : new String[] {rawId, rawExternalId}) {
+                if (raw == null || raw.isBlank()) {
+                    continue;
+                }
+                String key = aliasKey(raw);
+                String previous = aliases.putIfAbsent(key, canonical);
+                if (previous != null && !previous.equals(canonical)) {
+                    throw invalidReference("ambiguous " + kind + " snapshot alias: " + raw);
+                }
+            }
+            String previous = aliases.putIfAbsent(aliasKey(entityId), canonical);
+            if (previous != null && !previous.equals(canonical)) {
+                throw invalidReference("duplicate " + kind + " snapshot entityId");
+            }
+        }
+        return aliases;
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> snapshotItems(Map<String, Object> entities, String key, String kind) {
+        Object raw = entities.get(key);
+        if (raw == null) {
+            return List.of();
+        }
+        if (!(raw instanceof List<?> list)) {
+            throw invalidReference("snapshot " + kind + " section must be an array");
+        }
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Object item : list) {
+            if (!(item instanceof Map<?, ?> map)) {
+                throw invalidReference("snapshot " + kind + " rows must be objects");
+            }
+            result.add((Map<String, Object>) map);
+        }
+        return result;
+    }
+
+    private void validateSnapshotEntityOwnership(String caseId, String kind, String entityId) {
+        String table = entityTable(kind);
+        String pk = entityPrimaryKey(kind);
+        List<String> owners = jdbc.query("SELECT case_id::text FROM app." + table
+                        + " WHERE " + pk + " = ?::uuid",
+                (rs, ignored) -> rs.getString(1), entityId);
+        if (!owners.isEmpty() && !caseId.equalsIgnoreCase(owners.get(0))) {
+            throw invalidReference("cross-case " + kind + " entityId in frozen payload: " + entityId);
+        }
+    }
+
+    private static String aliasKey(String raw) {
+        String value = raw.trim();
+        return IdentityService.isUuid(value)
+                ? value.toLowerCase(java.util.Locale.ROOT)
+                : "external:" + value;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> castMap(Object value) {
+        if (!(value instanceof Map<?, ?> map)) {
+            throw invalidReference("facts payload must be an object");
+        }
+        return (Map<String, Object>) map;
     }
 
     private static String statusOf(UUID versionId, Object confirmedAt, UUID currentHead) {

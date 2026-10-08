@@ -9,10 +9,52 @@ info:
 servers:
   - url: /
 paths:
+  /v2/cases/{caseId}/analysis-date:
+    put:
+      summary: 设置法律分析基准日期；变更时使模块与文书失效，保留历史
+      operationId: updateCaseAnalysisDate
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/CaseId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [asOfDate]
+              properties:
+                asOfDate: { type: string, format: date }
+                expectedAsOfDate:
+                  type: string
+                  format: date
+                  nullable: true
+                  description: 当前读到的日期；缺省/null 表示预期尚未填写，冲突时返回 ANALYSIS_DATE_CONFLICT
+      responses:
+        '200':
+          description: 日期已保存；相同日期重放不新增审计或重复失效
+          content:
+            application/json:
+              schema: { $ref: './public-api.yaml#/components/schemas/CaseView' }
+        '400':
+          description: 缺失或非法日期
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: 需要有效 Bearer 会话
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /v2/cases/{caseId}/facts-versions:
     post:
       summary: 固化当前事实编辑态为新的 draft FactsVersion（六类实体全量快照）
       operationId: createFactsVersion
+      description: >-
+        每个 facts/amounts/jurisdictionConnections 的 evidenceIds 必须能唯一解析到本快照证据，
+        facts/events 的 actorId 必须能唯一解析到本快照参与人。
+        未知、跨案件或歧义引用返回 409 FACTS_REFERENCE_INVALID；不创建版本或推进计数。
       parameters: [{ $ref: '#/components/parameters/CaseId' }]
       responses:
         '201':
@@ -28,6 +70,7 @@ paths:
       parameters: [{ $ref: '#/components/parameters/CaseId' }]
       responses:
         '200':
+          description: FactsVersion 历史列表（元数据，不含 payload）
           content:
             application/json:
               schema:
@@ -47,6 +90,7 @@ paths:
         - { $ref: '#/components/parameters/FactsVersionId' }
       responses:
         '200':
+          description: FactsVersion 明细（含不可变 payload 全文）
           content:
             application/json:
               schema: { $ref: '#/components/schemas/FactsVersionDetailView' }
@@ -66,6 +110,7 @@ paths:
           description: 基准版本 id；返回从 against 到 factsVersionId 的差异
       responses:
         '200':
+          description: 与另一版本逐条对比（added/removed/changed，按节分组）
           content:
             application/json:
               schema: { $ref: '#/components/schemas/FactsDiffView' }
@@ -75,6 +120,9 @@ paths:
     post:
       summary: 把该版本内容回写为当前工作副本（不改 head，不改动任何已存版本）
       operationId: cloneFactsVersion
+      description: >-
+        回写前校验冻结快照的证据引用闭包，并把合法 id/externalId 别名解析到 entityId。
+        无效引用返回 409 FACTS_REFERENCE_INVALID，不改变现有工作副本或 confirmed head。
       parameters:
         - { $ref: '#/components/parameters/CaseId' }
         - { $ref: '#/components/parameters/FactsVersionId' }
@@ -91,6 +139,9 @@ paths:
     post:
       summary: 原子确认 FactsVersion 并推进 facts_head（expected-head CAS）
       operationId: confirmFactsVersion
+      description: >-
+        在推进 head 前验证该冻结版本的证据引用闭包，不能使用当前工作副本补足缺失引用。
+        无效引用返回 409 FACTS_REFERENCE_INVALID；既有 CAS 冲突仍返回 FACTS_HEAD_CONFLICT。
       parameters:
         - { $ref: '#/components/parameters/CaseId' }
         - { $ref: '#/components/parameters/FactsVersionId' }
@@ -125,6 +176,7 @@ paths:
       parameters: [{ $ref: '#/components/parameters/CaseId' }]
       responses:
         '200':
+          description: 当前可编辑工作副本（六类实体全集，与快照 payload 形状一致）
           content:
             application/json:
               schema: { $ref: '#/components/schemas/FactsEntitiesView' }
@@ -134,6 +186,10 @@ paths:
     put:
       summary: 整组替换某类可编辑实体（确认后仍可编辑；只影响下一次快照）
       operationId: replaceFactsEntities
+      description: >-
+        actors/evidence 中同案同逻辑实体保留稳定 entityId，支持从快照重复提交
+        entityId/id/externalId。不得删除仍被其他工作副本实体引用的参与人或证据；
+        这种删除返回 409 ENTITY_REFERENCED，原有数据与引用不变。
       parameters:
         - { $ref: '#/components/parameters/CaseId' }
         - { $ref: '#/components/parameters/FactsEntityKind' }
@@ -144,15 +200,17 @@ paths:
             schema: { $ref: '#/components/schemas/FactsEntitiesUpdate' }
       responses:
         '200':
+          description: 整组替换某类可编辑实体（确认后仍可编辑；只影响下一次快照）
           content:
             application/json:
               schema: { $ref: '#/components/schemas/FactsEntitiesView' }
         '400':
-          description: 字段缺失或 amount.kind 不在封闭集
+          description: 字段缺失、身份冲突或 amount.kind 不在封闭集
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
 
   /v2/cases/{caseId}/facts-head:
     get:
@@ -161,6 +219,7 @@ paths:
       parameters: [{ $ref: '#/components/parameters/CaseId' }]
       responses:
         '200':
+          description: 当前事实基线指针
           content:
             application/json:
               schema: { $ref: '#/components/schemas/FactsHeadView' }
@@ -173,12 +232,25 @@ paths:
       parameters:
         - { $ref: '#/components/parameters/CaseId' }
         - { $ref: '#/components/parameters/ModuleName' }
+      requestBody:
+        required: false
+        description: >-
+          定罪模块可明确列出本次请求罪名。名称与可选标识原样冻结进执行输入；
+          不从名称推断标识。省略请求体保留旧调用兼容。其他模块不接受非空请求罪名。
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ModuleExecutionRequest' }
       responses:
         '202':
           description: 执行已排队
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ExecutionView' }
+        '400':
+          description: INVALID_REQUESTED_CHARGES — 请求类型、长度、重复标识或模块不合法。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '501': { $ref: '#/components/responses/NotImplemented' }
@@ -190,6 +262,7 @@ paths:
       parameters: [{ $ref: '#/components/parameters/ExecutionId' }]
       responses:
         '200':
+          description: 执行状态（技术态；不含业务结果）
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ExecutionView' }
@@ -202,10 +275,49 @@ paths:
       parameters: [{ $ref: '#/components/parameters/ArtifactVersionId' }]
       responses:
         '200':
+          description: 工件版本（payload + 依赖快照 + 来源 execution）
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ArtifactVersionView' }
         '404': { $ref: '#/components/responses/NotFound' }
+
+  /v2/cases/{caseId}/artifact-versions/{artifactVersionId}/export.docx:
+    get:
+      summary: 下载指定不可变文书版本的 Word 辅助稿
+      operationId: exportDraftDocx
+      security: [{ bearerAuth: [] }]
+      description: >-
+        仅属主可导出同案 draft.v2 或 case.draft.v1 工件。正文为空、blocked 或
+        含未替换占位符时返回 409。允许历史或 stale 版本下载，但不表示当前有效批准，
+        不推进 latest、approved 或复核状态。客户端不能指定对象键。
+      parameters:
+        - { $ref: '#/components/parameters/CaseId' }
+        - { $ref: '#/components/parameters/ArtifactVersionId' }
+      responses:
+        '200':
+          description: 精确工件版本的 DOCX 辅助稿，包含不可变来源标识
+          headers:
+            Content-Disposition:
+              description: attachment 与服务端生成的安全 UTF-8 文件名
+              schema: { type: string }
+            Cache-Control:
+              description: private, no-store
+              schema: { type: string }
+          content:
+            application/vnd.openxmlformats-officedocument.wordprocessingml.document:
+              schema: { type: string, format: binary }
+        '401':
+          description: 缺少有效会话
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503':
+          description: DOCX 渲染或对象存储不可用
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
 
   /v2/cases/{caseId}/modules/{module}:
     get:
@@ -216,6 +328,7 @@ paths:
         - { $ref: '#/components/parameters/ModuleName' }
       responses:
         '200':
+          description: 模块指针视图（latest / confirmed / stale；不复制正文）
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ModuleHeadView' }
@@ -233,6 +346,7 @@ paths:
             schema: { $ref: '#/components/schemas/ReviewOpenRequest' }
       responses:
         '201':
+          description: 在该工件版本上开复核
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ReviewView' }
@@ -244,6 +358,7 @@ paths:
       parameters: [{ $ref: '#/components/parameters/ArtifactVersionId' }]
       responses:
         '200':
+          description: 该工件版本的人审历史
           content:
             application/json:
               schema:
@@ -271,6 +386,7 @@ paths:
                       type: object
                       properties:
                         streamId: { type: string, format: uuid }
+                        draftId: { type: string, format: uuid }
                         docType: { type: string }
                         latestVersionId: { type: string, format: uuid, nullable: true }
                         updatedAt: { type: string, nullable: true }
@@ -302,6 +418,7 @@ paths:
                   executionId: { type: string, format: uuid }
                   status: { type: string }
                   docType: { type: string }
+                  draftId: { type: string, format: uuid }
         '400': { description: DOC_TYPE_MISSING }
         '404': { $ref: '#/components/responses/NotFound' }
         '501': { description: DRAFT_RENDER_UNAVAILABLE（doc_type 无已会签模板） }
@@ -313,6 +430,7 @@ paths:
       parameters: [{ $ref: '#/components/parameters/DraftId' }]
       responses:
         '200':
+          description: 文书指针视图（approved / latest / stale）
           content:
             application/json:
               schema: { $ref: '#/components/schemas/DraftHeadView' }
@@ -333,9 +451,15 @@ paths:
                 archiveProfile: { type: string, default: case.full.v1 }
       responses:
         '201':
+          description: 创建案件级归档（锁内评估 + 固化 manifest）
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ArchiveView' }
+        '400':
+          description: INVALID_ARCHIVE_PROFILE — 不支持的归档类型
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409':
           description: ARCHIVE_PRECONDITION_FAILED + 可定位缺口
@@ -352,12 +476,15 @@ paths:
         - { $ref: '#/components/parameters/ArchiveId' }
       responses:
         '200':
+          description: 归档 manifest（可追溯 facts/module/review/规则/法源版本）
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ArchiveView' }
         '404': { $ref: '#/components/responses/NotFound' }
 
 components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer }
   parameters:
     CaseId:
       name: caseId
@@ -418,6 +545,22 @@ components:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
   schemas:
+    ModuleExecutionRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        requestedCharges:
+          type: array
+          maxItems: 32
+          description: 明确请求；同一标识不得重复，无标识的同名请求也不得重复。空数组明确不限定请求罪名。
+          items: { $ref: '#/components/schemas/RequestedCharge' }
+    RequestedCharge:
+      type: object
+      additionalProperties: false
+      required: [requestedCharge]
+      properties:
+        requestedCharge: { type: string, minLength: 1, maxLength: 200, description: 用户原始名称，不能仅为空白 }
+        chargeKey: { type: string, nullable: true, minLength: 1, maxLength: 200, description: 调用方明确提供的已会签语料标识；缺失或null不得由名称推定 }
     Error:
       type: object
       properties:
@@ -514,12 +657,94 @@ components:
           enum: [document.parse.v1, case.module.v1, case.compliance.v2, case.conviction.v2, sentencing.v2, draft.v2]
           description: 工件 payload 的冻结 schema 标识；case.module.v1 为 /v1 演示写层遗留（默认 410）
         outcomeStatus: { type: string, enum: [calculated, blocked, not_applicable] }
-        payload: { type: object }
+        payload:
+          type: object
+          description: >-
+            v2 执行工件含 input_validation：schema_version 为 case.input-validation.v1，
+            checks 记录实际读取路径、阶段、时点、参数身份与证据身份。
+            实际参数未核实、未关联证据或引用未核实/歧义证据时 blocked；
+            requiredEvidenceKinds 种类门槛独立校验。blocked 量刑无可用刑期/罚金/步骤，blocked 文书无正文。
+            旧 v2 缺少有效输入证明时不能确认或批准；旧不可变载荷仍可查询。
+            case.conviction.v2 可含 candidate_paths，逐路径绑定冻结参与人、支持/相反证据及规则版本；
+            仅显式规则计划生成路径，缺少计划不从旧 charge_candidate 或未命中规则推断。
+            整体 blocked 时保留证明诊断但清除路径基准位置和排除结论。
+          properties:
+            candidate_paths:
+              type: array
+              items: { $ref: '#/components/schemas/ConvictionCandidatePath' }
+            requested_charges:
+              type: array
+              maxItems: 32
+              items: { $ref: '#/components/schemas/RequestedCharge' }
+            charge_coverage:
+              type: array
+              description: 按as-of及每个明确已知法律时点，使用同批有效已会签规则的coverage.covers精确匹配。
+              items: { $ref: '#/components/schemas/ChargeCoverageCheck' }
+            missing_items:
+              type: array
+              items: { $ref: '#/components/schemas/ChargeCoverageMissingItem' }
         blockers: { type: array, items: { type: object } }
         dependencySnapshot: { type: object }
         executionId: { type: string, format: uuid, nullable: true }
         outputHash: { type: string }
         createdAt: { type: string, format: date-time }
+    ChargeCoverageCheck:
+      type: object
+      required: [point, date, requested_charge, charge_key, covered, rule_versions]
+      properties:
+        point: { type: string, enum: [as_of, conduct, judgment] }
+        date: { type: string, format: date }
+        requested_charge: { type: string }
+        charge_key: { type: string, nullable: true }
+        covered: { type: boolean }
+        rule_versions:
+          type: array
+          items:
+            type: object
+            required: [ruleId, ruleVersion, contentHash, sourceIds]
+            properties:
+              ruleId: { type: string }
+              ruleVersion: { type: string }
+              contentHash: { type: string }
+              sourceIds: { type: array, items: { type: string } }
+    ChargeCoverageMissingItem:
+      type: object
+      description: 未覆盖的明确请求或规则计划罪名；不得作为candidate_paths输出。
+      required: [id, missing_item, kind, requested_charge, charge_key, point, date, status, reason]
+      properties:
+        id: { type: string }
+        missing_item: { type: string, enum: [charge_out_of_coverage] }
+        kind: { type: string, enum: [charge_out_of_coverage] }
+        requested_charge: { type: string, nullable: true, description: 规则计划缺口没有用户请求名称时为null，不伪造名称 }
+        charge_key: { type: string, nullable: true }
+        point: { type: string, enum: [as_of, conduct, judgment] }
+        date: { type: string, format: date }
+        status: { type: string, enum: [blocked] }
+        reason: { type: string }
+    ConvictionCandidatePath:
+      type: object
+      description: >-
+        显式已批准规则计划的路径结果，始终待人工复核。
+        calculated 须有基准位置且无 blockers；blocked 须有 blockers，基准位置及排除理由为 null。
+        conflicted 只能 blocked；同一文档可分别支持和反驳不同事实，两个证据数组分别去重。
+      required: [id, path_id, actor_id, label, charge_key, baseline_position, supporting_evidence_ids, contrary_evidence_ids, legal_source_ids, rule_id, rule_version, point, verification_status, status, exclusion_reason, blockers]
+      properties:
+        id: { type: string }
+        path_id: { type: string }
+        actor_id: { type: string, nullable: true, description: 冻结参与人规范身份；无法解析时为 null 且 blocked }
+        label: { type: string }
+        charge_key: { type: string }
+        baseline_position: { type: string, nullable: true, enum: [candidate, alternative_to_examine, excluded, null] }
+        supporting_evidence_ids: { type: array, uniqueItems: true, items: { type: string } }
+        contrary_evidence_ids: { type: array, uniqueItems: true, items: { type: string } }
+        legal_source_ids: { type: array, uniqueItems: true, items: { type: string } }
+        rule_id: { type: string }
+        rule_version: { type: string }
+        point: { type: string, enum: [as_of, conduct, judgment] }
+        verification_status: { type: string, enum: [candidate, conflicted] }
+        status: { type: string, enum: [calculated, blocked] }
+        exclusion_reason: { type: string, nullable: true }
+        blockers: { type: array, items: { type: object } }
     ModuleHeadView:
       type: object
       properties:

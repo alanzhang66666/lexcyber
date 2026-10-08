@@ -63,16 +63,23 @@ public class EngineResultService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "execution result is not associated with task request");
         }
 
+        boolean executionAlreadyPublished = current && Boolean.TRUE.equals(jdbc.queryForObject(
+                "SELECT EXISTS (SELECT 1 FROM app.execution_publication WHERE execution_id = ?)",
+                Boolean.class, payload.executionId()));
         UUID publishedVersionId = null;
         if (payload.contentJson() != null) {
             if (payload.resultVersion() < 1 || payload.contentHash() == null
                     || !constantTimeHash(payload.contentJson(), payload.contentHash())) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT, "result content hash mismatch");
             }
-            publishedVersionId = publishParseArtifact(taskId, payload);
+            // A late completion may still be accepted for audit purposes, but it
+            // must never publish a new artifact or move the current stream head.
+            if (current && "completed".equals(payload.status())) {
+                publishedVersionId = publishParseArtifact(taskId, payload);
+            }
         }
 
-        if (current) {
+        if (current && !executionAlreadyPublished) {
             // v1.3：execution 终态只有 completed/failed；human_review_required 经
             // output_envelope 传入，映射为 app.tasks 的展示态 waiting_review（INV-RUNTIME-001）。
             String taskStatus = taskStatusOf(payload);
@@ -81,11 +88,17 @@ public class EngineResultService {
             jdbc.update("UPDATE app.documents SET parse_status=?, updated_at=now() WHERE parse_task_id=?", taskStatus, taskId);
             if ("waiting_review".equals(taskStatus) && publishedVersionId != null) {
                 String caseId = caseIdOf(taskId);
+                // Callback delivery is replayed by the engine/outbox.  An
+                // existing review, including an already decided one, is the
+                // idempotency record: never reopen or duplicate it.
                 jdbc.update("""
                         INSERT INTO app.review_records(review_id, artifact_version_id, case_id, status, actor_id)
-                        VALUES (?, ?, ?::uuid, 'pending',
-                                (SELECT owner_account_id FROM app.cases WHERE id = ?::uuid))
-                        """, UUID.randomUUID(), publishedVersionId, caseId, caseId);
+                        SELECT ?, ?, ?::uuid, 'pending',
+                               (SELECT owner_account_id FROM app.cases WHERE id = ?::uuid)
+                        WHERE NOT EXISTS (
+                            SELECT 1 FROM app.review_records WHERE artifact_version_id = ?
+                        )
+                        """, UUID.randomUUID(), publishedVersionId, caseId, caseId, publishedVersionId);
             }
         }
         jdbc.update("""
@@ -127,7 +140,14 @@ public class EngineResultService {
         Map<String, Object> task;
         try {
             task = jdbc.queryForMap(
-                    "SELECT case_id, metadata_json::text AS metadata_json FROM app.tasks WHERE id = ?", taskId);
+                    """
+                    SELECT t.case_id,
+                           COALESCE(o.payload_json->'metadata', t.metadata_json)::text AS metadata_json,
+                           o.payload_json->>'artifact_stream_id' AS bound_stream_id,
+                           o.payload_json->>'input_snapshot_ref' AS input_snapshot_ref
+                    FROM app.tasks t JOIN app.task_dispatch_outbox o ON o.task_id = t.id
+                    WHERE t.id = ? AND o.execution_id = ?
+                    """, taskId, payload.executionId());
         } catch (EmptyResultDataAccessException missing) {
             return null;
         }
@@ -152,11 +172,17 @@ public class EngineResultService {
             case "sentencing.calculate" -> { kind = "sentencing"; scopeKey = "module:sentencing"; }
             case "draft.render" -> {
                 kind = "draft";
-                Object docType = metadata.get("docType");
-                if (docType == null) {
-                    throw new IllegalStateException("draft.render result without docType binding");
+                if (task.get("bound_stream_id") != null) {
+                    scopeKey = jdbc.queryForObject("""
+                            SELECT s.scope_key FROM app.artifact_stream s
+                            JOIN app.draft_head h ON h.artifact_stream_id = s.artifact_stream_id
+                            WHERE s.artifact_stream_id = ?::uuid AND s.case_id = ?::uuid AND s.kind = 'draft'
+                            """, String.class, task.get("bound_stream_id"), caseId);
+                } else if (metadata.get("draftId") != null) {
+                    scopeKey = "draft:" + UUID.fromString(String.valueOf(metadata.get("draftId")));
+                } else {
+                    throw new ResponseStatusException(HttpStatus.CONFLICT, "draft result has no descriptor binding");
                 }
-                scopeKey = "draft:" + docType;
             }
             default -> { return null; }
         }
@@ -169,10 +195,17 @@ public class EngineResultService {
         String blockersJson = writeJson(content.getOrDefault("blockers", List.of()));
         Map<String, Object> dep = content.get("dependency_snapshot") instanceof Map<?, ?> m
                 ? (Map<String, Object>) m : Map.of();
+        if (metadata.get("factsSnapshot") instanceof Map<?, ?>
+                && List.of("case.compliance.v2", "case.conviction.v2", "sentencing.v2", "draft.v2").contains(schemaVersion)) {
+            Object frozenDate = metadata.get("asOfDate");
+            if (frozenDate == null || !java.util.Objects.equals(frozenDate, dep.get("as_of_date"))) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "analysis date snapshot mismatch");
+            }
+        }
         UUID factsVersionId = dep.get("facts_version_id") == null ? null
                 : UUID.fromString(String.valueOf(dep.get("facts_version_id")));
 
-        List<ArtifactPublicationService.ExternalDependency> external = new java.util.ArrayList<>();
+        java.util.Set<ArtifactPublicationService.ExternalDependency> external = new java.util.LinkedHashSet<>();
         if (dep.get("rules") instanceof List<?> rules) {
             for (Object rule : rules) {
                 if (rule instanceof Map<?, ?> r && r.get("ruleId") != null) {
@@ -187,29 +220,117 @@ public class EngineResultService {
                     "template", String.valueOf(t.get("templateId")),
                     t.get("templateVersion") == null ? "" : String.valueOf(t.get("templateVersion"))));
         }
-        if (dep.get("sources") instanceof List<?> sources) {
-            for (Object source : sources) {
-                external.add(new ArtifactPublicationService.ExternalDependency(
-                        "legal_source", String.valueOf(source), ""));
+        java.util.Set<String> versionedSources = new java.util.HashSet<>();
+        java.util.Set<ArtifactPublicationService.ExternalDependency> sourceDependencies =
+                new java.util.LinkedHashSet<>();
+        if (dep.containsKey("source_versions")) {
+            if (!(dep.get("source_versions") instanceof List<?> versions)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "invalid legal source version snapshot");
+            }
+            for (Object item : versions) {
+                if (!(item instanceof Map<?, ?> source)
+                        || !(source.get("sourceId") instanceof String sourceId) || sourceId.isBlank()
+                        || !(source.get("sourceVersion") instanceof String sourceVersion) || sourceVersion.isBlank()) {
+                    throw new ResponseStatusException(HttpStatus.CONFLICT, "invalid legal source version snapshot");
+                }
+                versionedSources.add(sourceId);
+                sourceDependencies.add(new ArtifactPublicationService.ExternalDependency(
+                        "legal_source", sourceId, sourceVersion));
             }
         }
-
-        // draft 上游依赖：dependency_snapshot.artifacts 列模块名 → 解析对应流当前版本
-        List<UUID> artifactDeps = new java.util.ArrayList<>();
-        if (dep.get("artifacts") instanceof List<?> names) {
-            for (Object name : names) {
-                List<UUID> heads = jdbc.query("""
-                        SELECT s.latest_version_id FROM app.artifact_stream s
-                        WHERE s.case_id = ?::uuid AND s.kind = ? AND s.scope_key = ?
-                        """, (rs, ignored) -> rs.getObject(1, UUID.class),
-                        caseId, String.valueOf(name), "module:" + name);
-                heads.stream().filter(java.util.Objects::nonNull).forEach(artifactDeps::add);
+        if (dep.get("sources") instanceof List<?> sources) {
+            for (Object source : sources) {
+                String sourceId = String.valueOf(source);
+                if (!versionedSources.contains(sourceId)) {
+                    sourceDependencies.add(new ArtifactPublicationService.ExternalDependency(
+                            "legal_source", sourceId, ""));
+                }
             }
+        }
+        external.addAll(sourceDependencies);
+
+        // Bind exactly the versions used by rendering, never the heads at completion time.
+        List<UUID> artifactDeps = new java.util.ArrayList<>();
+        if ("draft".equals(kind)) {
+            Map<?, ?> frozen = metadata.get("artifactVersions") instanceof Map<?, ?> refs ? refs : Map.of();
+            List<?> returned = dep.get("artifacts") instanceof List<?> refs ? refs : List.of();
+            if (returned.size() != frozen.size()) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "render dependency snapshot mismatch");
+            }
+            java.util.Set<String> modules = new java.util.HashSet<>();
+            for (Object entry : returned) {
+                if (!(entry instanceof Map<?, ?> ref) || ref.get("module") == null
+                        || ref.get("artifactVersionId") == null) {
+                    throw new ResponseStatusException(HttpStatus.CONFLICT, "render dependency version is missing");
+                }
+                String module = String.valueOf(ref.get("module"));
+                String version = String.valueOf(ref.get("artifactVersionId"));
+                if (!modules.add(module) || !version.equals(String.valueOf(frozen.get(module)))) {
+                    throw new ResponseStatusException(HttpStatus.CONFLICT, "render dependency snapshot mismatch");
+                }
+                UUID versionId = UUID.fromString(version);
+                Long owned = jdbc.queryForObject("""
+                        SELECT COUNT(*) FROM app.artifact_version v
+                        JOIN app.artifact_stream s ON s.artifact_stream_id = v.artifact_stream_id
+                        WHERE v.artifact_version_id = ? AND s.case_id = ?::uuid
+                          AND s.kind = ? AND s.scope_key = ?
+                        """, Long.class, versionId, caseId, module, "module:" + module);
+                if (owned == null || owned != 1L) {
+                    throw new ResponseStatusException(HttpStatus.CONFLICT, "render dependency belongs to another stream");
+                }
+                artifactDeps.add(versionId);
+            }
+            String inputRef = String.valueOf(task.get("input_snapshot_ref"));
+            if (factsVersionId == null || !inputRef.equals("facts_version:" + factsVersionId)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "render facts snapshot mismatch");
+            }
+        }
+        if ("sentencing".equals(kind) && metadata.get("artifactVersions") instanceof Map<?, ?> frozen) {
+            Object frozenConviction = frozen.get("conviction");
+            List<?> returned = dep.get("artifacts") instanceof List<?> refs ? refs : List.of();
+            if (frozenConviction == null || returned.size() != 1) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "sentencing dependency snapshot mismatch");
+            }
+            Object entry = returned.get(0);
+            if (!(entry instanceof Map<?, ?> ref)
+                    || !"conviction".equals(String.valueOf(ref.get("module")))
+                    || !String.valueOf(frozenConviction).equals(String.valueOf(ref.get("artifactVersionId")))) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "sentencing dependency snapshot mismatch");
+            }
+            UUID convictionVersionId;
+            try {
+                convictionVersionId = UUID.fromString(String.valueOf(frozenConviction));
+            } catch (IllegalArgumentException invalidId) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "sentencing dependency snapshot mismatch", invalidId);
+            }
+            Long owned = jdbc.queryForObject("""
+                    SELECT COUNT(*)
+                    FROM app.artifact_version v
+                    JOIN app.artifact_stream s ON s.artifact_stream_id = v.artifact_stream_id
+                    WHERE v.artifact_version_id = ? AND s.case_id = ?::uuid
+                      AND s.kind = 'conviction' AND s.scope_key = 'module:conviction'
+                    """, Long.class, convictionVersionId, caseId);
+            if (owned == null || owned != 1L) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "sentencing dependency belongs to another stream");
+            }
+            Object frozenFacts = metadata.get("factsVersionId");
+            String inputRef = String.valueOf(task.get("input_snapshot_ref"));
+            if (frozenFacts == null || factsVersionId == null
+                    || !String.valueOf(frozenFacts).equals(String.valueOf(factsVersionId))
+                    || !inputRef.equals("facts_version:" + frozenFacts)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "sentencing facts snapshot mismatch");
+            }
+            artifactDeps.add(convictionVersionId);
         }
 
         var result = artifacts.publish(new ArtifactPublicationService.PublishRequest(
                 caseId, kind, scopeKey, schemaVersion, outcome, payload.contentJson(),
-                blockersJson, writeJson(dep), factsVersionId, artifactDeps, external,
+                blockersJson, writeJson(dep), factsVersionId, artifactDeps, List.copyOf(external),
                 payload.executionId(), payload.completionIdentity(), payload.contentHash()));
         return result.artifactVersionId();
     }

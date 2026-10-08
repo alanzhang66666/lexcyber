@@ -17,10 +17,14 @@ const KIND_LABELS: Record<CandidatePathKind, string> = {
   excluded: '已排除路径',
 }
 
-const kindLabel = computed(() => (props.path.kind ? KIND_LABELS[props.path.kind] : '候选路径'))
+const kindLabel = computed(() => {
+  if (props.path.calculationStatus === 'blocked') return '待确认路径'
+  if (props.path.kind === 'excluded' && (props.path.exclusionPending || props.path.status !== 'confirmed')) return '待复核排除路径'
+  return props.path.kind ? KIND_LABELS[props.path.kind] : '候选路径'
+})
 const kindClass = computed(() => ({
-  'path-excluded': props.path.kind === 'excluded',
-  'path-alternative': props.path.kind === 'alternative',
+  'path-excluded': props.path.kind === 'excluded' && props.path.calculationStatus !== 'blocked',
+  'path-alternative': props.path.kind === 'alternative' && props.path.calculationStatus !== 'blocked',
 }))
 
 function evidenceKey(e: EvidenceRef, i: number) {
@@ -29,16 +33,23 @@ function evidenceKey(e: EvidenceRef, i: number) {
 </script>
 
 <template>
-  <article class="path-card" :class="{ 'path-excluded': path.kind === 'excluded' }">
+  <article class="path-card" :class="{ 'path-excluded': path.kind === 'excluded' && path.calculationStatus !== 'blocked' }">
     <header class="path-head">
       <div class="path-title">
         <span class="path-kind" :class="kindClass">{{ kindLabel }}</span>
         <h3>{{ path.title }}</h3>
       </div>
-      <VerificationBadge :status="path.status" />
+      <span v-if="path.calculationStatus === 'blocked'" class="subtle-chip path-blocked">待确认</span>
+      <span v-if="path.status === 'conflicted'" class="subtle-chip path-conflicted">证据冲突</span>
+      <VerificationBadge v-if="path.calculationStatus !== 'blocked' && path.status !== 'conflicted'" :status="path.status" />
     </header>
 
+    <dl v-if="path.actorId || path.point" class="path-meta">
+      <div v-if="path.actorId"><dt>行为人</dt><dd class="mono">{{ path.actorId }}</dd></div>
+      <div v-if="path.point"><dt>时点</dt><dd>{{ path.point === 'as_of' ? '适用时点' : path.point === 'conduct' ? '行为时点' : '裁判时点' }}</dd></div>
+    </dl>
     <p v-if="path.summary" class="path-summary">{{ path.summary }}</p>
+    <p v-if="path.exclusionReason" class="path-summary">排除理由：{{ path.exclusionReason }}</p>
 
     <div class="evidence-grid">
       <section class="evidence-col">
@@ -89,6 +100,19 @@ function evidenceKey(e: EvidenceRef, i: number) {
   justify-content: space-between;
   gap: 12px;
 }
+.path-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 0;
+  color: var(--lc-muted);
+  font-size: 12px;
+}
+.path-meta div { display: flex; gap: 6px; }
+.path-meta dt { font-weight: 600; }
+.path-meta dd { margin: 0; }
+.path-blocked { color: var(--lc-risk); }
+.path-conflicted { color: var(--lc-risk); }
 .path-title {
   display: grid;
   gap: 6px;

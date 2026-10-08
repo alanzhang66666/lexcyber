@@ -11,7 +11,7 @@ from engine.adapters.case_bundle import (
 )
 from engine.adapters.consistency import validate_result_consistency
 from engine.adapters.sentencing import calculate_case_sentencing, calculate_sentencing
-from engine.adapters.sources import search_legal_sources
+from engine.adapters.sources import SourceDateError, search_legal_sources
 from engine.adapters.t1_contract import (
     T1ContractError,
     build_t1_case_create,
@@ -266,9 +266,15 @@ def test_source_search_is_version_and_date_aware():
 
 
 def test_source_search_fails_clearly_outside_three_case_coverage():
-    result = search_legal_sources("海商法共同海损")
+    result = search_legal_sources("海商法共同海损", as_of_date="2026-01-01")
     assert result["status"] == "unsupported_query"
     assert result["documents"] == []
+
+
+def test_source_search_requires_explicit_valid_date():
+    with pytest.raises(SourceDateError) as err:
+        search_legal_sources("海商法共同海损")
+    assert err.value.code == "INVALID_AS_OF_DATE"
 
 
 def test_case_sentencing_still_fails_closed_for_an_unapproved_rule():
@@ -496,6 +502,26 @@ def test_t1_module_state_projects_conviction_paths_and_jurisdiction():
     assert content["amounts"]
     assert "applicability" not in load_case_bundle("C")["analyses"]["conviction"]
     assert payload["applicability"] == "unknown"
+
+
+@pytest.mark.parametrize("reason_key", ["exclusion_reason", "exclusionReason"])
+def test_t1_conviction_projection_preserves_explicit_exclusion_reason(reason_key):
+    from copy import deepcopy
+
+    bundle = load_case_bundle("C")
+    excluded = next(item for item in bundle["analyses"]["conviction"]["candidate_paths"]
+                    if item["baseline_position"] == "excluded")
+    excluded[reason_key] = "Explicit fixture reason, not a generated legal conclusion"
+    frozen = deepcopy(bundle)
+    content = build_t1_module_state(bundle, "conviction", "case-server-c")["content"]
+    projected = next(item for item in content["candidatePaths"] if item["id"] == excluded["id"])
+    assert projected["exclusionReason"] == excluded[reason_key]
+    assert projected["exclusion_reason"] == excluded[reason_key]
+    assert projected["baselinePosition"] == "excluded"
+    assert projected["contraryEvidenceIds"] == excluded["contrary_evidence_ids"]
+    assert all("exclusionReason" not in item for item in content["candidatePaths"]
+               if item["id"] != excluded["id"])
+    assert bundle == frozen
 
 
 def test_t1_case_create_and_facts_expose_amounts_without_graph_tables():

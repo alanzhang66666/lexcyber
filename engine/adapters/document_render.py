@@ -16,12 +16,30 @@ from __future__ import annotations
 
 import re
 from typing import Any
+from uuid import UUID
 
 from engine.adapters.module_analysis import ModuleAnalysisError
 from engine.rules import registry
 from engine.rules.evaluator import _resolve, build_view
+from engine.rules.inputs import InputValidator
 
 _PLACEHOLDER = re.compile(r"\{\{\s*([^{}]+?)\s*\}\}")
+_CHINESE_PLACEHOLDER = re.compile(r"【[^】]*】")
+
+
+def _valid_input_marker(marker: Any) -> bool:
+    if not isinstance(marker, dict):
+        return False
+    if marker.get("schema_version") != "case.input-validation.v1":
+        return False
+    if marker.get("status") != "verified":
+        return False
+    checks = marker.get("checks")
+    blockers = marker.get("blockers")
+    if not isinstance(checks, list) or not isinstance(blockers, list) or blockers:
+        return False
+    return all(isinstance(check, dict) and check.get("status") == "verified"
+               for check in checks)
 
 
 def render(payload: dict[str, Any]) -> dict[str, Any]:
@@ -35,6 +53,10 @@ def render(payload: dict[str, Any]) -> dict[str, Any]:
         raise ModuleAnalysisError(
             "FACTS_SNAPSHOT_MISSING",
             "文书渲染缺少不可变事实快照（metadata.factsSnapshot）")
+    try:
+        as_of_date = registry.require_as_of_date(metadata)
+    except registry.RegistryError as exc:
+        raise ModuleAnalysisError(exc.code, str(exc)) from exc
 
     template = registry.active_template(str(doc_type))
     if template is None:
@@ -42,18 +64,48 @@ def render(payload: dict[str, Any]) -> dict[str, Any]:
             "TEMPLATE_UNAVAILABLE",
             f"doc_type {doc_type} 无已会签模板")
 
+    artifacts = metadata.get("artifacts") or {}
+    version_ids = metadata.get("artifactVersions") or {}
+    if not isinstance(artifacts, dict) or not isinstance(version_ids, dict) or artifacts.keys() != version_ids.keys():
+        raise ModuleAnalysisError("ARTIFACT_SNAPSHOT_MISSING", "上游内容必须绑定具体工件版本")
+    try:
+        frozen_artifacts = [{"module": name, "artifactVersionId": str(UUID(str(version_ids[name])))}
+                            for name in sorted(artifacts)]
+    except (ValueError, TypeError, AttributeError) as exc:
+        raise ModuleAnalysisError("ARTIFACT_SNAPSHOT_INVALID", "上游工件版本必须为 UUID") from exc
+
     view = build_view(snapshot)
+    input_validator = InputValidator(snapshot, view)
     view["case_id"] = payload.get("case_id")
     view["doc_type"] = doc_type
-    view["artifacts"] = metadata.get("artifacts") or {}
+    view["artifacts"] = artifacts
     input_ref = payload.get("input_snapshot_ref") or ""
     facts_version_id = (input_ref[len("facts_version:"):]
                         if input_ref.startswith("facts_version:") else None)
 
     unresolved: list[dict[str, Any]] = []
+    for name, artifact in artifacts.items():
+        artifact_path = f"artifacts.{name}"
+        if not isinstance(artifact, dict) or artifact.get("status") == "blocked":
+            unresolved.append({"path": artifact_path, "reason": "upstream_blocked"})
+            input_validator._record(artifact_path, "document", "as_of", [], [], [
+                {"code": "UPSTREAM_BLOCKED", "reason": "upstream artifact is blocked"}])
+            continue
+        marker = artifact.get("input_validation")
+        marker_blocked = not _valid_input_marker(marker)
+        input_validator._record(artifact_path, "document", "as_of",
+                                [str(version_ids[name])], [],
+                                [{"code": "UPSTREAM_INPUT_VALIDATION_BLOCKED",
+                                  "reason": "upstream v2 input marker is missing or blocked"}]
+                                if marker_blocked else [])
+        if marker_blocked:
+            unresolved.append({"path": f"artifacts.{name}.input_validation",
+                               "reason": "upstream_input_validation_blocked"})
 
     def substitute(match: re.Match) -> str:
         path = match.group(1).strip()
+        if not path.startswith("artifacts."):
+            input_validator.check_path(path, phase="document", point="as_of")
         found, value = _resolve(view, path)
         if not found or value is None:
             unresolved.append({"path": path, "reason": "unresolved_or_null"})
@@ -67,13 +119,26 @@ def render(payload: dict[str, Any]) -> dict[str, Any]:
 
     body = _PLACEHOLDER.sub(substitute, template["bodyTemplate"])
 
+    # Templates and substituted facts must never leak a human-facing
+    # placeholder into a published artifact.  This catches both the normal
+    # ``{{path}}`` form left unresolved and Chinese drafting markers such as
+    # ``【待核实】`` (including markers introduced by a fact value).
+    if _PLACEHOLDER.search(body) or _CHINESE_PLACEHOLDER.search(body):
+        unresolved.append({"path": "body", "reason": "unresolved_placeholder"})
+
     # 模板声明的必填字段校验（field_schema.required[] 也是路径）
     field_schema = template.get("fieldSchema") or {}
     for req in field_schema.get("required") or []:
+        if not str(req).startswith("artifacts."):
+            input_validator.check_path(str(req), phase="document", point="as_of")
         found, value = _resolve(view, str(req))
         if not found or value is None:
             unresolved.append({"path": str(req), "reason": "required_field_missing"})
 
+    input_validation = input_validator.summary()
+    if input_validation.get("blockers"):
+        unresolved.extend({"path": item.get("path"), "reason": item.get("code", "input_blocked")}
+                          for item in input_validation["blockers"])
     status = "blocked" if unresolved else "rendered"
     body_out = {
         "schema_version": "draft.v2",
@@ -90,12 +155,14 @@ def render(payload: dict[str, Any]) -> dict[str, Any]:
         "unresolved": unresolved,
         "dependency_snapshot": {
             "facts_version_id": facts_version_id,
+            "as_of_date": as_of_date.isoformat(),
             "template": {"templateId": template["templateId"],
                          "templateVersion": template["templateVersion"],
                          "contentHash": template["contentHash"]},
-            "artifacts": sorted((metadata.get("artifacts") or {}).keys()),
+            "artifacts": frozen_artifacts,
         },
         "human_review_required": True,
+        "input_validation": input_validation,
     }
     return {"final_output": body_out, "human_approval_required": True}
 

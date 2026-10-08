@@ -2,19 +2,32 @@
 
 from __future__ import annotations
 
+import argparse
+import hashlib
 import io
 import json
 import secrets
+import subprocess
 import sys
 import time
 import urllib.error
 import urllib.request
 import uuid
+import xml.etree.ElementTree as ET
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 
 BASE = "http://127.0.0.1:18080"
 SAMPLE_TEXT = "LexCyber CI document storage and parsing check."
 DOCX_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+PARAMETER_PROOF = {"id": "ci-parameter-proof", "type": "document",
+                   "label": "Synthetic CI parameter proof", "verificationStatus": "confirmed"}
+
+
+def fixture_linked(items):
+    """Explicit proof links for synthetic parameters, independent of rule kinds."""
+    return [{**item, "evidenceIds": [PARAMETER_PROOF["id"]]} for item in items]
 
 
 def request(method, path, *, token=None, payload=None, data=None, content_type=None, expected=200):
@@ -32,7 +45,8 @@ def request(method, path, *, token=None, payload=None, data=None, content_type=N
             status, raw = response.status, response.read()
     except urllib.error.HTTPError as error:
         status, raw = error.code, error.read()
-    if status != expected:
+    accepted = expected if isinstance(expected, tuple) else (expected,)
+    if status not in accepted:
         raise RuntimeError(f"{method} {path}: expected {expected}, got {status}: {raw.decode(errors='replace')}")
     return json.loads(raw) if raw else {}
 
@@ -89,8 +103,1043 @@ def document_form():
     return body, f"multipart/form-data; boundary={boundary}"
 
 
+def _id(view, *names):
+    for name in names:
+        if view.get(name):
+            return str(view[name])
+    raise RuntimeError(f"response has no identifier {names}: {view}")
+
+
+def _sorted_items(items):
+    return sorted(items, key=lambda item: (str(item.get("artifactVersionId")), str(item.get("role"))))
+
+
+def export_docx(token, case_id, artifact_id, body):
+    """Validate the real nginx → Java → Engine → MinIO export path."""
+    path = f"/v2/cases/{case_id}/artifact-versions/{artifact_id}/export.docx"
+    req = urllib.request.Request(BASE + path, headers={
+        "Authorization": f"Bearer {token}", "Accept": DOCX_TYPE,
+    })
+    with urllib.request.urlopen(req, timeout=30) as response:
+        assert response.status == 200
+        assert response.headers.get_content_type() == DOCX_TYPE, response.headers
+        assert "attachment" in response.headers.get("Content-Disposition", "")
+        assert "no-store" in response.headers.get("Cache-Control", "")
+        raw = response.read()
+    with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+        assert archive.testzip() is None
+        content_types = archive.read("[Content_Types].xml")
+        assert b"wordprocessingml.document.main+xml" in content_types
+        root = ET.fromstring(archive.read("word/document.xml"))
+    ns = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+    paragraphs = []
+    for paragraph in root.iter(ns + "p"):
+        parts = []
+        for node in paragraph.iter():
+            if node.tag == ns + "t":
+                parts.append(node.text or "")
+            elif node.tag == ns + "tab":
+                parts.append("\t")
+            elif node.tag in (ns + "br", ns + "cr"):
+                parts.append("\n")
+        paragraphs.append("".join(parts))
+    text = "\n".join(paragraphs)
+    # Title, auxiliary label and final immutable provenance are the only additions.
+    assert len(paragraphs) >= 3 and paragraphs[1] == "文书辅助稿，不替代司法裁量", text
+    assert paragraphs[-1].startswith("来源工件版本："), text
+    assert "\n".join(paragraphs[2:-1]) == body.replace("\r\n", "\n").replace("\r", "\n"), text
+    assert artifact_id in text, text
+    assert "文书辅助稿" in text and "不替代司法裁量" in text, text
+    return raw
+
+
+def wait_execution(token, execution_id):
+    for _ in range(90):
+        view = request("GET", f"/v2/executions/{execution_id}", token=token)
+        state = view.get("state") or view.get("status")
+        if state == "completed":
+            return view
+        if state in {"failed", "timed_out", "rejected"}:
+            raise RuntimeError(f"execution {execution_id} ended {state}: {view}")
+        time.sleep(1)
+    raise RuntimeError(f"execution {execution_id} did not complete")
+
+
+def _engine_internal(path, payload):
+    """Call the Engine from inside its container without exposing its token."""
+    script = r'''
+import json, sys, urllib.request, urllib.error
+from engine.settings import settings
+body = json.loads(sys.stdin.read())
+request = urllib.request.Request("http://127.0.0.1:8100" + sys.argv[1],
+    data=json.dumps(body).encode(), headers={"Content-Type": "application/json",
+    "X-Service-Token": settings.service_token}, method="POST")
+try:
+    with urllib.request.urlopen(request, timeout=15) as response:
+        print(json.dumps({"status": response.status, "body": json.loads(response.read() or b"{}")}, sort_keys=True))
+except urllib.error.HTTPError as error:
+    print(json.dumps({"status": error.code, "body": json.loads(error.read() or b"{}")}, sort_keys=True))
+'''
+    result = subprocess.run([
+        "docker", "compose", "exec", "-T", "engine", "python", "-c", script, path,
+    ], input=json.dumps(payload).encode(), capture_output=True, check=True,
+        cwd=Path(__file__).resolve().parent.parent)
+    return json.loads(result.stdout.decode().strip().splitlines()[-1])
+
+
+def _engine_events(key, version):
+    script = r'''
+import json, sys
+from engine.store import connection
+key, version = json.loads(sys.stdin.read())
+with connection() as conn:
+    rows = conn.execute("SELECT event_id, acknowledged_at, dependencies FROM engine.registry_invalidation_event ORDER BY created_at").fetchall()
+print(json.dumps({"events": [{"eventId": str(row[0]), "ack": row[1] is not None,
+    "dependencies": row[2]} for row in rows if any(d.get("key") == key and d.get("version") == version for d in (row[2] or []))]}, sort_keys=True))
+'''
+    result = subprocess.run([
+        "docker", "compose", "exec", "-T", "engine", "python", "-c", script,
+    ], input=json.dumps([key, version]).encode(), capture_output=True, check=True,
+        cwd=Path(__file__).resolve().parent.parent)
+    return json.loads(result.stdout.decode().strip().splitlines()[-1])
+
+
+def _registry_signoff(kind, subject, decision, comment):
+    result = _engine_internal("/internal/v1/registry/signoffs", {
+        "subjectKind": kind, "subjectKey": subject, "reviewer": "ci-fixture-revoker",
+        "role": "automated-ci-fixture", "decision": decision, "comment": comment,
+    })
+    assert result["status"] == 201, result
+    return result["body"]
+
+
+def _registry_case(token, as_of, *, approve_draft=True, doc_type="ci.registry_note",
+                   module_names=("compliance", "conviction", "sentencing"), approve_modules=True, render_draft=True):
+    case = request("POST", "/v1/cases", token=token, expected=201, payload={
+        "title": f"CI registry revocation {as_of}", "jurisdiction": "CI", "asOfDate": as_of,
+        "metadata": {"purpose": "LEXCYBER_CI_FIXTURES"},
+    })
+    case_id = _id(case, "id", "caseId")
+    facts = fixture_linked([
+        {"key": "ci_case_label", "value": "registry", "verificationStatus": "confirmed"},
+        {"key": "ci_confirmed_marker", "value": "yes", "verificationStatus": "confirmed"},
+        {"key": "ci_compliance_flag", "value": True, "verificationStatus": "confirmed"},
+        {"key": "ci_conviction_flag", "value": True, "verificationStatus": "confirmed"},
+        {"key": "ci_distinction_flag", "value": True, "verificationStatus": "confirmed"},
+        {"key": "ci_sentencing_flag", "value": True, "verificationStatus": "confirmed"},
+    ])
+    amounts = [{"id": "ci-registry-amount", "kind": "crime_amount", "label": "fixture",
+                "value": "6", "currency": "CNY", "verificationStatus": "confirmed",
+                "evidenceIds": [PARAMETER_PROOF["id"]]}]
+    jurisdiction = [{"id": "ci-registry-jurisdiction", "type": "territory", "value": "CI",
+                     "verificationStatus": "confirmed", "evidenceIds": [PARAMETER_PROOF["id"]]}]
+    for kind, items in (("evidence", [PARAMETER_PROOF]), ("facts", facts),
+                        ("actors", [{"id": "ci-registry-actor", "type": "person", "name": "fixture",
+                                     "verificationStatus": "confirmed"}]),
+                        ("events", [{"id": "ci-registry-event", "date": as_of, "stage": "fixture",
+                                     "description": "registry fixture", "verificationStatus": "confirmed"}]),
+                        ("amounts", amounts), ("jurisdiction-connections", jurisdiction)):
+        request("PUT", f"/v2/cases/{case_id}/facts-entities/{kind}", token=token,
+                expected=200, payload={"items": items})
+    facts_version = request("POST", f"/v2/cases/{case_id}/facts-versions", token=token, expected=201)
+    facts_id = _id(facts_version, "factsVersionId")
+    request("POST", f"/v2/cases/{case_id}/facts-versions/{facts_id}/confirm", token=token,
+            expected=200, payload={"expectedConfirmedFactsVersionId": None})
+    modules = {}
+    for module in module_names:
+        execution = request("POST", f"/v2/cases/{case_id}/modules/{module}/executions",
+                            token=token, expected=202)
+        wait_execution(token, _id(execution, "executionId"))
+        head = request("GET", f"/v2/cases/{case_id}/modules/{module}", token=token)
+        artifact_id = _id(head, "latestVersionId")
+        artifact = request("GET", f"/v2/artifact-versions/{artifact_id}", token=token)
+        assert artifact["outcomeStatus"] == "calculated", {"module": module, "date": as_of, "artifact": artifact}
+        assert artifact["payload"]["input_validation"]["status"] == "verified", artifact
+        review = request("POST", f"/v2/artifact-versions/{artifact_id}/reviews", token=token,
+                         expected=201, payload={"comment": "registry fixture module approval"})
+        if approve_modules:
+            approved = request("POST", f"/v1/reviews/{_id(review, 'reviewId')}/approve", token=token,
+                               payload={"resultVersion": artifact["version"]})
+            assert approved.get("status") == "approved", approved
+        modules[module] = artifact
+    if not render_draft:
+        return {"case": case_id, "modules": modules, "review": review}
+    render = request("POST", f"/v2/cases/{case_id}/drafts/render", token=token,
+                     expected=201, payload={"docType": doc_type})
+    wait_execution(token, _id(render, "executionId"))
+    draft_id = _id(render, "draftId")
+    draft_head = request("GET", f"/v2/drafts/{draft_id}", token=token)
+    draft_artifact_id = _id(draft_head, "latestVersionId")
+    draft_artifact = request("GET", f"/v2/artifact-versions/{draft_artifact_id}", token=token)
+    draft_review = request("POST", f"/v2/artifact-versions/{draft_artifact_id}/reviews", token=token,
+                           expected=201, payload={"comment": "registry fixture draft approval"})
+    if approve_draft:
+        approved = request("POST", f"/v1/reviews/{_id(draft_review, 'reviewId')}/approve", token=token,
+                           payload={"resultVersion": draft_artifact["version"]})
+        assert approved.get("status") == "approved", approved
+        archive = request("POST", f"/v2/cases/{case_id}/archives", token=token,
+                          expected=201, payload={"archiveProfile": "case.full.v1"})
+    else:
+        archive = None
+    return {"case": case_id, "modules": modules, "draft": draft_artifact,
+            "draftId": draft_id, "review": draft_review, "archive": archive}
+
+
+def _retire_registry_fixture(kind, key):
+    """CI-only direct SQL retirement also exercises the database writer barrier."""
+    script = r'''
+import json, os, sys
+from engine.store import connection
+kind, key = json.load(sys.stdin)
+assert os.environ.get("LEXCYBER_CI_FIXTURES") == "1" and key.startswith("ci-fixture-")
+table, column = {"rule": ("rule_package", "rule_id"), "template": ("template_package", "template_id")}[kind]
+with connection() as conn:
+    changed = conn.execute(f"UPDATE engine.{table} SET legal_review_status='superseded' WHERE {column}=%s AND legal_review_status='approved'", (key,)).rowcount
+assert changed == 1, changed
+print(json.dumps({"changed": changed}))
+'''
+    result = subprocess.run(["docker", "compose", "exec", "-T", "-e", "LEXCYBER_CI_FIXTURES=1",
+                             "engine", "python", "-c", script], input=json.dumps([kind, key]).encode(),
+                            capture_output=True, check=True, cwd=Path(__file__).resolve().parent.parent)
+    return json.loads(result.stdout)
+
+
+def _wait_registry_ack(key, version):
+    for _ in range(40):
+        events = _engine_events(key, version)["events"]
+        if events and all(item["ack"] for item in events):
+            return events
+        time.sleep(1)
+    raise RuntimeError(f"registry event not committed and acknowledged: {key}@{version}: {events}")
+
+
+def run_registry_revocation(token):
+    """Withdraw actual registered dependencies and retain immutable prior history."""
+    source = _registry_case(token, "2202-06-01")
+    pending_module = _registry_case(token, "2202-06-01", module_names=("compliance",),
+                                    approve_modules=False, render_draft=False)
+    template_case = _registry_case(token, "2026-06-01")
+    archive_path = f"/v2/cases/{source['case']}/archives/{_id(source['archive'], 'archiveId')}"
+    archive_before = request("GET", archive_path, token=token)
+    draft_before = request("GET", f"/v2/drafts/{source['draftId']}", token=token)
+    old_artifacts = [*source["modules"].values(), source["draft"]]
+    old_docx = export_docx(token, source["case"], source["draft"]["artifactVersionId"], source["draft"]["payload"]["body"])
+    pending = request("POST", f"/v2/cases/{source['case']}/drafts/render", token=token,
+                      expected=201, payload={"docType": "ci.registry_note"})
+    wait_execution(token, _id(pending, "executionId"))
+    pending_head = request("GET", f"/v2/drafts/{source['draftId']}", token=token)
+    pending_artifact = request("GET", f"/v2/artifact-versions/{_id(pending_head, 'latestVersionId')}", token=token)
+    pending_review = request("POST", f"/v2/artifact-versions/{pending_artifact['artifactVersionId']}/reviews",
+                             token=token, expected=201, payload={"comment": "withdrawal approval rejection"})
+    _registry_signoff("legal_source", "ci-fixture-registry-source@1.0.0", "rejected", "CI revocation fixture")
+    # The first read is itself a synchronous validity check; never permit an effective stale head.
+    for name, old in source["modules"].items():
+        after = request("GET", f"/v2/cases/{source['case']}/modules/{name}", token=token)
+        assert after["stale"] and not after["effectivelyConfirmed"], after
+        assert after["confirmedVersionId"] == old["artifactVersionId"], after
+    after_draft = request("GET", f"/v2/drafts/{source['draftId']}", token=token)
+    assert after_draft["stale"] and after_draft["approvedVersionId"] == draft_before["approvedVersionId"], after_draft
+    for review, artifact in [(pending_review, pending_artifact),
+                             (pending_module["review"], pending_module["modules"]["compliance"])]:
+        path = f"/v1/reviews/{_id(review, 'reviewId')}"
+        before = request("GET", path, token=token)
+        blocked = request("POST", path + "/approve", token=token, expected=409,
+                          payload={"resultVersion": artifact["version"]})
+        assert blocked["code"] == "DEPENDENCY_STALE", blocked
+        assert request("GET", path, token=token) == before
+    downstream = request("POST", f"/v2/cases/{source['case']}/modules/sentencing/executions", token=token, expected=409)
+    assert downstream["code"] in {"MODULE_NOT_CONFIRMED", "DEPENDENCY_STALE"}, downstream
+    request("POST", f"/v2/cases/{source['case']}/drafts/render", token=token,
+            expected=409, payload={"docType": "ci.registry_note"})
+    request("POST", f"/v2/cases/{source['case']}/archives", token=token, expected=409,
+            payload={"archiveProfile": "case.full.v1"})
+    assert request("GET", archive_path, token=token) == archive_before
+    for old in old_artifacts:
+        assert request("GET", f"/v2/artifact-versions/{old['artifactVersionId']}", token=token)["payload"] == old["payload"]
+    assert export_docx(token, source["case"], source["draft"]["artifactVersionId"], source["draft"]["payload"]["body"]) == old_docx
+    _wait_registry_ack("ci-fixture-compliance-registry", "1.0.0")
+    print("PASS legal-source withdrawal: first-read stale, pending module/draft approval rejection, downstream/archive rejection, immutable history/DOCX and durable ACK", flush=True)
+
+    template_archive_path = f"/v2/cases/{template_case['case']}/archives/{_id(template_case['archive'], 'archiveId')}"
+    saved_template_archive = request("GET", template_archive_path, token=token)
+    pending = request("POST", f"/v2/cases/{template_case['case']}/drafts/render", token=token,
+                      expected=201, payload={"docType": "ci.registry_note"})
+    wait_execution(token, _id(pending, "executionId"))
+    head = request("GET", f"/v2/drafts/{template_case['draftId']}", token=token)
+    pending_artifact = request("GET", f"/v2/artifact-versions/{head['latestVersionId']}", token=token)
+    review = request("POST", f"/v2/artifact-versions/{pending_artifact['artifactVersionId']}/reviews", token=token,
+                     expected=201, payload={"comment": "template revocation rejection"})
+    _retire_registry_fixture("template", "ci-fixture-registry-note")
+    draft = request("GET", f"/v2/drafts/{template_case['draftId']}", token=token)
+    assert draft["stale"] and draft["approvedVersionId"] == template_case["draft"]["artifactVersionId"], draft
+    assert all(request("GET", f"/v2/cases/{template_case['case']}/modules/{name}", token=token)["effectivelyConfirmed"]
+               for name in template_case["modules"])
+    blocked = request("POST", f"/v1/reviews/{_id(review, 'reviewId')}/approve", token=token,
+                      expected=409, payload={"resultVersion": pending_artifact["version"]})
+    assert blocked["code"] == "DEPENDENCY_STALE", blocked
+    assert request("GET", template_archive_path, token=token) == saved_template_archive
+    _wait_registry_ack("ci-fixture-registry-note", "1.0.0")
+    print("PASS template withdrawal: pending approval rejected, approved draft stale with pointer retained, modules remain valid, archive preserved", flush=True)
+
+    race = _registry_case(token, "2203-06-01", module_names=("compliance",), approve_modules=False, render_draft=False)
+    artifact = race["modules"]["compliance"]
+    def approve_race():
+        return request("POST", f"/v1/reviews/{_id(race['review'], 'reviewId')}/approve", token=token,
+                       expected=(200, 409), payload={"resultVersion": artifact["version"]})
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        approval = pool.submit(approve_race)
+        retirement = pool.submit(_retire_registry_fixture, "rule", "ci-fixture-retire-rule")
+        result = approval.result()
+        assert result.get("status") == "approved" or result.get("code") == "DEPENDENCY_STALE", result
+        assert retirement.result()["changed"] == 1
+    _wait_registry_ack("ci-fixture-retire-rule", "1.0.0")
+    head = request("GET", f"/v2/cases/{race['case']}/modules/compliance", token=token)
+    assert not head["effectivelyConfirmed"], head
+    if result.get("status") == "approved":
+        assert head["stale"] and head["confirmedVersionId"] == artifact["artifactVersionId"], head
+    else:
+        assert head["confirmedVersionId"] is None, head
+        assert request("GET", f"/v1/reviews/{_id(race['review'], 'reviewId')}", token=token)["status"] == "pending"
+    assert request("GET", f"/v2/artifact-versions/{artifact['artifactVersionId']}", token=token)["payload"] == artifact["payload"]
+    print("PASS concurrent HTTP approval and database rule retirement: final head invalid, failed approval atomic, history retained", flush=True)
+
+
+def run_reference_integrity(token):
+    """Keep actual entity links intact through individual collection edits."""
+    case = request("POST", "/v1/cases", token=token, expected=201, payload={
+        "title": "CI entity reference fixture", "jurisdiction": "CI", "asOfDate": "2026-01-01",
+        "metadata": {"purpose": "LEXCYBER_CI_FIXTURES"},
+    })
+    case_id = _id(case, "id", "caseId")
+    base = f"/v2/cases/{case_id}"
+    actor = {"id": "reference-actor", "type": "person", "name": "original",
+             "verificationStatus": "confirmed"}
+    proof = {"id": "reference-evidence", "type": "document", "label": "original",
+             "verificationStatus": "confirmed"}
+    collections = {
+        "actors": [actor], "evidence": [proof],
+        "facts": [{"id": "reference-fact", "key": "reference_marker", "value": "yes",
+                   "actorId": actor["id"], "evidenceIds": [proof["id"]],
+                   "verificationStatus": "confirmed"}],
+        "events": [{"id": "reference-event", "date": "2026-01-01", "actorId": actor["id"]}],
+        "amounts": [{"id": "reference-amount", "kind": "crime_amount", "value": 5,
+                     "evidenceIds": [proof["id"]], "verificationStatus": "confirmed"}],
+        "jurisdiction-connections": [{"id": "reference-jurisdiction", "type": "territory",
+                                      "value": "CI", "evidenceIds": [proof["id"]],
+                                      "verificationStatus": "confirmed"}],
+    }
+    for kind, items in collections.items():
+        request("PUT", f"{base}/facts-entities/{kind}", token=token, payload={"items": items})
+    original = request("POST", f"{base}/facts-versions", token=token, expected=201)
+    original_id = _id(original, "factsVersionId")
+    original_detail = request("GET", f"{base}/facts-versions/{original_id}", token=token)
+    frozen = original_detail["payload"]
+    request("POST", f"{base}/facts-versions/{original_id}/confirm", token=token,
+            payload={"expectedConfirmedFactsVersionId": None})
+    original_detail = request("GET", f"{base}/facts-versions/{original_id}", token=token)
+    actor_id = frozen["entities"]["actors"][0]["entityId"]
+    proof_id = frozen["entities"]["evidence"][0]["entityId"]
+
+    def assert_links(working):
+        entities = working["entities"]
+        assert entities["actors"][0]["entityId"] == actor_id, working
+        assert entities["evidence"][0]["entityId"] == proof_id, working
+        assert working["items"][0]["actorId"] == actor_id, working
+        assert entities["events"][0]["actorId"] == actor_id, working
+        for item in [working["items"][0], entities["amounts"][0],
+                     entities["jurisdictionConnections"][0]]:
+            assert item["evidenceIds"] == [proof_id], item
+
+    # Same logical identifiers, then canonical snapshot rows, each repeated.
+    for _ in range(2):
+        request("PUT", f"{base}/facts-entities/actors", token=token,
+                payload={"items": [{**actor, "name": "renamed"}]})
+        request("PUT", f"{base}/facts-entities/evidence", token=token,
+                payload={"items": [{**proof, "label": "updated"}]})
+        assert_links(request("GET", f"{base}/facts-entities", token=token))
+    for _ in range(2):
+        for kind in ("actors", "evidence"):
+            request("PUT", f"{base}/facts-entities/{kind}", token=token,
+                    payload={"items": frozen["entities"][kind]})
+        assert_links(request("GET", f"{base}/facts-entities", token=token))
+    before = request("GET", f"{base}/facts-entities", token=token)
+    for kind in ("actors", "evidence"):
+        error = request("PUT", f"{base}/facts-entities/{kind}", token=token,
+                        expected=409, payload={"items": []})
+        assert error.get("code") == "ENTITY_REFERENCED", error
+        assert request("GET", f"{base}/facts-entities", token=token) == before
+    assert request("GET", f"{base}/facts-versions/{original_id}", token=token) == original_detail
+    print("PASS stable evidence and actor identities, canonical roundtrip and atomic referenced deletion rejection",
+          flush=True)
+
+    foreign_case = request("POST", "/v1/cases", token=token, expected=201, payload={
+        "title": "CI foreign reference fixture", "jurisdiction": "CI", "asOfDate": "2026-01-01",
+    })
+    foreign_id = _id(foreign_case, "id", "caseId")
+    foreign = request("PUT", f"/v2/cases/{foreign_id}/facts-entities/evidence", token=token,
+                      payload={"items": [{"id": "foreign-evidence", "type": "document"}]})
+    foreign_proof_id = foreign["entities"]["evidence"][0]["entityId"]
+    versions_before = request("GET", f"{base}/facts-versions", token=token)
+    for invalid_ref in ("missing-evidence", foreign_proof_id):
+        request("PUT", f"{base}/facts-entities/facts", token=token, payload={
+            "items": [{**collections["facts"][0], "evidenceIds": [invalid_ref]}],
+        })
+        invalid_working = request("GET", f"{base}/facts-entities", token=token)
+        error = request("POST", f"{base}/facts-versions", token=token, expected=409)
+        assert error.get("code") == "FACTS_REFERENCE_INVALID", error
+        assert request("GET", f"{base}/facts-entities", token=token) == invalid_working
+        assert request("GET", f"{base}/facts-versions", token=token) == versions_before
+        assert request("GET", f"{base}/facts-head", token=token)["confirmedFactsVersionId"] == original_id
+    request("POST", f"{base}/facts-versions/{original_id}/clone", token=token)
+    restored = request("GET", f"{base}/facts-entities", token=token)
+    assert_links(restored)
+    assert restored["items"] == frozen["items"] and restored["entities"] == frozen["entities"]
+    assert request("GET", f"{base}/facts-head", token=token)["confirmedFactsVersionId"] == original_id
+    print("PASS unknown and cross-case proof snapshot rejection, frozen history and valid clone restoration",
+          flush=True)
+
+
+def run_parameter_proof_integrity(token):
+    """Rule-kind presence never verifies the parameter used to decide a rule."""
+    case = request("POST", "/v1/cases", token=token, expected=201, payload={
+        "title": "CI actual parameter proof fixture", "jurisdiction": "CI", "asOfDate": "2026-01-01",
+        "metadata": {"purpose": "LEXCYBER_CI_FIXTURES"},
+    })
+    base = f"/v2/cases/{_id(case, 'id', 'caseId')}"
+    service_log = {"id": "verified-service-log", "type": "service_log", "verificationStatus": "confirmed"}
+    fact = {"id": "decision-parameter", "key": "ci_evidence_guard_flag", "value": True,
+            "verificationStatus": "confirmed", "evidenceIds": [PARAMETER_PROOF["id"]]}
+    previous = None
+    blocked_versions = []
+    scenarios = [
+        ({**fact, "verificationStatus": "candidate"}, PARAMETER_PROOF, "INPUT_UNCONFIRMED"),
+        ({**fact, "verificationStatus": "candidate", "value": False}, PARAMETER_PROOF, "INPUT_UNCONFIRMED"),
+        ({**fact, "evidenceIds": []}, PARAMETER_PROOF, "INPUT_EVIDENCE_INVALID"),
+        (fact, {**PARAMETER_PROOF, "verificationStatus": "candidate"}, "INPUT_UNCONFIRMED"),
+        (fact, PARAMETER_PROOF, None),
+    ]
+    for parameter, proof, expected_code in scenarios:
+        request("PUT", f"{base}/facts-entities/evidence", token=token,
+                payload={"items": [proof, service_log]})
+        request("PUT", f"{base}/facts-entities/facts", token=token, payload={"items": [parameter]})
+        version = request("POST", f"{base}/facts-versions", token=token, expected=201)
+        facts_id = _id(version, "factsVersionId")
+        request("POST", f"{base}/facts-versions/{facts_id}/confirm", token=token,
+                payload={"expectedConfirmedFactsVersionId": previous})
+        previous = facts_id
+        execution = request("POST", f"{base}/modules/compliance/executions", token=token, expected=202)
+        wait_execution(token, _id(execution, "executionId"))
+        head = request("GET", f"{base}/modules/compliance", token=token)
+        artifact = request("GET", f"/v2/artifact-versions/{_id(head, 'latestVersionId')}", token=token)
+        body = artifact["payload"]
+        marker = body["input_validation"]
+        assert marker["schema_version"] == "case.input-validation.v1", body
+        if expected_code:
+            assert artifact["outcomeStatus"] == "blocked" and marker["status"] == "blocked", body
+            assert any(item.get("code") == expected_code for item in marker["blockers"]), body
+            assert any(check["path"].startswith("facts.ci_evidence_guard_flag")
+                       and check["status"] == "blocked" for check in marker["checks"]), body
+            blocked_versions.append(artifact)
+            review = request("POST", f"/v2/artifact-versions/{artifact['artifactVersionId']}/reviews",
+                             token=token, expected=201, payload={"comment": "CI unverified parameter rejection"})
+            request("POST", f"/v1/reviews/{_id(review, 'reviewId')}/approve", token=token,
+                    expected=409, payload={"resultVersion": artifact["version"]})
+            assert not request("GET", f"{base}/modules/compliance", token=token)["effectivelyConfirmed"]
+        else:
+            assert artifact["outcomeStatus"] == "calculated" and marker["status"] == "verified", body
+            assert marker["checks"] and marker["blockers"] == [], marker
+            rule = next(row for row in body["rules"] if row["ruleId"] == "ci-fixture-evidence-guard")
+            assert rule["evidence_checks"]["matchedEvidenceIds"]["service_log"], rule
+            review = request("POST", f"/v2/artifact-versions/{artifact['artifactVersionId']}/reviews",
+                             token=token, expected=201, payload={"comment": "CI linked confirmed parameter"})
+            approved = request("POST", f"/v1/reviews/{_id(review, 'reviewId')}/approve", token=token,
+                               payload={"resultVersion": artifact["version"]})
+            assert approved["status"] == "approved", approved
+            assert request("GET", f"{base}/modules/compliance", token=token)["effectivelyConfirmed"]
+    for artifact in blocked_versions:
+        historical = request("GET", f"/v2/artifact-versions/{artifact['artifactVersionId']}", token=token)
+        assert historical["payload"] == artifact["payload"], historical
+    print("PASS actual parameter candidate true/false and missing/unconfirmed proof block; verified linked input approves",
+          flush=True)
+
+
+def run_declared_conviction_paths(token):
+    """Explicit synthetic plans preserve frozen actor/proof identity and review gates."""
+    historical = []
+    for date_value, conflict, candidate_proof, uncovered_request in [
+            ("2200-01-01", False, False, False), ("2200-01-01", False, True, False),
+            ("2201-01-01", True, False, False), ("2200-01-01", False, False, True)]:
+        case = request("POST", "/v1/cases", token=token, expected=201, payload={
+            "title": "CI explicit actor path fixture", "jurisdiction": "CI", "asOfDate": date_value,
+            "metadata": {"purpose": "LEXCYBER_CI_FIXTURES"},
+        })
+        base = f"/v2/cases/{_id(case, 'id', 'caseId')}"
+        actors = [{"id": "ci-path-a", "type": "person", "name": "CI actor A"},
+                  {"id": "ci-path-b", "type": "person", "name": "CI actor B"}]
+        proofs = [PARAMETER_PROOF,
+                  {"id": "ci-path-proof-a", "type": "document", "verificationStatus": "candidate" if candidate_proof else "confirmed"},
+                  {"id": "ci-path-proof-b", "type": "document", "verificationStatus": "confirmed"},
+                  {"id": "ci-path-counter-a", "type": "document", "verificationStatus": "confirmed"}]
+        facts = fixture_linked([{ "id": "path-selector", "key": "ci_path_flag", "value": True, "verificationStatus": "confirmed"}])
+        for key, actor, proof in [("ci_path_actor_a", "ci-path-a", "ci-path-proof-a"),
+                                  ("ci_path_actor_b", "ci-path-b", "ci-path-proof-b"),
+                                  ("ci_path_counter_a", "ci-path-a", "ci-path-counter-a")]:
+            facts.append({"id": key, "key": key, "actorId": actor, "value": True,
+                          "verificationStatus": "confirmed", "evidenceIds": [proof]})
+        for kind, rows in {"actors": actors, "evidence": proofs, "facts": facts,
+                           "jurisdiction-connections": fixture_linked([
+                               {"id": "ci-path-juri", "type": "territory", "value": "CI", "verificationStatus": "confirmed"}])}.items():
+            request("PUT", f"{base}/facts-entities/{kind}", token=token, payload={"items": rows})
+        version = request("POST", f"{base}/facts-versions", token=token, expected=201)
+        facts_id = _id(version, "factsVersionId")
+        frozen = request("GET", f"{base}/facts-versions/{facts_id}", token=token)
+        request("POST", f"{base}/facts-versions/{facts_id}/confirm", token=token,
+                payload={"expectedConfirmedFactsVersionId": None})
+        requests = [{"requestedCharge": "明确请求的 CI 原始名称", "chargeKey": "ci.synthetic_a"}]
+        if uncovered_request:
+            requests.extend([{"requestedCharge": "未覆盖的显式请求", "chargeKey": "ci.synthetic_outside"},
+                             {"requestedCharge": "没有已审定标识的原始名称"}])
+        invalid_request = request("POST", f"{base}/modules/conviction/executions", token=token,
+                                  expected=400, payload={"requestedCharges": "invalid-array"})
+        assert invalid_request["code"] == "INVALID_REQUESTED_CHARGES", invalid_request
+        execution = request("POST", f"{base}/modules/conviction/executions", token=token, expected=202,
+                            payload={"requestedCharges": requests})
+        wait_execution(token, _id(execution, "executionId"))
+        head = request("GET", f"{base}/modules/conviction", token=token)
+        artifact = request("GET", f"/v2/artifact-versions/{_id(head, 'latestVersionId')}", token=token)
+        body = artifact["payload"]
+        assert body["requested_charges"] == requests, body
+        checks = body["charge_coverage"]
+        assert checks[0]["covered"] and checks[0]["charge_key"] == "ci.synthetic_a", checks
+        assert checks[0]["rule_versions"][0]["ruleId"] == "ci-fixture-candidate-path-plan", checks
+        paths = body["candidate_paths"]
+        assert len(paths) == 2 and len({row["actor_id"] for row in paths}) == 2, body
+        actor_ids = {row["id"]: row["entityId"] for row in frozen["payload"]["entities"]["actors"]}
+        proof_ids = {row["id"]: row["entityId"] for row in frozen["payload"]["entities"]["evidence"]}
+        first = next(row for row in paths if row["path_id"] == "fixture-candidate-a")
+        excluded = next(row for row in paths if row["path_id"] == "fixture-excluded-b")
+        assert first["actor_id"] == actor_ids["ci-path-a"] and excluded["actor_id"] == actor_ids["ci-path-b"], paths
+        expected_support = [] if candidate_proof else [proof_ids["ci-path-proof-a"]]
+        assert first["supporting_evidence_ids"] == expected_support, first
+        assert excluded["contrary_evidence_ids"] == [proof_ids["ci-path-proof-b"]], excluded
+        assert body["dependency_snapshot"]["sources"] and all(row["legal_source_ids"] for row in paths), body
+        review = request("POST", f"/v2/artifact-versions/{artifact['artifactVersionId']}/reviews", token=token,
+                         expected=201, payload={"comment": "CI explicit synthetic candidate paths"})
+        if conflict or candidate_proof or uncovered_request:
+            assert artifact["outcomeStatus"] == "blocked", body
+            expected_code = ("CHARGE_OUT_OF_COVERAGE" if uncovered_request else
+                             "CONVICTION_PATH_CONFLICT" if conflict else "INPUT_UNCONFIRMED")
+            assert any(row.get("code") == expected_code for row in body["blockers"]), body
+            assert all(row["baseline_position"] is None and row["exclusion_reason"] is None for row in paths), paths
+            if conflict:
+                assert first["verification_status"] == "conflicted", first
+                assert first["contrary_evidence_ids"] == [proof_ids["ci-path-counter-a"]], first
+            if uncovered_request:
+                missing = body["missing_items"]
+                assert {row["requested_charge"] for row in missing} == {
+                    "未覆盖的显式请求", "没有已审定标识的原始名称"}, missing
+                assert all(row["missing_item"] == "charge_out_of_coverage" for row in missing), missing
+                assert all(row["charge_key"] != "ci.synthetic_outside" for row in paths), paths
+            request("POST", f"/v1/reviews/{_id(review, 'reviewId')}/approve", token=token,
+                    expected=409, payload={"resultVersion": artifact["version"]})
+            assert not request("GET", f"{base}/modules/conviction", token=token)["effectivelyConfirmed"]
+        else:
+            assert artifact["outcomeStatus"] == "calculated", body
+            assert first["baseline_position"] == "candidate" and excluded["baseline_position"] == "excluded", paths
+            assert excluded["exclusion_reason"] == "Explicit CI fixture exclusion, not a legal conclusion", excluded
+            approved = request("POST", f"/v1/reviews/{_id(review, 'reviewId')}/approve", token=token,
+                               payload={"resultVersion": artifact["version"]})
+            assert approved["status"] == "approved", approved
+            assert request("GET", f"{base}/modules/conviction", token=token)["effectivelyConfirmed"]
+        assert request("GET", f"{base}/facts-versions/{facts_id}", token=token)["payload"] == frozen["payload"]
+        historical.append(artifact)
+    for artifact in historical:
+        assert request("GET", f"/v2/artifact-versions/{artifact['artifactVersionId']}", token=token)["payload"] == artifact["payload"]
+    print("PASS explicit actor-scoped candidate/excluded paths, canonical proofs, unconfirmed proof and subjective conflict approval rejection", flush=True)
+    print("PASS explicit charge requests, exact coverage provenance, uncovered/raw-only missing items and approval rejection", flush=True)
+
+
+def run_lifecycle(token):
+    """Exercise the v2 facts → modules → draft → archive chain through nginx."""
+    case = request("POST", "/v1/cases", token=token, expected=201, payload={
+        "title": "CI synthetic lifecycle fixture", "jurisdiction": "CI", "asOfDate": "2026-01-01",
+        "metadata": {"purpose": "LEXCYBER_CI_FIXTURES"},
+    })
+    case_id = _id(case, "id", "caseId")
+    facts = fixture_linked([
+        {"key": "ci_case_label", "value": "compose-lifecycle", "verificationStatus": "confirmed"},
+        {"key": "ci_confirmed_marker", "value": "yes", "verificationStatus": "confirmed"},
+        {"key": "ci_compliance_flag", "value": True, "verificationStatus": "confirmed"},
+        {"key": "ci_conviction_flag", "value": True, "verificationStatus": "confirmed"},
+        {"key": "ci_distinction_flag", "value": True, "verificationStatus": "confirmed"},
+        {"key": "ci_sentencing_flag", "value": True, "verificationStatus": "confirmed"},
+    ])
+    actors = [{"id": "ci-actor-1", "type": "person", "name": "CI fixture", "role": "subject",
+               "verificationStatus": "confirmed"}]
+    events = [{"id": "ci-event-1", "date": "2026-01-01", "stage": "fixture",
+               "description": "synthetic CI event", "verificationStatus": "confirmed"}]
+    evidence = [PARAMETER_PROOF]
+    amounts = [{"id": "ci-amount-1", "kind": "crime_amount", "label": "CI fixture amount",
+                "value": "6", "currency": "CNY", "verificationStatus": "confirmed",
+                "evidenceIds": [PARAMETER_PROOF["id"]]}]
+    jurisdiction = [{"id": "ci-jurisdiction-1", "type": "territory", "value": "CI",
+                     "verificationStatus": "confirmed", "evidenceIds": [PARAMETER_PROOF["id"]]}]
+    for kind, items in (("evidence", evidence), ("facts", facts), ("actors", actors), ("events", events),
+                        ("amounts", amounts),
+                        ("jurisdiction-connections", jurisdiction)):
+        request("PUT", f"/v2/cases/{case_id}/facts-entities/{kind}", token=token,
+                expected=200, payload={"items": items})
+
+    version_one = request("POST", f"/v2/cases/{case_id}/facts-versions", token=token, expected=201)
+    version_one_id = _id(version_one, "factsVersionId")
+    request("POST", f"/v2/cases/{case_id}/facts-versions/{version_one_id}/confirm",
+            token=token, expected=200, payload={"expectedConfirmedFactsVersionId": None})
+    head_one = request("GET", f"/v2/cases/{case_id}/facts-head", token=token)
+    assert str(head_one["confirmedFactsVersionId"]) == version_one_id, head_one
+
+    request("PUT", f"/v2/cases/{case_id}/facts-entities/facts", token=token,
+            expected=200, payload={"items": facts + [{
+                "key": "ci_clone_marker", "value": "draft", "verificationStatus": "candidate"}]})
+    version_two = request("POST", f"/v2/cases/{case_id}/facts-versions", token=token, expected=201)
+    version_two_id = _id(version_two, "factsVersionId")
+    wrong_status = request("POST", f"/v2/cases/{case_id}/facts-versions/{version_two_id}/confirm",
+                           token=token, expected=409,
+                           payload={"expectedConfirmedFactsVersionId": str(uuid.uuid4())})
+    assert wrong_status.get("code") == "FACTS_HEAD_CONFLICT", wrong_status
+    diff = request("GET", f"/v2/cases/{case_id}/facts-versions/{version_two_id}/diff?against={version_one_id}", token=token)
+    assert "sections" in diff and str(diff["toFactsVersionId"]) == version_two_id, diff
+    history = request("GET", f"/v2/cases/{case_id}/facts-versions", token=token)
+    history_ids = {str(item["factsVersionId"]) for item in history["items"]}
+    assert {version_one_id, version_two_id}.issubset(history_ids), history
+    request("POST", f"/v2/cases/{case_id}/facts-versions/{version_one_id}/clone",
+            token=token, expected=200)
+    head_after_clone = request("GET", f"/v2/cases/{case_id}/facts-head", token=token)
+    assert str(head_after_clone["confirmedFactsVersionId"]) == version_one_id, head_after_clone
+    version_detail = request("GET", f"/v2/cases/{case_id}/facts-versions/{version_one_id}", token=token)
+    entities = version_detail["payload"]["entities"]
+    assert all(entities.get(key) for key in (
+        "actors", "events", "evidence", "amounts", "jurisdictionConnections")), version_detail
+    print("PASS v2 facts versions, CAS confirmation, diff and clone head invariants", flush=True)
+
+    modules = {}
+    for module in ("compliance", "conviction", "sentencing"):
+        dispatched = request("POST", f"/v2/cases/{case_id}/modules/{module}/executions",
+                            token=token, expected=202)
+        execution_id = _id(dispatched, "executionId")
+        wait_execution(token, execution_id)
+        head = request("GET", f"/v2/cases/{case_id}/modules/{module}", token=token)
+        artifact_id = _id(head, "latestVersionId")
+        artifact = request("GET", f"/v2/artifact-versions/{artifact_id}", token=token)
+        payload = artifact["payload"]
+        assert artifact["artifactVersionId"] == artifact_id
+        assert artifact["outcomeStatus"] == "calculated" and payload["status"] == "calculated", artifact
+        if module == "sentencing":
+            results = payload.get("results") or []
+            assert results and results[0]["status"] == "calculated" and results[0]["term_months"] == 6, artifact
+        opened = request("POST", f"/v2/artifact-versions/{artifact_id}/reviews", token=token,
+                         expected=201, payload={"comment": "CI synthetic fixture review"})
+        review_id = _id(opened, "reviewId")
+        approved = request("POST", f"/v1/reviews/{review_id}/approve", token=token,
+                           payload={"resultVersion": artifact["version"]})
+        assert approved.get("status") == "approved", approved
+        modules[module] = artifact
+    for module in ("compliance", "conviction", "sentencing"):
+        confirmed_head = request("GET", f"/v2/cases/{case_id}/modules/{module}", token=token)
+        assert confirmed_head["effectivelyConfirmed"] is True, confirmed_head
+    print("PASS compliance, conviction and sentencing execution/publication/review", flush=True)
+
+    render = request("POST", f"/v2/cases/{case_id}/drafts/render", token=token,
+                     expected=201, payload={"docType": "ci.review_note"})
+    draft_id = _id(render, "draftId")
+    wait_execution(token, _id(render, "executionId"))
+    streams = request("GET", f"/v2/cases/{case_id}/drafts", token=token)
+    entries = [row for row in streams.get("items", []) if str(row.get("draftId")) == draft_id]
+    assert len(entries) == 1, streams
+    draft_head = request("GET", f"/v2/drafts/{draft_id}", token=token)
+    draft_artifact_id = _id(draft_head, "latestVersionId")
+    draft_artifact = request("GET", f"/v2/artifact-versions/{draft_artifact_id}", token=token)
+    assert draft_artifact["outcomeStatus"] == "calculated", draft_artifact
+    assert draft_artifact["payload"]["status"] == "rendered" and draft_artifact["payload"]["body"], draft_artifact
+    exported = export_docx(token, case_id, draft_artifact_id, draft_artifact["payload"]["body"])
+    assert export_docx(token, case_id, draft_artifact_id, draft_artifact["payload"]["body"]) == exported
+    request("GET", f"/v2/cases/{case_id}/artifact-versions/{draft_artifact_id}/export.docx", expected=401)
+    print("PASS rendered DOCX download, exact body/version and deterministic bytes", flush=True)
+    dependencies = draft_artifact.get("dependencySnapshot", {}).get("artifacts", [])
+    dependency_ids = {str(item.get("artifactVersionId")) for item in dependencies}
+    assert dependency_ids == {str(modules["compliance"]["artifactVersionId"]),
+                              str(modules["conviction"]["artifactVersionId"]),
+                              str(modules["sentencing"]["artifactVersionId"])}, draft_artifact
+    draft_review = request("POST", f"/v2/artifact-versions/{draft_artifact_id}/reviews", token=token,
+                           expected=201, payload={"comment": "CI synthetic draft review"})
+    request("POST", f"/v1/reviews/{_id(draft_review, 'reviewId')}/approve", token=token,
+            payload={"resultVersion": draft_artifact["version"]})
+    print("PASS stable draft identity, exact artifact dependencies and approved render", flush=True)
+
+    archive = request("POST", f"/v2/cases/{case_id}/archives", token=token,
+                      expected=201, payload={"archiveProfile": "case.full.v1"})
+    archive_id = _id(archive, "archiveId")
+    saved = request("GET", f"/v2/cases/{case_id}/archives/{archive_id}", token=token)
+    assert saved["manifestHash"] == archive["manifestHash"]
+    assert _sorted_items(saved["items"]) == _sorted_items(archive["items"]), saved
+    render_again = request("POST", f"/v2/cases/{case_id}/drafts/render", token=token,
+                           expected=201, payload={"docType": "ci.review_note"})
+    assert _id(render_again, "draftId") == draft_id, render_again
+    wait_execution(token, _id(render_again, "executionId"))
+    current_draft_head = request("GET", f"/v2/drafts/{draft_id}", token=token)
+    assert str(current_draft_head["latestVersionId"]) != draft_artifact_id, current_draft_head
+    request("PUT", f"/v2/cases/{case_id}/facts-entities/facts", token=token,
+            expected=200, payload={"items": facts + [{
+                "key": "ci_after_archive_edit", "value": "changed", "verificationStatus": "candidate"}]})
+    stale_version = request("POST", f"/v2/cases/{case_id}/facts-versions", token=token, expected=201)
+    stale_id = _id(stale_version, "factsVersionId")
+    request("POST", f"/v2/cases/{case_id}/facts-versions/{stale_id}/confirm", token=token,
+            expected=200, payload={"expectedConfirmedFactsVersionId": version_one_id})
+    stale_head = request("GET", f"/v2/cases/{case_id}/modules/compliance", token=token)
+    assert stale_head["stale"] is True, stale_head
+    historical_export = export_docx(token, case_id, draft_artifact_id, draft_artifact["payload"]["body"])
+    assert historical_export == exported
+    assert request("GET", f"/v2/artifact-versions/{draft_artifact_id}", token=token) == draft_artifact
+    print("PASS historical stale DOCX retains identical bytes without changing the artifact", flush=True)
+    request("POST", f"/v2/cases/{case_id}/archives", token=token,
+            expected=409, payload={"archiveProfile": "case.full.v1"})
+    print("PASS facts change propagates stale and blocks a mixed archive", flush=True)
+    blocked_render = request("POST", f"/v2/cases/{case_id}/drafts/render", token=token,
+                             expected=201, payload={"docType": "ci.blocked_note"})
+    wait_execution(token, _id(blocked_render, "executionId"))
+    blocked_head = request("GET", f"/v2/drafts/{_id(blocked_render, 'draftId')}", token=token)
+    blocked_artifact = request("GET", f"/v2/artifact-versions/{_id(blocked_head, 'latestVersionId')}", token=token)
+    assert blocked_artifact["outcomeStatus"] == "blocked"
+    assert blocked_artifact["payload"]["status"] == "blocked" and blocked_artifact["payload"]["body"] is None, blocked_artifact
+    blocked_export = request("GET", f"/v2/cases/{case_id}/artifact-versions/{blocked_artifact['artifactVersionId']}/export.docx",
+                             token=token, expected=409)
+    assert blocked_export.get("code") == "DRAFT_EXPORT_BLOCKED", blocked_export
+    print("PASS unresolved template fails closed without a document body", flush=True)
+    other = request("POST", "/v1/auth/register", expected=201, payload={
+        "username": "ci_other_" + uuid.uuid4().hex[:12],
+        "password": secrets.token_urlsafe(24), "displayName": "CI other account",
+    })
+    request("GET", f"/v2/cases/{case_id}/facts-head", token=other["token"], expected=404)
+    request("GET", f"/v2/cases/{case_id}/artifact-versions/{draft_artifact_id}/export.docx",
+            token=other["token"], expected=404)
+    other_case = request("POST", "/v1/cases", token=token, expected=201,
+                         payload={"title": "CI cross-case export isolation", "jurisdiction": "CI"})
+    request("GET", f"/v2/cases/{other_case['id']}/artifact-versions/{draft_artifact_id}/export.docx",
+            token=token, expected=404)
+    print("PASS archive create/read manifest consistency and cross-account denial", flush=True)
+
+    manual_body = "人工辅助稿\n被告人张某，涉案金额 100 元。\nA&B <source>\t核对来源。"
+    manual = request("POST", f"/v1/cases/{case_id}/drafts", token=token, expected=201,
+                     payload={"draftType": "手工核对记录", "body": manual_body})
+    manual_artifact_id = _id(manual, "artifactVersionId")
+    manual_export = export_docx(token, case_id, manual_artifact_id, manual_body)
+    updated = request("PUT", f"/v1/cases/{case_id}/drafts/{manual['id']}", token=token,
+                      payload={"body": manual_body + "\n第二版补充。", "version": manual["version"]})
+    assert _id(updated, "artifactVersionId") != manual_artifact_id
+    assert hashlib.sha256(export_docx(token, case_id, manual_artifact_id, manual_body)).digest() == hashlib.sha256(manual_export).digest()
+    export_docx(token, case_id, _id(updated, "artifactVersionId"), updated["body"])
+    for body in ("", "待核对【案件来源】"):
+        unavailable = request("POST", f"/v1/cases/{case_id}/drafts", token=token, expected=201,
+                              payload={"draftType": "未完整辅助稿", "body": body})
+        error = request("GET", f"/v2/cases/{case_id}/artifact-versions/{unavailable['artifactVersionId']}/export.docx",
+                        token=token, expected=409)
+        assert error.get("code") == "DRAFT_EXPORT_BLOCKED", error
+    print("PASS manual DOCX exact historical version, UTF-8/XML text and incomplete export denial", flush=True)
+
+    # Confirming the entire facts version must not mark a candidate connection
+    # verified. Exercise both absence and candidate state through the real engine.
+    jurisdiction_case = request("POST", "/v1/cases", token=token, expected=201, payload={
+        "title": "CI unverified jurisdiction fixture", "jurisdiction": "CI", "asOfDate": "2026-01-01",
+        "metadata": {"purpose": "LEXCYBER_CI_FIXTURES"},
+    })
+    jurisdiction_case_id = _id(jurisdiction_case, "id", "caseId")
+    request("PUT", f"/v2/cases/{jurisdiction_case_id}/facts-entities/evidence", token=token,
+            payload={"items": [PARAMETER_PROOF]})
+    request("PUT", f"/v2/cases/{jurisdiction_case_id}/facts-entities/facts", token=token,
+            payload={"items": facts})
+    previous_facts = None
+    for connections in ([], [{**jurisdiction[0], "verificationStatus": "candidate"}]):
+        request("PUT", f"/v2/cases/{jurisdiction_case_id}/facts-entities/jurisdiction-connections",
+                token=token, payload={"items": connections})
+        facts_version = request("POST", f"/v2/cases/{jurisdiction_case_id}/facts-versions",
+                                token=token, expected=201)
+        facts_id = _id(facts_version, "factsVersionId")
+        request("POST", f"/v2/cases/{jurisdiction_case_id}/facts-versions/{facts_id}/confirm",
+                token=token, payload={"expectedConfirmedFactsVersionId": previous_facts})
+        previous_facts = facts_id
+        dispatched = request("POST", f"/v2/cases/{jurisdiction_case_id}/modules/conviction/executions",
+                             token=token, expected=202)
+        wait_execution(token, _id(dispatched, "executionId"))
+        head = request("GET", f"/v2/cases/{jurisdiction_case_id}/modules/conviction", token=token)
+        artifact_id = _id(head, "latestVersionId")
+        artifact = request("GET", f"/v2/artifact-versions/{artifact_id}", token=token)
+        assert artifact["outcomeStatus"] == "blocked" and artifact["payload"]["status"] == "blocked", artifact
+        assert any(item.get("code") == "JURISDICTION_CONNECTION_UNCONFIRMED"
+                   for item in artifact["payload"]["blockers"]), artifact
+        review = request("POST", f"/v2/artifact-versions/{artifact_id}/reviews", token=token,
+                         expected=201, payload={"comment": "CI blocked jurisdiction fixture"})
+        error = request("POST", f"/v1/reviews/{_id(review, 'reviewId')}/approve", token=token,
+                        expected=409, payload={"resultVersion": artifact["version"]})
+        assert error.get("code") == "MODULE_BLOCKED", error
+        assert not request("GET", f"/v2/cases/{jurisdiction_case_id}/modules/conviction",
+                           token=token)["effectivelyConfirmed"]
+    print("PASS absent/candidate jurisdiction blocks conviction and cannot be approved", flush=True)
+
+    component_case = request("POST", "/v1/cases", token=token, expected=201, payload={
+        "title": "CI amount components fixture", "jurisdiction": "CI", "asOfDate": "2026-01-01",
+        "metadata": {"purpose": "LEXCYBER_CI_FIXTURES"},
+    })
+    component_case_id = _id(component_case, "id", "caseId")
+    request("PUT", f"/v2/cases/{component_case_id}/facts-entities/evidence", token=token,
+            payload={"items": [PARAMETER_PROOF]})
+    request("PUT", f"/v2/cases/{component_case_id}/facts-entities/facts", token=token,
+            payload={"items": facts + fixture_linked([{
+                "key": "ci_component_guard_flag", "value": True, "verificationStatus": "confirmed"}])})
+    request("PUT", f"/v2/cases/{component_case_id}/facts-entities/jurisdiction-connections",
+            token=token, payload={"items": jurisdiction})
+    request("PUT", f"/v2/cases/{component_case_id}/facts-entities/amounts", token=token,
+            payload={"items": [
+                {"id": "child", "kind": "payment_settlement_amount", "value": 80000,
+                 "componentOf": "parent", "verificationStatus": "confirmed",
+                 "evidenceIds": [PARAMETER_PROOF["id"]]},
+                {"id": "parent", "kind": "payment_settlement_amount", "value": 120000,
+                 "verificationStatus": "confirmed", "evidenceIds": [PARAMETER_PROOF["id"]]},
+            ]})
+    component_version = request("POST", f"/v2/cases/{component_case_id}/facts-versions",
+                                token=token, expected=201)
+    component_facts_id = _id(component_version, "factsVersionId")
+    component_detail = request("GET", f"/v2/cases/{component_case_id}/facts-versions/{component_facts_id}", token=token)
+    component_rows = component_detail["payload"]["entities"]["amounts"]
+    parent_row = next(row for row in component_rows if row["id"] == "parent")
+    child_row = next(row for row in component_rows if row["id"] == "child")
+    assert child_row["componentOf"] == parent_row["entityId"], component_rows
+    request("POST", f"/v2/cases/{component_case_id}/facts-versions/{component_facts_id}/confirm",
+            token=token, payload={"expectedConfirmedFactsVersionId": None})
+    dispatched = request("POST", f"/v2/cases/{component_case_id}/modules/conviction/executions",
+                         token=token, expected=202)
+    wait_execution(token, _id(dispatched, "executionId"))
+    head = request("GET", f"/v2/cases/{component_case_id}/modules/conviction", token=token)
+    component_artifact = request("GET", f"/v2/artifact-versions/{_id(head, 'latestVersionId')}", token=token)
+    guard = next(rule for rule in component_artifact["payload"]["rules"]
+                 if rule["ruleId"] == "ci-fixture-component-amount-threshold")
+    assert guard["fired"] is False, guard
+    amount_trace = next(trace for trace in guard["trace"]
+                        if trace["path"] == "amounts.payment_settlement_amount.confirmedSum")
+    assert amount_trace["actual"] == 120000, amount_trace
+    # Repeat the exact immutable snapshot request: its entityId aliases survive
+    # deletion of the first working copy and must not become dangling references.
+    for _ in range(2):
+        request("PUT", f"/v2/cases/{component_case_id}/facts-entities/amounts", token=token,
+                payload={"items": component_rows})
+    roundtrip = request("POST", f"/v2/cases/{component_case_id}/facts-versions", token=token, expected=201)
+    roundtrip_detail = request("GET", f"/v2/cases/{component_case_id}/facts-versions/{_id(roundtrip, 'factsVersionId')}", token=token)
+    roundtrip_rows = roundtrip_detail["payload"]["entities"]["amounts"]
+    assert next(row for row in roundtrip_rows if row["id"] == "child")["componentOf"] == next(
+        row for row in roundtrip_rows if row["id"] == "parent")["entityId"]
+    invalid_graphs = [
+        [{"id": "child", "kind": "illegal_gain", "componentOf": "missing"}],
+        [{"id": "self", "kind": "illegal_gain", "componentOf": "self"}],
+        [{"id": "a", "kind": "illegal_gain", "componentOf": "b"},
+         {"id": "b", "kind": "illegal_gain", "componentOf": "a"}],
+        [{"id": "duplicate", "kind": "illegal_gain"}, {"id": "duplicate", "kind": "crime_amount"}],
+        [{"id": "child", "kind": "illegal_gain", "componentOf": str(uuid.uuid4())}],
+    ]
+    for invalid in invalid_graphs:
+        error = request("PUT", f"/v2/cases/{component_case_id}/facts-entities/amounts", token=token,
+                        expected=400, payload={"items": invalid})
+        assert error.get("code") == "INVALID_REQUEST", error
+    retained = request("POST", f"/v2/cases/{component_case_id}/facts-versions", token=token, expected=201)
+    retained_detail = request("GET", f"/v2/cases/{component_case_id}/facts-versions/{_id(retained, 'factsVersionId')}", token=token)
+    assert retained_detail["payload"]["entities"]["amounts"] == roundtrip_rows
+    print("PASS amount component deduplication, repeated canonical UUID roundtrip and atomic graph rejection", flush=True)
+
+
+    # Analysis date is a frozen input, and changing it must not restore old results.
+    undated = request("POST", "/v1/cases", token=token, expected=201,
+                      payload={"title": "CI missing analysis date", "jurisdiction": "CI"})
+    undated_id = _id(undated, "id", "caseId")
+    missing_date = request("POST", f"/v2/cases/{undated_id}/modules/compliance/executions",
+                           token=token, expected=409)
+    assert missing_date["code"] == "AS_OF_DATE_REQUIRED", missing_date
+    request("PUT", f"/v2/cases/{undated_id}/analysis-date", token=token, expected=400,
+            payload={"asOfDate": "2026-02-30", "expectedAsOfDate": None})
+    filled = request("PUT", f"/v2/cases/{undated_id}/analysis-date", token=token,
+                     payload={"asOfDate": "2026-01-01", "expectedAsOfDate": None})
+    assert filled["asOfDate"] == "2026-01-01", filled
+    request("PUT", f"/v2/cases/{undated_id}/analysis-date", token=token, expected=409,
+            payload={"asOfDate": "2026-02-01", "expectedAsOfDate": None})
+    request("PUT", f"/v2/cases/{undated_id}/analysis-date", expected=401,
+            payload={"asOfDate": "2026-01-01"})
+    request("PUT", f"/v2/cases/{case_id}/analysis-date", token=other["token"], expected=404,
+            payload={"asOfDate": "2026-01-02", "expectedAsOfDate": "2026-01-01"})
+    assert component_artifact["payload"]["dependency_snapshot"]["as_of_date"] == "2026-01-01"
+    component_artifact_id = _id(component_artifact, "artifactVersionId")
+    component_review = request("POST", f"/v2/artifact-versions/{component_artifact_id}/reviews", token=token,
+                               expected=201, payload={"comment": "CI dated conviction review"})
+    request("POST", f"/v1/reviews/{_id(component_review, 'reviewId')}/approve", token=token,
+            payload={"resultVersion": component_artifact["version"]})
+    before_date_head = request("GET", f"/v2/cases/{component_case_id}/modules/conviction", token=token)
+    assert before_date_head["effectivelyConfirmed"] is True, before_date_head
+    changed = request("PUT", f"/v2/cases/{component_case_id}/analysis-date", token=token,
+                      payload={"asOfDate": "2026-01-02", "expectedAsOfDate": "2026-01-01"})
+    assert changed["asOfDate"] == "2026-01-02", changed
+    after_date_head = request("GET", f"/v2/cases/{component_case_id}/modules/conviction", token=token)
+    assert after_date_head["confirmedVersionId"] == before_date_head["confirmedVersionId"]
+    assert after_date_head["effectivelyConfirmed"] is False
+    stale_date_review = request("POST", f"/v2/artifact-versions/{component_artifact_id}/reviews", token=token,
+                                expected=201, payload={"comment": "CI old-date reapproval rejection"})
+    rejected = request("POST", f"/v1/reviews/{_id(stale_date_review, 'reviewId')}/approve", token=token,
+                       expected=409, payload={"resultVersion": component_artifact["version"]})
+    assert rejected["code"] == "DEPENDENCY_STALE", rejected
+    # Earlier artifact payload and already-created archive stay immutable.
+    unchanged_artifact = request("GET", f"/v2/artifact-versions/{component_artifact_id}", token=token)
+    assert unchanged_artifact["payload"] == component_artifact["payload"]
+    print("PASS explicit analysis date binding, missing-date gate, CAS and stale old-date confirmation", flush=True)
+
+    # A real registry temporal fixture must preserve both legal paths when the
+    # confirmed conduct and judgment dates select different source versions.
+    temporal_case = request("POST", "/v1/cases", token=token, expected=201, payload={
+        "title": "CI temporal divergence fixture", "jurisdiction": "CI",
+        "asOfDate": "2026-01-01", "metadata": {"purpose": "LEXCYBER_CI_FIXTURES"},
+    })
+    temporal_case_id = _id(temporal_case, "id", "caseId")
+    temporal_facts = fixture_linked([
+        {"key": "ci_temporal_guard_flag", "value": True, "verificationStatus": "confirmed"},
+        {"key": "ci_evidence_guard_flag", "value": False, "verificationStatus": "confirmed"},
+        {"key": "conduct_date", "value": "2024-06-01", "verificationStatus": "confirmed"},
+        {"key": "judgment_date", "value": "2026-01-01", "verificationStatus": "confirmed"},
+    ])
+    for kind, items in (("evidence", [PARAMETER_PROOF]), ("facts", temporal_facts), ("jurisdiction-connections", jurisdiction)):
+        request("PUT", f"/v2/cases/{temporal_case_id}/facts-entities/{kind}", token=token,
+                expected=200, payload={"items": items})
+    temporal_version = request("POST", f"/v2/cases/{temporal_case_id}/facts-versions",
+                               token=token, expected=201)
+    temporal_facts_id = _id(temporal_version, "factsVersionId")
+    request("POST", f"/v2/cases/{temporal_case_id}/facts-versions/{temporal_facts_id}/confirm",
+            token=token, expected=200, payload={"expectedConfirmedFactsVersionId": None})
+    temporal_execution = request("POST", f"/v2/cases/{temporal_case_id}/modules/compliance/executions",
+                                 token=token, expected=202)
+    wait_execution(token, _id(temporal_execution, "executionId"))
+    temporal_head = request("GET", f"/v2/cases/{temporal_case_id}/modules/compliance", token=token)
+    temporal_artifact = request("GET", f"/v2/artifact-versions/{_id(temporal_head, 'latestVersionId')}", token=token)
+    temporal_payload = temporal_artifact["payload"]
+    assert temporal_artifact["outcomeStatus"] == "blocked"
+    assert any(item.get("code") == "LAW_VERSION_DIVERGENCE" for item in temporal_payload["blockers"]), temporal_artifact
+    assert {path["point"] for path in temporal_payload["temporal_paths"]} == {"conduct", "judgment"}
+    assert {path["status"] for path in temporal_payload["temporal_paths"]} == {"calculated"}
+    labels = set()
+    for path in temporal_payload["temporal_paths"]:
+        guards = [rule for rule in path["rules"]
+                  if rule["ruleId"] == "ci-fixture-temporal-guard" and rule["fired"]]
+        assert len(guards) == 1, path
+        labels.add(guards[0]["outcome"]["finding"])
+    assert labels == {"ci_fixture_temporal_old", "ci_fixture_temporal_new"}, temporal_payload
+    temporal_versions = {(item["sourceVersion"], item["point"])
+                         for item in temporal_payload["dependency_snapshot"]["source_versions"]}
+    assert {version for version, _ in temporal_versions} >= {"2020.1", "2025.1"}, temporal_payload
+    temporal_review = request("POST", f"/v2/artifact-versions/{temporal_artifact['artifactVersionId']}/reviews",
+                              token=token, expected=201,
+                              payload={"comment": "CI temporal divergence fixture"})
+    temporal_rejected = request("POST", f"/v1/reviews/{_id(temporal_review, 'reviewId')}/approve",
+                               token=token, expected=409,
+                               payload={"resultVersion": temporal_artifact["version"]})
+    assert temporal_rejected.get("code") == "MODULE_BLOCKED", temporal_rejected
+    print("PASS real dual-time legal paths, LAW_VERSION_DIVERGENCE blocker and source-version binding", flush=True)
+
+    # Evidence gating is exercised independently so a temporal blocker cannot
+    # hide the transition missing -> candidate -> confirmed.
+    evidence_case = request("POST", "/v1/cases", token=token, expected=201, payload={
+        "title": "CI evidence gate fixture", "jurisdiction": "CI", "asOfDate": "2026-01-01",
+        "metadata": {"purpose": "LEXCYBER_CI_FIXTURES"},
+    })
+    evidence_case_id = _id(evidence_case, "id", "caseId")
+    evidence_facts = fixture_linked([{"key": "ci_evidence_guard_flag", "value": True,
+                                     "verificationStatus": "confirmed"}])
+    request("PUT", f"/v2/cases/{evidence_case_id}/facts-entities/evidence", token=token,
+            payload={"items": [PARAMETER_PROOF]})
+    request("PUT", f"/v2/cases/{evidence_case_id}/facts-entities/facts", token=token,
+            expected=200, payload={"items": evidence_facts})
+
+    def _confirm_evidence_version(expected_id):
+        version = request("POST", f"/v2/cases/{evidence_case_id}/facts-versions",
+                          token=token, expected=201)
+        version_id = _id(version, "factsVersionId")
+        request("POST", f"/v2/cases/{evidence_case_id}/facts-versions/{version_id}/confirm",
+                token=token, expected=200,
+                payload={"expectedConfirmedFactsVersionId": expected_id})
+        return version_id
+
+    evidence_version_id = _confirm_evidence_version(None)
+    missing_execution = request("POST", f"/v2/cases/{evidence_case_id}/modules/compliance/executions",
+                                token=token, expected=202)
+    wait_execution(token, _id(missing_execution, "executionId"))
+    evidence_head = request("GET", f"/v2/cases/{evidence_case_id}/modules/compliance", token=token)
+    missing_artifact = request("GET", f"/v2/artifact-versions/{_id(evidence_head, 'latestVersionId')}", token=token)
+    assert missing_artifact["outcomeStatus"] == "blocked"
+    assert any(item.get("code") == "RULE_EVIDENCE_MISSING"
+               for item in missing_artifact["payload"]["blockers"]), missing_artifact
+
+    request("PUT", f"/v2/cases/{evidence_case_id}/facts-entities/evidence", token=token,
+            expected=200, payload={"items": [PARAMETER_PROOF, {"id": "ci-candidate-log", "type": "service_log",
+                                                "verificationStatus": "candidate"}]})
+    candidate_version_id = _confirm_evidence_version(evidence_version_id)
+    candidate_execution = request("POST", f"/v2/cases/{evidence_case_id}/modules/compliance/executions",
+                                  token=token, expected=202)
+    wait_execution(token, _id(candidate_execution, "executionId"))
+    evidence_head = request("GET", f"/v2/cases/{evidence_case_id}/modules/compliance", token=token)
+    candidate_artifact = request("GET", f"/v2/artifact-versions/{_id(evidence_head, 'latestVersionId')}", token=token)
+    assert candidate_artifact["outcomeStatus"] == "blocked"
+    assert any(item.get("code") == "RULE_EVIDENCE_UNCONFIRMED"
+               for item in candidate_artifact["payload"]["blockers"]), candidate_artifact
+
+    # Update the existing business id; entityId is the canonical UUID returned
+    # by the API, not an arbitrary fixture label.
+    request("PUT", f"/v2/cases/{evidence_case_id}/facts-entities/evidence", token=token,
+            expected=200, payload={"items": [PARAMETER_PROOF, {"id": "ci-candidate-log", "type": "service_log",
+                                                "verificationStatus": "confirmed"}]})
+    confirmed_version_id = _confirm_evidence_version(candidate_version_id)
+    confirmed_execution = request("POST", f"/v2/cases/{evidence_case_id}/modules/compliance/executions",
+                                  token=token, expected=202)
+    wait_execution(token, _id(confirmed_execution, "executionId"))
+    evidence_head = request("GET", f"/v2/cases/{evidence_case_id}/modules/compliance", token=token)
+    confirmed_artifact = request("GET", f"/v2/artifact-versions/{_id(evidence_head, 'latestVersionId')}", token=token)
+    assert confirmed_artifact["outcomeStatus"] == "calculated"
+    assert confirmed_artifact["payload"]["dependency_snapshot"]["as_of_date"] == "2026-01-01"
+    assert confirmed_artifact["payload"]["facts_version_id"] == confirmed_version_id
+    confirmed_review = request("POST", f"/v2/artifact-versions/{confirmed_artifact['artifactVersionId']}/reviews",
+                               token=token, expected=201,
+                               payload={"comment": "CI confirmed evidence fixture"})
+    approved_evidence = request("POST", f"/v1/reviews/{_id(confirmed_review, 'reviewId')}/approve",
+                                token=token, payload={"resultVersion": confirmed_artifact["version"]})
+    assert approved_evidence.get("status") == "approved", approved_evidence
+    print("PASS evidence missing/candidate blockers, confirmed evidence calculation and frozen CAS binding", flush=True)
+    run_reference_integrity(token)
+    run_parameter_proof_integrity(token)
+    run_declared_conviction_paths(token)
+
+
 def main():
+    global BASE
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--with-lifecycle", action="store_true")
+    parser.add_argument("--base-url", default=BASE)
+    args = parser.parse_args()
+    BASE = args.base_url.rstrip("/")
     wait_ready()
+    if args.with_lifecycle:
+        gate_session = request("POST", "/v1/auth/register", expected=201, payload={
+            "username": "ci_gate_" + uuid.uuid4().hex[:12],
+            "password": secrets.token_urlsafe(24), "displayName": "CI capability gate",
+        })
+        gate_case = request("POST", "/v1/cases", token=gate_session["token"], expected=201,
+                            payload={"title": "CI capability gate", "jurisdiction": "CI", "asOfDate": "2026-01-01"})
+        request("POST", f"/v2/cases/{gate_case['id']}/modules/compliance/executions",
+                token=gate_session["token"], expected=501)
+        seed_path = Path(__file__).resolve().with_name("ci_seed_registry.py")
+        subprocess.run([
+            "docker", "compose", "exec", "-T", "-e", "LEXCYBER_CI_FIXTURES=1",
+            "engine", "python", "-",
+        ], input=seed_path.read_bytes(), check=True,
+            cwd=seed_path.parent.parent)
     generic = request("POST", "/v1/tasks", expected=202, payload={
         "query": "ci generic task", "metadata": {"source": "ci"},
     })
@@ -132,6 +1181,13 @@ def main():
     saved = request("GET", f"/v1/reviews/{review_id}", token=token)
     assert saved["status"] == "approved" and saved["artifactVersionId"] == artifact_id, saved
     print("PASS authenticated review approved and persisted for the published artifact", flush=True)
+    if args.with_lifecycle:
+        lifecycle_session = request("POST", "/v1/auth/register", expected=201, payload={
+            "username": "ci_lifecycle_" + uuid.uuid4().hex[:12],
+            "password": secrets.token_urlsafe(24), "displayName": "CI lifecycle fixture",
+        })
+        run_lifecycle(lifecycle_session["token"])
+        run_registry_revocation(lifecycle_session["token"])
 
 
 if __name__ == "__main__":

@@ -113,7 +113,7 @@ flowchart LR
 | 材料 | `DocumentService` | `/v1/cases/{id}/documents`、`/v1/documents/{id}` |
 | 事实 | `FactService` | `/v1/cases/{id}/facts`、`.../confirm` |
 | 任务 | `TaskService` / `TaskPolicies` | `/v1/tasks`、状态、`/result`、`/retry` |
-| 复核 | `ReviewService` | `/v1/reviews`（Bearer + 属主案件；见 [t1-api-01-increment.md](t1-api-01-increment.md)） |
+| 复核 | `ReviewService` | `/v1/reviews`（Bearer + 属主案件；见 [t1-api-01-increment.md](archive/t1-api-01-increment.md)） |
 | 检索门 | `SourceSearchController` / `EngineSourceClient` | `POST /v1/sources/search` → 现 501 |
 | 引擎桥 | `EngineDispatcher`、回调 `EngineResultCallbackController` | 内部 HTTP + `X-Service-Token` |
 
@@ -268,7 +268,9 @@ docker compose --env-file .env.v03 up --build
 curl.exe http://127.0.0.1:18080/healthz
 ```
 
-默认 `WORKFLOW_PROFILE=stub`，无会话也可提交普通 stub 任务。真实 `model.probe` 需要 `.env.v03` 里的 `MODEL_*`，口令只走环境变量：
+默认 `WORKFLOW_PROFILE=stub`、`MODEL_PROVIDER=stub`，无需外部模型密钥。
+浏览器控制台需要先注册或登录，登录后访问 `/tasks` 提交通用任务；无会话的通用 stub 任务可通过公开 API 提交。
+真实 `model.probe` 和下面的 closeout 命令需要在 `.env.v03` 配置真实 `MODEL_PROVIDER`、`MODEL_NAME`、`MODEL_API_BASE_URL` 和 `MODEL_API_KEY`。OpenAI 兼容端点使用 `MODEL_PROVIDER=openai`；口令只走环境变量：
 
 ```powershell
 $env:LEXCYBER_USERNAME = "<local username>"
@@ -276,7 +278,7 @@ $env:LEXCYBER_PASSWORD = "<local password>"
 python scripts/t1_local_closeout.py
 ```
 
-样例见 [`LexCyber_T1接口交接样例.md`](../LexCyber_T1接口交接样例.md)。不要提交 `.env.v03` 或 API key。
+样例见 [`LexCyber_T1接口交接样例.md`](archive/LexCyber_T1接口交接样例.md)。不要提交 `.env.v03` 或 API key。
 
 ---
 
@@ -287,4 +289,4 @@ python scripts/t1_local_closeout.py
 3. 未经法学确认的量刑比例当正式规则
 4. 正式页用占位「林某」冒充真实解析或刑期
 
-检索公开口仍待法学会签：[`t1-retrieval-boundary.md`](t1-retrieval-boundary.md)。
+检索公开口仍待法学会签：[`t1-retrieval-boundary.md`](archive/t1-retrieval-boundary.md)。

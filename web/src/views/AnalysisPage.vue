@@ -5,6 +5,7 @@ import { ApiError, api, apiV2 } from '../api'
 import type { CaseView, SentencingResult } from '../api-types'
 import CasePhaseBar from '../components/CasePhaseBar.vue'
 import SentencingResultPanel from '../components/SentencingResultPanel.vue'
+import LegalTemporalPanel from '../components/LegalTemporalPanel.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { useTaskPolling } from '../composables/useTaskPolling'
 import { isPlaceholderCaseId } from '../data/placeholder-cases'
@@ -201,6 +202,7 @@ watch(caseId, () => {
         <strong>尚未运行量刑分析</strong>
         <p>按已确认事实快照逐档计算量刑区间；本页不编造刑期。</p>
       </section>
+      <LegalTemporalPanel v-if="result" :content="result.content" />
     </template>
   </div>
 </template>

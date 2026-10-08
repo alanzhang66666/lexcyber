@@ -1,6 +1,6 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ApiError, api } from '../api'
+import { ApiError, api, apiV2 } from '../api'
 import type { ReviewRecord, TaskView } from '../api-types'
 import ReviewDetailPage from './ReviewDetailPage.vue'
 
@@ -78,5 +78,33 @@ describe('ReviewDetailPage', () => {
     expect(wrapper.text()).toContain('与待复核的 v4 不一致')
     expect(wrapper.text()).not.toContain('批准结果')
     expect(wrapper.text()).not.toContain('拒绝结果')
+  })
+
+  it('creates a case archive and reads its manifest instead of calling the removed review archive route', async () => {
+    vi.spyOn(api, 'getReview').mockResolvedValue({ ...review, caseId: 'case-7', status: 'approved', decision: 'approve' })
+    vi.spyOn(api, 'getTask').mockResolvedValue({ ...task })
+    vi.spyOn(api, 'getTaskResult').mockResolvedValue({
+      resultId: 'result-1', version: 4, type: 'analysis', contentHash: 'sha256:abc', content: { ok: true },
+    })
+    const createArchive = vi.spyOn(apiV2, 'createArchive').mockResolvedValue({ archiveId: 'arc-1' })
+    const getArchive = vi.spyOn(apiV2, 'getArchive').mockResolvedValue({
+      archiveId: 'arc-1', caseId: 'case-7', archiveVersion: 1, archiveProfile: 'case.full.v1',
+      factsVersionId: 'fv-2', manifestHash: 'sha256:manifest', createdAt: 't', items: [],
+    })
+    const oldArchive = vi.spyOn(api, 'archiveReview')
+    const wrapper = mount(ReviewDetailPage, {
+      props: { reviewId: 'review-1' },
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    })
+    await flushPromises()
+    const button = wrapper.findAll('button').find((item) => item.text().includes('创建案件级归档'))
+    expect(button).toBeDefined()
+    await button!.trigger('click')
+    await flushPromises()
+
+    expect(createArchive).toHaveBeenCalledWith('case-7', 'case.full.v1')
+    expect(getArchive).toHaveBeenCalledWith('case-7', 'arc-1')
+    expect(oldArchive).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('sha256:manifest')
   })
 })

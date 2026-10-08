@@ -2,6 +2,7 @@ import type {
   ApiErrorPayload,
   AuthLogin,
   AuthRegister,
+  ArchiveView,
   CaseCreate,
   CaseView,
   DocumentRole,
@@ -12,6 +13,8 @@ import type {
   DraftView,
   FactUpdate,
   FactView,
+  FactsDiffView,
+  FactsEntityKind,
   ModuleStateUpdate,
   ModuleStateView,
   ModelAccessConfigUpdate,
@@ -28,10 +31,12 @@ import type {
   SourceSearchResponse,
   TaskCreate,
   TaskView,
+  ModuleDispatchOptions,
 } from './api-types'
 import { getAccessToken } from './lib/session'
 
 const REQUEST_TIMEOUT_MS = 12_000
+export const DOCX_CONTENT_TYPE = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
 
 export class ApiError extends Error {
   readonly status: number
@@ -85,6 +90,81 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     }
 
     return payload as T
+  } catch (error) {
+    if (error instanceof ApiError) throw error
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new ApiError('请求超时，请检查服务状态后重试。', { code: 'CLIENT_TIMEOUT', retryable: true })
+    }
+    throw new ApiError('网络连接失败，请确认本地服务可用。', { code: 'NETWORK_ERROR', retryable: true })
+  } finally {
+    window.clearTimeout(timeout)
+  }
+}
+
+function decodeFilename(value: string): string {
+  const trimmed = value.trim().replace(/^"|"$/g, '')
+  try {
+    return decodeURIComponent(trimmed)
+  } catch {
+    return trimmed
+  }
+}
+
+/** Keep a server-provided filename usable and within the download boundary. */
+export function safeDownloadFilename(value: string | null | undefined, fallback = 'lexcyber-draft.docx'): string {
+  const candidate = (value ?? '').replace(/[\\/\0-\x1f\x7f]/g, '_').trim()
+  const base = candidate || fallback
+  return base.toLowerCase().endsWith('.docx') ? base : `${base}.docx`
+}
+
+function contentDispositionFilename(header: string | null): string | null {
+  if (!header) return null
+  const encoded = header.match(/(?:^|;)\s*filename\*\s*=\s*(?:UTF-8''|utf-8'')([^;]+)/i)?.[1]
+  if (encoded) return decodeFilename(encoded)
+  const plain = header.match(/(?:^|;)\s*filename\s*=\s*([^;]+)/i)?.[1]
+  return plain ? decodeFilename(plain) : null
+}
+
+export type BinaryDownload = { blob: Blob; filename: string }
+
+async function requestBinary(path: string, init: RequestInit = {}): Promise<BinaryDownload> {
+  const controller = new AbortController()
+  const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+
+  try {
+    const response = await fetch(path, {
+      ...init,
+      headers: {
+        Accept: DOCX_CONTENT_TYPE,
+        ...authHeaders(),
+        ...init.headers,
+      },
+      signal: controller.signal,
+    })
+
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null) as ApiErrorPayload | null
+      const error = payload ?? {}
+      throw new ApiError(error.message || error.detail || `请求失败（${response.status}）`, {
+        status: response.status,
+        code: error.code,
+        traceId: error.traceId,
+        retryable: error.retryable,
+      })
+    }
+
+    const contentType = response.headers.get('Content-Type')?.split(';', 1)[0].trim().toLowerCase()
+    if (contentType !== DOCX_CONTENT_TYPE) {
+      throw new ApiError('服务器返回的文书格式无法识别。', {
+        status: response.status,
+        code: 'UNEXPECTED_CONTENT_TYPE',
+      })
+    }
+    const blob = await response.blob()
+    return {
+      blob,
+      filename: safeDownloadFilename(contentDispositionFilename(response.headers.get('Content-Disposition'))),
+    }
   } catch (error) {
     if (error instanceof ApiError) throw error
     if (error instanceof DOMException && error.name === 'AbortError') {
@@ -258,6 +338,12 @@ export const api = {
     return request<CaseView>(`/v1/cases/${encodeURIComponent(caseId)}`)
   },
 
+  updateCaseAnalysisDate(caseId: string, asOfDate: string, expectedAsOfDate: string | null) {
+    return request<CaseView>(`/v2/cases/${encodeURIComponent(caseId)}/analysis-date`, {
+      method: 'PUT', body: JSON.stringify({ asOfDate, expectedAsOfDate }),
+    })
+  },
+
   uploadDocument(caseId: string, file: File, role: DocumentRole, idempotencyKey?: string) {
     const form = new FormData()
     form.append('file', file)
@@ -284,11 +370,17 @@ export const api = {
 
 /** /v2 生命周期端点（contracts/public-api-v2.yaml）。 */
 export const apiV2 = {
+  exportArtifactDocx(caseId: string, artifactVersionId: string) {
+    return requestBinary(
+      `/v2/cases/${encodeURIComponent(caseId)}/artifact-versions/${encodeURIComponent(artifactVersionId)}/export.docx`,
+    )
+  },
+
   getFactsEntities(caseId: string) {
     return request<Record<string, unknown>>(`/v2/cases/${encodeURIComponent(caseId)}/facts-entities`)
   },
 
-  replaceFactsEntities(caseId: string, kind: string, items: unknown[]) {
+  replaceFactsEntities(caseId: string, kind: FactsEntityKind, items: unknown[]) {
     return request<Record<string, unknown>>(
       `/v2/cases/${encodeURIComponent(caseId)}/facts-entities/${encodeURIComponent(kind)}`,
       { method: 'PUT', body: JSON.stringify({ items }) },
@@ -299,6 +391,11 @@ export const apiV2 = {
     return request<Record<string, unknown>>(`/v2/cases/${encodeURIComponent(caseId)}/facts-versions`, {
       method: 'POST',
     })
+  },
+
+  diffFactsVersion(caseId: string, factsVersionId: string, againstFactsVersionId: string) {
+    return request<FactsDiffView>(
+      `/v2/cases/${encodeURIComponent(caseId)}/facts-versions/${encodeURIComponent(factsVersionId)}/diff?against=${encodeURIComponent(againstFactsVersionId)}`)
   },
 
   confirmFactsVersion(caseId: string, factsVersionId: string, expectedConfirmedId: string | null) {
@@ -328,10 +425,10 @@ export const apiV2 = {
     return request<Record<string, unknown>>(`/v2/cases/${encodeURIComponent(caseId)}/facts-head`)
   },
 
-  dispatchModuleExecution(caseId: string, module: string) {
+  dispatchModuleExecution(caseId: string, module: string, options?: ModuleDispatchOptions) {
     return request<Record<string, unknown>>(
       `/v2/cases/${encodeURIComponent(caseId)}/modules/${encodeURIComponent(module)}/executions`,
-      { method: 'POST' })
+      { method: 'POST', ...(options ? { body: JSON.stringify(options) } : {}) })
   },
 
   dispatchDraftRender(caseId: string, docType: string) {
@@ -377,5 +474,10 @@ export const apiV2 = {
     return request<Record<string, unknown>>(`/v2/cases/${encodeURIComponent(caseId)}/archives`, {
       method: 'POST', body: JSON.stringify({ archiveProfile }),
     })
+  },
+
+  getArchive(caseId: string, archiveId: string) {
+    return request<ArchiveView>(
+      `/v2/cases/${encodeURIComponent(caseId)}/archives/${encodeURIComponent(archiveId)}`)
   },
 }

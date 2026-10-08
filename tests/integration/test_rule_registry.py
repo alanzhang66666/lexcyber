@@ -6,10 +6,12 @@
 from __future__ import annotations
 
 import datetime
+import os
 import uuid
 
 import pytest
 
+from engine.adapters import module_analysis
 from engine.rules import registry
 from engine.rules.registry import RegistryError
 from engine.store import connection
@@ -29,6 +31,8 @@ def _db_available() -> bool:
 @pytest.fixture(autouse=True)
 def _require_db():
     if not _db_available():
+        if os.getenv("LEXCYBER_REQUIRE_INTEGRATION_DB") == "1":
+            pytest.fail("engine postgres unavailable; CI requires real registry integration tests")
         pytest.skip("engine postgres unavailable")
 
 
@@ -45,13 +49,16 @@ def _source(key: str, version: str, frm: str, to: str | None = None):
     }
 
 
-def _rule(rid: str, version: str, family: str = "compliance", sources=None, covers=None):
+def _rule(rid: str, version: str, family: str = "compliance", sources=None, covers=None,
+          effective_from=None, effective_to=None):
     return {
         "rule_id": rid, "rule_version": version, "family": family,
         "predicate": {"all": [{"path": "facts.f1.value", "op": "eq", "value": True}]},
         "outcome": {"conclusion": "ok"},
         "source_ids": sources or [],
         "coverage": {"covers": covers or [f"cov.{rid}"]},
+        "effective_from": effective_from,
+        "effective_to": effective_to,
     }
 
 
@@ -75,7 +82,25 @@ def test_signoff_required_for_approval(subject_prefix):
     # signoff 路径批准
     out = registry.signoff("rule", f"{rid}@1", "it-reviewer", "reviewer", "approved")
     assert out["decision"] == "approved"
-    assert any(r["ruleId"] == rid for r in registry.active_rules("compliance"))
+    assert any(r["ruleId"] == rid for r in registry.active_rules("compliance", "2026-01-01"))
+
+
+def test_active_rules_selects_approved_packages_by_explicit_date(subject_prefix):
+    old = f"{subject_prefix}-old"
+    new = f"{subject_prefix}-new"
+    registry.register_rule_package(_rule(old, "1", effective_from="2020-01-01", effective_to="2024-12-31"))
+    registry.register_rule_package(_rule(new, "1", effective_from="2025-01-01"))
+    registry.signoff("rule", f"{old}@1", "it-reviewer", "reviewer", "approved")
+    registry.signoff("rule", f"{new}@1", "it-reviewer", "reviewer", "approved")
+    assert {r["ruleId"] for r in registry.active_rules("compliance", "2024-06-01")} & {old, new} == {old}
+    assert {r["ruleId"] for r in registry.active_rules("compliance", "2025-06-01")} & {old, new} == {new}
+
+
+@pytest.mark.parametrize("as_of", [None, "2025-1-01", "2025-02-30"])
+def test_active_rules_rejects_missing_or_invalid_explicit_date(as_of):
+    with pytest.raises(RegistryError) as err:
+        registry.active_rules("compliance", as_of)
+    assert err.value.code == "INVALID_AS_OF_DATE"
 
 
 def test_rejected_needs_signoff(subject_prefix):
@@ -87,7 +112,7 @@ def test_rejected_needs_signoff(subject_prefix):
                 "UPDATE engine.rule_package SET legal_review_status='rejected' WHERE rule_id=%s",
                 (rid,))
     registry.signoff("rule", f"{rid}@1", "it-reviewer", "reviewer", "rejected")
-    assert not any(r["ruleId"] == rid for r in registry.active_rules("compliance"))
+    assert not any(r["ruleId"] == rid for r in registry.active_rules("compliance", "2026-01-01"))
 
 
 def test_approved_immutable_and_supersede(subject_prefix):
@@ -103,7 +128,7 @@ def test_approved_immutable_and_supersede(subject_prefix):
         conn.execute("SELECT set_config('engine.signoff_authorized','on',true)")
         conn.execute(
             "UPDATE engine.rule_package SET legal_review_status='superseded' WHERE rule_id=%s", (rid,))
-    assert not any(r["ruleId"] == rid for r in registry.active_rules("compliance"))
+    assert not any(r["ruleId"] == rid for r in registry.active_rules("compliance", "2026-01-01"))
 
 
 def test_unknown_source_binding_rejected(subject_prefix):
@@ -117,6 +142,8 @@ def test_temporal_divergence_and_gap(subject_prefix):
     key = f"{subject_prefix}-div"
     registry.register_legal_source(_source(key, "old", "2010-01-01", "2019-12-31"))
     registry.register_legal_source(_source(key, "new", "2020-01-01"))
+    for version in ("old", "new"):
+        registry.signoff("legal_source", f"{key}@{version}", "it-reviewer", "reviewer", "approved")
     divergent = registry.resolve_temporal(
         key, datetime.date(2015, 6, 1), datetime.date(2021, 6, 1))
     assert divergent["divergence"], "conduct/judgment 跨版本必须产生 divergence"
@@ -126,6 +153,70 @@ def test_temporal_divergence_and_gap(subject_prefix):
     assert not same["divergence"]
     gap = registry.resolve_temporal(key, datetime.date(2005, 1, 1), None)
     assert gap["coverageGap"], "区间外时点必须返回覆盖缺口而非近似"
+
+
+def test_temporal_overlap_is_reported_by_real_registry(subject_prefix):
+    """Overlapping effective intervals must remain an explicit DB resolution error."""
+    key = f"{subject_prefix}-overlap"
+    registry.register_legal_source(_source(key, "v1", "2020-01-01", "2025-12-31"))
+    registry.register_legal_source(_source(key, "v2", "2024-01-01"))
+    for version in ("v1", "v2"):
+        registry.signoff("legal_source", f"{key}@{version}", "it-reviewer", "reviewer", "approved")
+    resolved = registry.resolve_temporal(key, datetime.date(2024, 6, 1), datetime.date(2024, 6, 1))
+    assert resolved["overlap"] is True
+    assert any(item["code"] == "LAW_VERSION_OVERLAP" for item in resolved["divergence"])
+    assert len(resolved["resolutions"]["conduct"]["candidates"]) == 2
+
+
+def test_real_db_adapter_keeps_both_temporal_paths_and_blocks_missing_evidence(subject_prefix):
+    """The adapter must use approved DB rules/sources and fail closed on evidence."""
+    key = f"{subject_prefix}-adapter"
+    old_source = registry.register_legal_source(
+        _source(key, "old", "2020-01-01", "2024-12-31"))
+    new_source = registry.register_legal_source(_source(key, "new", "2025-01-01"))
+    for version in ("old", "new"):
+        registry.signoff("legal_source", f"{key}@{version}", "it-reviewer", "reviewer", "approved")
+    rule_id = f"{subject_prefix}-temporal"
+    item = _rule(rule_id, "1", sources=[old_source["sourceId"], new_source["sourceId"]],
+                 effective_from="2020-01-01")
+    item["predicate"] = {"path": "facts.temporal_flag.value", "op": "eq", "value": True}
+    registry.register_rule_package(item)
+    registry.signoff("rule", f"{rule_id}@1", "it-reviewer", "reviewer", "approved")
+    evidence_rule_id = f"{subject_prefix}-evidence"
+    evidence_item = _rule(evidence_rule_id, "1", sources=[old_source["sourceId"]],
+                          effective_from="2020-01-01")
+    evidence_item["predicate"] = {"path": "facts.evidence_flag.value", "op": "eq", "value": True}
+    evidence_item["required_evidence_kinds"] = ["service_log"]
+    registry.register_rule_package(evidence_item)
+    registry.signoff("rule", f"{evidence_rule_id}@1", "it-reviewer", "reviewer", "approved")
+    snapshot = {
+        "items": [
+            {"id": "temporal-flag", "key": "temporal_flag", "value": True,
+             "verificationStatus": "confirmed", "evidenceIds": ["parameter-proof"]},
+            {"id": "evidence-flag", "key": "evidence_flag", "value": True,
+             "verificationStatus": "confirmed", "evidenceIds": ["parameter-proof"]},
+            {"id": "conduct-date", "key": "conduct_date", "value": "2024-06-01",
+             "verificationStatus": "confirmed", "evidenceIds": ["parameter-proof"]},
+            {"id": "judgment-date", "key": "judgment_date", "value": "2026-01-01",
+             "verificationStatus": "confirmed", "evidenceIds": ["parameter-proof"]},
+        ],
+        "entities": {
+            "evidence": [{"id": "parameter-proof", "type": "document", "verificationStatus": "confirmed"}],
+            "jurisdictionConnections": [{"id": "connection", "verificationStatus": "confirmed",
+                                         "evidenceIds": ["parameter-proof"]}],
+        },
+    }
+    result = module_analysis.analyze({
+        "case_id": str(uuid.uuid4()), "input_snapshot_ref": "facts_version:integration",
+        "metadata": {"asOfDate": "2026-01-01", "factsSnapshot": snapshot},
+    }, "compliance.analyze")["final_output"]
+    codes = {item["code"] for item in result["blockers"]}
+    assert result["status"] == "blocked"
+    assert "LAW_VERSION_DIVERGENCE" in codes
+    assert "RULE_EVIDENCE_MISSING" in codes
+    assert {path["point"] for path in result["temporal_paths"]} == {"conduct", "judgment"}
+    versions = {(item["sourceVersion"], item["point"]) for item in result["dependency_snapshot"]["source_versions"]}
+    assert {version for version, _ in versions} >= {"old", "new"}
 
 
 def test_template_signoff(subject_prefix):

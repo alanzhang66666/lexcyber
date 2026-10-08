@@ -15,6 +15,11 @@ export default defineConfig({
         changeOrigin: true,
         headers: { 'X-Reviewer-Id': 'local-reviewer' },
       },
+      '/v2': {
+        target: 'http://127.0.0.1:18080',
+        changeOrigin: true,
+        headers: { 'X-Reviewer-Id': 'local-reviewer' },
+      },
     },
   },
 })

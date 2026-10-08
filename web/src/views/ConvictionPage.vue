@@ -5,6 +5,7 @@ import { useCaseModule } from '../composables/useCaseModule'
 import CandidatePathCard from '../components/CandidatePathCard.vue'
 import FactCard from '../components/FactCard.vue'
 import RuleResultsPanel from '../components/RuleResultsPanel.vue'
+import LegalTemporalPanel from '../components/LegalTemporalPanel.vue'
 import {
   APPLICABILITY_LABEL,
   caseRelationsFrom,
@@ -13,7 +14,8 @@ import {
   toJurisdictionConnections,
   toMissingItems,
 } from '../lib/module-content'
-import { toV2ModuleAnalysis } from '../lib/module-content-v2'
+import { toV2ModuleAnalysis, v2CandidatePathCards } from '../lib/module-content-v2'
+import type { ModuleDispatchOptions } from '../api-types'
 
 const route = useRoute()
 const router = useRouter()
@@ -21,6 +23,7 @@ const caseId = computed(() => String(route.params.caseId || ''))
 const { loading, error, caseItem, moduleState, confirming, confirmError, dispatching, dispatchError, isPlaceholder, load, dispatch, confirm } = useCaseModule(caseId, 'conviction')
 
 const v2Analysis = computed(() => (moduleState.value ? toV2ModuleAnalysis(moduleState.value.content) : null))
+const v2PathCards = computed(() => (moduleState.value ? v2CandidatePathCards(moduleState.value.content) : { paths: [], diagnostics: [], present: false }))
 const facts = computed(() => (moduleState.value ? toAnalysisFacts(moduleState.value.content) : []))
 const paths = computed(() => (moduleState.value ? toCandidatePaths(moduleState.value.content) : []))
 const connections = computed(() => (moduleState.value ? toJurisdictionConnections(moduleState.value.content) : []))
@@ -47,6 +50,10 @@ const contraryEvidence = computed(() => selectedPaths.value.flatMap((p) => p.con
 const rawContent = computed(() => (moduleState.value ? JSON.stringify(moduleState.value.content, null, 2) : ''))
 const showRaw = ref(false)
 const showMissing = ref(false)
+const requestedRows = ref<Array<{ requestedCharge: string; chargeKey: string }>>([{ requestedCharge: '', chargeKey: '' }])
+const requestedChargesTouched = ref(false)
+const requestedChargesLoaded = ref(false)
+const requestedCharges = computed(() => requestedRows.value.filter((row) => row.requestedCharge.trim()).map((row) => ({ requestedCharge: row.requestedCharge, chargeKey: row.chargeKey || null })))
 const workspaceTo = computed(() => (caseItem.value ? `/cases/${caseItem.value.id}` : '/cases'))
 const SEVERITY_LABEL: Record<string, string> = {
   blocking: '阻断',
@@ -64,8 +71,41 @@ function handleLocate() {
   if (caseItem.value) void router.push(`/cases/${caseItem.value.id}`)
 }
 
+function dispatchConviction() {
+  const options: ModuleDispatchOptions | undefined = requestedChargesTouched.value || requestedChargesLoaded.value ? { requestedCharges: requestedCharges.value } : undefined
+  void dispatch(options)
+}
+
+function addRequestedRow() {
+  if (requestedRows.value.length < 32) requestedRows.value.push({ requestedCharge: '', chargeKey: '' })
+}
+
+function removeRequestedRow(index: number) {
+  requestedChargesTouched.value = true
+  if (requestedRows.value.length > 1) requestedRows.value.splice(index, 1)
+  else requestedRows.value[0] = { requestedCharge: '', chargeKey: '' }
+}
+
+function syncRequestedRows(content: Record<string, unknown> | undefined) {
+  if (content && Object.prototype.hasOwnProperty.call(content, 'requested_charges') && Array.isArray(content.requested_charges)) {
+    const rows = content.requested_charges.flatMap((item) => {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) return []
+      const record = item as Record<string, unknown>
+      return typeof record.requestedCharge === 'string' ? [{ requestedCharge: record.requestedCharge, chargeKey: typeof record.chargeKey === 'string' ? record.chargeKey : '' }] : []
+    })
+    requestedRows.value = rows.length ? rows : [{ requestedCharge: '', chargeKey: '' }]
+    requestedChargesLoaded.value = true
+    requestedChargesTouched.value = false
+  } else {
+    requestedRows.value = [{ requestedCharge: '', chargeKey: '' }]
+    requestedChargesLoaded.value = false
+    requestedChargesTouched.value = false
+  }
+}
+
 onMounted(() => void load())
-watch(caseId, () => void load())
+watch(caseId, () => { syncRequestedRows(undefined); void load() })
+watch(() => moduleState.value?.content, (content) => syncRequestedRows(content), { immediate: true })
 </script>
 
 <template>
@@ -117,11 +157,31 @@ watch(caseId, () => void load())
             <strong>事实快照已过期</strong>
             <span>案件事实已变更，请回到案件工作区重新确认事实后再刷新本模块。</span>
           </p>
+          <div class="charge-request-box">
+            <label>本次请求核查的罪名或标识（可选）</label>
+            <div v-for="(row, index) in requestedRows" :key="index" class="charge-request-row">
+              <input v-model="row.requestedCharge" :aria-label="`请求罪名 ${index + 1}`" placeholder="请求罪名原始名称" @input="requestedChargesTouched = true" />
+              <input v-model="row.chargeKey" :aria-label="`会签标识 ${index + 1}`" placeholder="已会签标识（可选）" @input="requestedChargesTouched = true" />
+              <button class="text-button" type="button" @click="removeRequestedRow(index)">移除</button>
+            </div>
+            <button v-if="requestedRows.length < 32" class="text-button" type="button" @click="addRequestedRow">增加请求</button>
+            <p class="panel-note">名称和标识按原文提交；请按已会签语料精确填写，未覆盖请求会按时点单独列出。</p>
+          </div>
         </template>
         <div v-else class="empty-state">
           <strong>该模块尚未产生结果</strong>
           <p>完成案件材料上传与事实确认后，可运行定罪研判（需事实已确认且规则已会签）。</p>
-          <button class="button button-primary" type="button" :disabled="dispatching" @click="dispatch">
+          <div class="charge-request-box">
+            <label>本次请求核查的罪名或标识（可选）</label>
+            <div v-for="(row, index) in requestedRows" :key="index" class="charge-request-row">
+              <input v-model="row.requestedCharge" :aria-label="`请求罪名 ${index + 1}`" placeholder="请求罪名原始名称" @input="requestedChargesTouched = true" />
+              <input v-model="row.chargeKey" :aria-label="`会签标识 ${index + 1}`" placeholder="已会签标识（可选）" @input="requestedChargesTouched = true" />
+              <button class="text-button" type="button" @click="removeRequestedRow(index)">移除</button>
+            </div>
+            <button v-if="requestedRows.length < 32" class="text-button" type="button" @click="addRequestedRow">增加请求</button>
+            <p class="panel-note">名称和标识按原文提交；请按已会签语料精确填写，未覆盖请求会按时点单独列出。</p>
+          </div>
+          <button class="button button-primary" type="button" :disabled="dispatching" @click="dispatchConviction">
             {{ dispatching ? '分析中…' : '运行定罪研判' }}
           </button>
           <p v-if="dispatchError" class="notice notice-error" role="alert">{{ dispatchError }}</p>
@@ -134,7 +194,48 @@ watch(caseId, () => void load())
         <RuleResultsPanel :analysis="v2Analysis" />
       </section>
 
-      <template v-else>
+      <section v-if="v2Analysis" class="panel" data-testid="v2-candidate-paths">
+        <div class="panel-heading"><div><p class="section-index">03</p><h2>定罪路径研判</h2></div></div>
+        <p class="panel-note">分别展示规则执行返回的候选路径；支持与相反证据并列，系统不自动选择路径。</p>
+        <div v-if="v2PathCards.diagnostics.length" class="blocker-list">
+          <p v-for="diagnostic in v2PathCards.diagnostics" :key="diagnostic.path" class="notice notice-warning" role="alert">
+            <strong>路径结果待确认</strong> <span class="mono">{{ diagnostic.path }}</span> {{ diagnostic.message }}
+          </p>
+        </div>
+        <div v-if="v2PathCards.paths.length" class="path-list">
+          <CandidatePathCard v-for="p in v2PathCards.paths" :key="p.id ?? p.title" :path="p" @locate="handleLocate" />
+        </div>
+        <div v-else class="empty-state">
+          <strong>{{ v2PathCards.present ? '本次结果尚未返回有效定罪路径' : '本次结果尚未返回定罪路径计划' }}</strong>
+          <p>{{ v2PathCards.present ? '路径数据存在格式或核验问题，不能据此作出路径结论。' : '当前仅展示规则执行结果；路径计划尚未生成，不能视为定罪架构已完成。' }}</p>
+        </div>
+      </section>
+
+      <section v-if="v2Analysis && (v2Analysis.requestedCharges.length || v2Analysis.chargeCoverage.length || v2Analysis.coverageMissingItems.length || v2Analysis.coverageDiagnostics.length)" class="panel" data-testid="charge-coverage">
+        <div class="panel-heading"><div><p class="section-index">04</p><h2>请求罪名覆盖</h2></div></div>
+        <p class="panel-note">按用户原始请求与法律时点展示已会签规则包覆盖情况，不将未覆盖请求转成候选或近似罪名。</p>
+        <div v-if="v2Analysis.coverageDiagnostics.length" class="blocker-list">
+          <p v-for="diagnostic in v2Analysis.coverageDiagnostics" :key="diagnostic.path" class="notice notice-warning" role="alert"><strong>覆盖结果待确认</strong> <span class="mono">{{ diagnostic.path }}</span> {{ diagnostic.message }}</p>
+        </div>
+        <dl v-if="v2Analysis.requestedCharges.length" class="data-list">
+          <div v-for="(charge, index) in v2Analysis.requestedCharges" :key="`${charge.requestedCharge}-${index}`"><dt>请求罪名</dt><dd>{{ charge.requestedCharge }}<span v-if="charge.chargeKey" class="mono"> · {{ charge.chargeKey }}</span></dd></div>
+        </dl>
+        <div v-if="v2Analysis.chargeCoverage.length" class="coverage-list">
+          <h3>时点覆盖结果</h3>
+          <article v-for="(coverage, index) in v2Analysis.chargeCoverage" :key="`${coverage.requestedCharge}-${coverage.point}-${coverage.date}-${index}`" class="coverage-item">
+            <div><strong>{{ coverage.requestedCharge }}</strong><span v-if="coverage.chargeKey" class="mono"> · {{ coverage.chargeKey }}</span></div>
+            <div class="coverage-meta">{{ coverage.point }} · {{ coverage.date }} · {{ coverage.covered ? '已覆盖' : '未覆盖' }}</div>
+            <p v-if="coverage.ruleVersions.length" class="coverage-sources">规则：{{ coverage.ruleVersions.map((rule) => `${rule.ruleId}@${rule.ruleVersion}`).join('、') }}；法源：{{ coverage.ruleVersions.flatMap((rule) => rule.sourceIds).join('、') || '—' }}</p>
+            <p v-else class="coverage-sources">未返回可用规则版本。</p>
+          </article>
+        </div>
+        <ul v-if="v2Analysis.coverageMissingItems.length" class="missing-list">
+          <li v-for="item in v2Analysis.coverageMissingItems" :key="item.id"><span class="subtle-chip">未覆盖</span>{{ item.requestedCharge ?? '未提供请求名称（计划项）' }}<span v-if="item.chargeKey" class="mono">（{{ item.chargeKey }}）</span> · {{ item.point }} · {{ item.date }}：{{ item.reason }}</li>
+        </ul>
+        <p v-else-if="v2Analysis.requestedCharges.length" class="panel-note">请求罪名均返回覆盖结果。</p>
+      </section>
+
+      <template v-if="!v2Analysis">
       <section class="panel">
         <div class="panel-heading"><div><p class="section-index">02</p><h2>案件事实结构化整理</h2></div></div>
         <p class="panel-note">按「人—行为—阶段」整理法学已核对标注，同一行为人不同阶段分列，不合并；定位指向本次上传材料。</p>
@@ -250,6 +351,8 @@ watch(caseId, () => void load())
       </section>
       </template>
 
+      <LegalTemporalPanel v-if="moduleState" :content="moduleState.content" />
+
       <section v-if="moduleState" class="panel">
         <div class="panel-heading">
           <div><p class="section-index">07</p><h2>结果内容（原始）</h2></div>
@@ -261,7 +364,7 @@ watch(caseId, () => void load())
 
       <div v-if="moduleState" class="action-box">
         <p>{{ moduleState.status === 'confirmed' ? '该模块结果已经人工复核确认。' : '核对候选路径与证据后提交人工复核。' }}</p>
-        <button class="button button-quiet" type="button" :disabled="dispatching" @click="dispatch">
+        <button class="button button-quiet" type="button" :disabled="dispatching" @click="dispatchConviction">
           {{ dispatching ? '分析中…' : '重新分析' }}
         </button>
         <button
@@ -284,6 +387,28 @@ watch(caseId, () => void load())
   display: grid;
   gap: 10px;
 }
+.charge-request-box {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+  max-width: 720px;
+}
+.charge-request-box label { font-weight: 600; font-size: 13px; }
+.charge-request-box textarea {
+  width: 100%;
+  resize: vertical;
+  padding: 10px;
+  border: 1px solid var(--lc-line);
+  border-radius: 6px;
+  background: var(--lc-surface);
+  color: var(--lc-ink);
+  font: inherit;
+}
+.coverage-list { display: grid; gap: 10px; margin-top: 14px; }
+.coverage-list h3 { margin: 0; font-size: 14px; }
+.coverage-item { display: grid; gap: 5px; padding: 10px 12px; border: 1px solid var(--lc-line); border-radius: 6px; background: var(--lc-surface-alt); }
+.coverage-item p { margin: 0; }
+.coverage-meta, .coverage-sources { color: var(--lc-muted); font-size: 12px; }
 .missing-fold { display: grid; gap: 10px; margin-top: 12px; }
 .missing-list {
   margin: 0;

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { api, apiV2 } from '../api'
 import type { CaseView, DraftView } from '../api-types'
@@ -34,6 +34,10 @@ const rendering = ref(false)
 const renderError = ref('')
 const renderedBody = ref('')
 const renderedMeta = ref<Record<string, unknown> | null>(null)
+const downloadError = ref('')
+const downloading = ref(false)
+
+let loadGeneration = 0
 
 const RENDER_POLL_MS = 1500
 const RENDER_POLL_LIMIT = 80
@@ -41,8 +45,20 @@ const RENDER_POLL_LIMIT = 80
 const workspaceTo = computed(() => (caseItem.value ? `/cases/${caseItem.value.id}` : '/cases'))
 const selectedDraft = computed(() => drafts.value.find((d) => d.id === selectedId.value) ?? null)
 const bodyEmpty = computed(() => !(selectedDraft.value?.body ?? '').trim())
-const hasPlaceholder = computed(() => /【待补充】/.test(selectedDraft.value?.body ?? ''))
+const hasPlaceholder = computed(() => /【[^】]*】|\{\{[^{}]*\}\}/.test(selectedDraft.value?.body ?? ''))
 const canSubmit = computed(() => Boolean(selectedDraft.value) && !bodyEmpty.value && !hasPlaceholder.value)
+const manualArtifactId = computed(() => selectedDraft.value?.artifactVersionId ?? null)
+const canDownloadManual = computed(() => Boolean(manualArtifactId.value) && canSubmit.value)
+const renderedArtifactId = computed(() => typeof renderedMeta.value?.artifactVersionId === 'string'
+  ? renderedMeta.value.artifactVersionId : null)
+const renderedBlockers = computed(() => Array.isArray(renderedMeta.value?.blockers)
+  ? renderedMeta.value.blockers : [])
+const renderedHasPlaceholder = computed(() => /【[^】]*】|\{\{[^{}]*\}\}/.test(renderedBody.value))
+const canDownloadRendered = computed(() => Boolean(renderedArtifactId.value)
+  && Boolean(renderedBody.value.trim())
+  && String(renderedMeta.value?.outcomeStatus ?? '') === 'calculated'
+  && !renderedHasPlaceholder.value
+  && renderedBlockers.value.length === 0)
 
 function formatTime(value?: string | null) {
   if (!value) return '—'
@@ -51,33 +67,65 @@ function formatTime(value?: string | null) {
   return new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(d)
 }
 
-async function loadCase() {
-  loading.value = true
-  error.value = ''
+function isCurrent(generation: number, expectedCaseId: string) {
+  return generation === loadGeneration && expectedCaseId === caseId.value
+}
+
+function clearCaseState() {
   caseItem.value = null
   drafts.value = []
-  if (!caseId.value || isPlaceholderCaseId(caseId.value)) {
+  selectedId.value = null
+  draftBody.value = ''
+  editing.value = false
+  renderedBody.value = ''
+  renderedMeta.value = null
+  downloadError.value = ''
+  saving.value = false
+  saveError.value = ''
+  creating.value = false
+  createError.value = ''
+  submitting.value = false
+  submitError.value = ''
+  submitOk.value = ''
+  rendering.value = false
+  renderError.value = ''
+  downloading.value = false
+}
+
+async function loadCase() {
+  const generation = ++loadGeneration
+  const expectedCaseId = caseId.value
+  loading.value = true
+  error.value = ''
+  clearCaseState()
+  if (!expectedCaseId || isPlaceholderCaseId(expectedCaseId)) {
     loading.value = false
     return
   }
   try {
-    caseItem.value = await api.getCase(caseId.value)
+    const loadedCase = await api.getCase(expectedCaseId)
+    if (!isCurrent(generation, expectedCaseId)) return
+    caseItem.value = loadedCase
     rememberT1Case(caseItem.value.id)
-    await loadDrafts()
+    await loadDrafts(expectedCaseId, generation)
+    if (!isCurrent(generation, expectedCaseId)) return
     try {
-      await loadRendered()
+      await loadRendered(undefined, expectedCaseId, generation)
     } catch {
       // 尚无渲染流时保持空态，不阻塞手工草稿区
     }
   } catch (caught) {
-    error.value = caught instanceof Error ? caught.message : '案件读取失败。'
+    if (isCurrent(generation, expectedCaseId)) {
+      error.value = caught instanceof Error ? caught.message : '案件读取失败。'
+    }
   } finally {
-    loading.value = false
+    if (isCurrent(generation, expectedCaseId)) loading.value = false
   }
 }
 
-async function loadDrafts() {
-  const list = await api.listCaseDrafts(caseId.value)
+async function loadDrafts(expectedCaseId = caseId.value, generation = loadGeneration) {
+  const list = await api.listCaseDrafts(expectedCaseId)
+  if (!isCurrent(generation, expectedCaseId)) return
   drafts.value = list.items
   if (!drafts.value.some((d) => d.id === selectedId.value)) {
     selectedId.value = drafts.value[0]?.id ?? null
@@ -105,22 +153,30 @@ function cancelEdit() {
 
 async function save() {
   if (!selectedDraft.value) return
+  const expectedCaseId = caseId.value
+  const generation = loadGeneration
+  const draftId = selectedDraft.value.id
+  const version = selectedDraft.value.version
+  const body = draftBody.value
   saving.value = true
   saveError.value = ''
   try {
-    const updated = await api.putCaseDraft(caseId.value, selectedDraft.value.id, {
-      body: draftBody.value,
-      version: selectedDraft.value.version,
+    const updated = await api.putCaseDraft(expectedCaseId, draftId, {
+      body,
+      version,
     })
+    if (!isCurrent(generation, expectedCaseId)) return
     const index = drafts.value.findIndex((d) => d.id === updated.id)
     if (index >= 0) drafts.value[index] = updated
     else drafts.value.push(updated)
     selectedId.value = updated.id
     editing.value = false
   } catch (caught) {
-    saveError.value = caught instanceof Error ? caught.message : '保存失败。'
+    if (isCurrent(generation, expectedCaseId)) {
+      saveError.value = caught instanceof Error ? caught.message : '保存失败。'
+    }
   } finally {
-    saving.value = false
+    if (isCurrent(generation, expectedCaseId)) saving.value = false
   }
 }
 
@@ -129,66 +185,84 @@ async function create() {
   if (!type) return
   creating.value = true
   createError.value = ''
+  const expectedCaseId = caseId.value
+  const generation = loadGeneration
   try {
-    const draft = await api.createCaseDraft(caseId.value, { draftType: type, body: '' })
+    const draft = await api.createCaseDraft(expectedCaseId, { draftType: type, body: '' })
+    if (!isCurrent(generation, expectedCaseId)) return
     drafts.value = [draft, ...drafts.value]
     selectedId.value = draft.id
     newType.value = ''
     editing.value = false
   } catch (caught) {
-    createError.value = caught instanceof Error ? caught.message : '新建失败。'
+    if (isCurrent(generation, expectedCaseId)) {
+      createError.value = caught instanceof Error ? caught.message : '新建失败。'
+    }
   } finally {
-    creating.value = false
+    if (isCurrent(generation, expectedCaseId)) creating.value = false
   }
 }
 
 async function submitReview() {
   if (!selectedDraft.value || !canSubmit.value) return
+  const expectedCaseId = caseId.value
+  const generation = loadGeneration
+  const draftId = selectedDraft.value.id
+  const draftVersion = selectedDraft.value.version
   submitting.value = true
   submitError.value = ''
   submitOk.value = ''
   try {
-    await api.openCaseReview(caseId.value, {
+    await api.openCaseReview(expectedCaseId, {
       module: 'sentencing',
-      draftId: selectedDraft.value.id,
-      draftVersion: selectedDraft.value.version,
+      draftId,
+      draftVersion,
     })
+    if (!isCurrent(generation, expectedCaseId)) return
     submitOk.value = '已提交人工复核。'
   } catch (caught) {
-    submitError.value = caught instanceof Error ? caught.message : '提交复核失败。'
+    if (isCurrent(generation, expectedCaseId)) {
+      submitError.value = caught instanceof Error ? caught.message : '提交复核失败。'
+    }
   } finally {
-    submitting.value = false
+    if (isCurrent(generation, expectedCaseId)) submitting.value = false
   }
 }
 
-async function pollExecutionDone(executionId: string) {
+async function pollExecutionDone(executionId: string, expectedCaseId: string, generation: number) {
   for (let attempt = 0; attempt < RENDER_POLL_LIMIT; attempt += 1) {
+    if (!isCurrent(generation, expectedCaseId)) return false
     const exec = await apiV2.getExecution(executionId)
+    if (!isCurrent(generation, expectedCaseId)) return false
     const state = String(exec.state ?? '')
-    if (state === 'completed') return
+    if (state === 'completed') return true
     if (state === 'failed') throw new Error('文书渲染执行失败。')
     await new Promise((resolve) => window.setTimeout(resolve, RENDER_POLL_MS))
   }
   throw new Error('文书渲染超时，请稍后在任务中心查看。')
 }
 
-async function loadRendered(docType?: string) {
-  const list = await apiV2.listDraftStreams(caseId.value)
+async function loadRendered(docType?: string, expectedCaseId = caseId.value, generation = loadGeneration) {
+  const list = await apiV2.listDraftStreams(expectedCaseId)
+  if (!isCurrent(generation, expectedCaseId)) return
   const items = list.items ?? []
   const target = docType
     ? items.find((i) => i.docType === docType)
     : items[items.length - 1]
   const latestId = target?.latestVersionId as string | null | undefined
   if (!latestId) {
+    if (!isCurrent(generation, expectedCaseId)) return
     renderedBody.value = ''
     renderedMeta.value = null
     return
   }
   const artifact = await apiV2.getArtifactVersion(latestId)
+  if (!isCurrent(generation, expectedCaseId)) return
   const payload = (artifact.payload ?? {}) as Record<string, unknown>
   const draft = toV2Draft(payload)
   renderedBody.value = draft?.body ?? ''
   renderedMeta.value = {
+    artifactVersionId: artifact.artifactVersionId ?? latestId,
     docType: draft?.docType ?? target?.docType,
     version: artifact.version,
     outcomeStatus: artifact.outcomeStatus,
@@ -200,22 +274,66 @@ async function loadRendered(docType?: string) {
 async function renderDraft() {
   const docType = renderDocType.value.trim()
   if (!docType) return
+  const expectedCaseId = caseId.value
+  const generation = loadGeneration
   rendering.value = true
   renderError.value = ''
   try {
-    const created = await apiV2.dispatchDraftRender(caseId.value, docType)
+    const created = await apiV2.dispatchDraftRender(expectedCaseId, docType)
     const executionId = String(created.executionId ?? '')
     if (!executionId) throw new Error('派发响应缺少 executionId')
-    await pollExecutionDone(executionId)
-    await loadRendered(docType)
+    const completed = await pollExecutionDone(executionId, expectedCaseId, generation)
+    if (!completed || !isCurrent(generation, expectedCaseId)) return
+    await loadRendered(docType, expectedCaseId, generation)
   } catch (caught) {
-    renderError.value = caught instanceof Error ? caught.message : '文书渲染失败。'
+    if (isCurrent(generation, expectedCaseId)) {
+      renderError.value = caught instanceof Error ? caught.message : '文书渲染失败。'
+    }
   } finally {
-    rendering.value = false
+    if (isCurrent(generation, expectedCaseId)) rendering.value = false
   }
 }
 
+async function downloadArtifact(expectedCaseId: string, artifactVersionId: string, generation: number) {
+  if (!isCurrent(generation, expectedCaseId)) return
+  downloading.value = true
+  downloadError.value = ''
+  try {
+    const result = await apiV2.exportArtifactDocx(expectedCaseId, artifactVersionId)
+    if (!isCurrent(generation, expectedCaseId)) return
+    const objectUrl = URL.createObjectURL(result.blob)
+    const anchor = document.createElement('a')
+    anchor.href = objectUrl
+    anchor.download = result.filename
+    try {
+      anchor.click()
+    } finally {
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0)
+    }
+  } catch (caught) {
+    if (isCurrent(generation, expectedCaseId)) {
+      downloadError.value = caught instanceof Error ? caught.message : '文书下载失败。'
+    }
+  } finally {
+    if (isCurrent(generation, expectedCaseId)) downloading.value = false
+  }
+}
+
+function downloadManual() {
+  const id = manualArtifactId.value
+  if (id && canDownloadManual.value) void downloadArtifact(caseId.value, id, loadGeneration)
+}
+
+function downloadRendered() {
+  const id = renderedArtifactId.value
+  if (id && canDownloadRendered.value) void downloadArtifact(caseId.value, id, loadGeneration)
+}
+
 onMounted(() => void loadCase())
+watch(caseId, (next, previous) => {
+  if (next !== previous) void loadCase()
+})
+onBeforeUnmount(() => { loadGeneration += 1 })
 </script>
 
 <template>
@@ -246,7 +364,7 @@ onMounted(() => void loadCase())
       <section class="panel">
         <div class="panel-heading">
           <div><p class="section-index">01</p><h2>文书列表</h2></div>
-          <button class="button button-quiet" type="button" :disabled="loading" @click="loadDrafts">刷新</button>
+          <button class="button button-quiet" type="button" :disabled="loading" @click="loadDrafts()">刷新</button>
         </div>
 
         <form class="form-stack create-row" @submit.prevent="create">
@@ -294,8 +412,8 @@ onMounted(() => void loadCase())
           </div>
 
           <p v-if="hasPlaceholder" class="notice notice-warning" role="note">
-            <strong>正文含【待补充】占位</strong>
-            <span>补齐占位后才能提交人工复核。</span>
+            <strong>正文含未解析占位</strong>
+            <span>请补齐【…】或双大括号占位后才能提交人工复核或下载。</span>
           </p>
           <p v-if="saveError" class="notice notice-error" role="alert">{{ saveError }}</p>
 
@@ -305,6 +423,14 @@ onMounted(() => void loadCase())
             <div class="draft-actions">
               <template v-if="!editing">
                 <button class="button button-quiet" type="button" @click="startEdit">编辑正文</button>
+                <button
+                  class="button button-quiet"
+                  type="button"
+                  :disabled="downloading || !canDownloadManual"
+                  @click="downloadManual"
+                >
+                  {{ downloading ? '准备下载…' : '下载辅助稿（Word）' }}
+                </button>
                 <button
                   class="button button-primary"
                   type="button"
@@ -324,6 +450,7 @@ onMounted(() => void loadCase())
           </div>
 
           <p v-if="submitError" class="notice notice-error" role="alert">{{ submitError }}</p>
+          <p v-if="downloadError" class="notice notice-error" role="alert">{{ downloadError }}</p>
           <p v-if="submitOk" class="notice notice-success" role="status">{{ submitOk }}</p>
         </template>
 
@@ -363,6 +490,17 @@ onMounted(() => void loadCase())
           <p v-else class="notice notice-warning" role="note">
             渲染被阻断，未产出正文（存在未解析占位或缺失输入）。
           </p>
+          <div v-if="renderedMeta" class="draft-actions">
+            <button
+              class="button button-quiet"
+              type="button"
+              :disabled="downloading || !canDownloadRendered"
+              @click="downloadRendered"
+            >
+              {{ downloading ? '准备下载…' : '下载辅助稿（Word）' }}
+            </button>
+          </div>
+          <p v-if="downloadError" class="notice notice-error" role="alert">{{ downloadError }}</p>
         </template>
         <div v-else class="empty-state">
           <strong>尚无渲染结果</strong>

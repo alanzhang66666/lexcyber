@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { ApiError, api, apiV2 } from '../api'
-import type { ResultPayload, ReviewRecord, TaskView } from '../api-types'
+import type { ArchiveView, ResultPayload, ReviewRecord, TaskView } from '../api-types'
 import ResultContent from '../components/ResultContent.vue'
 import StatusBadge from '../components/StatusBadge.vue'
 import { moduleTitle } from '../data/modules'
@@ -16,6 +16,7 @@ const deciding = ref<'approve' | 'reject' | ''>('')
 const archiving = ref(false)
 const error = ref('')
 const success = ref('')
+const archive = ref<ArchiveView | null>(null)
 const versionConflict = computed(() => Boolean(
   review.value && result.value && review.value.resultVersion !== result.value.version,
 ))
@@ -77,14 +78,20 @@ async function decide(decision: 'approve' | 'reject') {
   }
 }
 
-async function archive() {
-  if (!review.value) return
+async function archiveReviewCase() {
+  if (!review.value?.caseId) {
+    error.value = '该复核记录未关联案件，无法创建案件级归档。'
+    return
+  }
   archiving.value = true
   error.value = ''
   success.value = ''
   try {
-    review.value = await api.archiveReview(review.value.id)
-    success.value = '已归档。该记录保留决定留痕，不再出现在未归档队列中。'
+    const created = await apiV2.createArchive(review.value.caseId, 'case.full.v1')
+    const archiveId = String(created.archiveId ?? '')
+    if (!archiveId) throw new Error('归档响应缺少 archiveId。')
+    archive.value = await apiV2.getArchive(review.value.caseId, archiveId)
+    success.value = '已创建案件级归档，并读取归档 manifest。'
   } catch (caught) {
     error.value = caught instanceof Error ? caught.message : '归档失败。'
   } finally {
@@ -161,13 +168,19 @@ onMounted(() => void load())
         </div>
         <div v-else class="notice"><strong>复核已经结束</strong><span>决定：{{ review.decision }}<template v-if="review.actor"> · 操作人：{{ review.actor }}</template></span></div>
         <div v-if="review.status !== 'pending'" class="archive-row">
-          <template v-if="review.archiveStatus !== 'archived'">
-            <small>归档后将保留决定留痕，并从默认队列视图中收起。</small>
-            <button class="button button-quiet" type="button" :disabled="archiving" @click="archive">
-              {{ archiving ? '正在归档…' : '归档此复核记录' }}
+          <template v-if="!archive">
+            <small>归档将冻结案件当前已确认/批准版本，并保留可追溯 manifest。</small>
+            <button class="button button-quiet" type="button" :disabled="archiving" @click="archiveReviewCase">
+              {{ archiving ? '正在创建归档…' : '创建案件级归档' }}
             </button>
           </template>
-          <small v-else>此记录已归档，留痕可在归档视图中查看。</small>
+          <small v-else>案件级归档已建立；当前案件确认/批准版本已冻结，manifest 可追溯。</small>
+        </div>
+        <div v-if="archive" class="archive-manifest">
+          <strong>案件级归档已建立</strong>
+          <span class="mono">归档 ID：{{ archive.archiveId }}</span>
+          <span class="mono">manifestHash：{{ archive.manifestHash }}</span>
+          <span>事实版本：{{ archive.factsVersionId }} · 项目 {{ archive.items.length }} 项</span>
         </div>
       </aside>
     </section>
@@ -191,5 +204,16 @@ onMounted(() => void load())
 }
 .archive-row small {
   color: var(--lc-muted, #6b7280);
+}
+.archive-manifest {
+  display: grid;
+  gap: 4px;
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid var(--lc-evidence, #b8d8d2);
+  border-radius: 8px;
+  background: var(--lc-evidence-soft, #eef8f5);
+  color: var(--lc-ink);
+  font-size: 12px;
 }
 </style>

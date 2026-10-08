@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ApiError, api, apiV2 } from './api'
+import { ApiError, api, apiV2, safeDownloadFilename } from './api'
 
 afterEach(() => {
   vi.useRealTimers()
@@ -91,9 +91,9 @@ describe('typed API client', () => {
     const fetchMock = vi.fn().mockResolvedValue(response({ items: [] }))
     vi.stubGlobal('fetch', fetchMock)
 
-    await apiV2.replaceFactsEntities('case-7', 'fact', [{ key: '涉案金额', value: '1000' }])
+    await apiV2.replaceFactsEntities('case-7', 'facts', [{ key: '涉案金额', value: '1000' }])
 
-    expect(fetchMock).toHaveBeenCalledWith('/v2/cases/case-7/facts-entities/fact',
+    expect(fetchMock).toHaveBeenCalledWith('/v2/cases/case-7/facts-entities/facts',
       expect.objectContaining({
         method: 'PUT',
         body: JSON.stringify({ items: [{ key: '涉案金额', value: '1000' }] }),
@@ -125,6 +125,32 @@ describe('typed API client', () => {
       }))
   })
 
+  it('uses the facts version diff contract with an against query', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(response({
+      caseId: 'case-7', fromFactsVersionId: 'fv-1', toFactsVersionId: 'fv-2', sections: {},
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await apiV2.diffFactsVersion('case-7', 'fv-2', 'fv-1')
+
+    expect(fetchMock).toHaveBeenCalledWith('/v2/cases/case-7/facts-versions/fv-2/diff?against=fv-1', expect.anything())
+  })
+
+  it('creates and reads a case archive through the v2 contract', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(response({ archiveId: 'arc-1' }, 201))
+      .mockResolvedValueOnce(response({ archiveId: 'arc-1', manifestHash: 'sha256:x' }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await apiV2.createArchive('case-7')
+    await apiV2.getArchive('case-7', 'arc-1')
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, '/v2/cases/case-7/archives', expect.objectContaining({
+      method: 'POST', body: JSON.stringify({ archiveProfile: 'case.full.v1' }),
+    }))
+    expect(fetchMock).toHaveBeenNthCalledWith(2, '/v2/cases/case-7/archives/arc-1', expect.anything())
+  })
+
   it('dispatches a module execution through /v2', async () => {
     const fetchMock = vi.fn().mockResolvedValue(response({ executionId: 'ex-1' }, 202))
     vi.stubGlobal('fetch', fetchMock)
@@ -133,6 +159,20 @@ describe('typed API client', () => {
 
     expect(fetchMock).toHaveBeenCalledWith('/v2/cases/case-7/modules/conviction/executions',
       expect.objectContaining({ method: 'POST' }))
+  })
+
+  it('dispatches requested conviction charges with the explicit request body', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(response({ executionId: 'ex-charge' }, 202))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await apiV2.dispatchModuleExecution('case-7', 'conviction', {
+      requestedCharges: [{ requestedCharge: '帮助信息网络犯罪活动罪', chargeKey: '帮助信息网络犯罪活动罪' }],
+    })
+
+    expect(fetchMock).toHaveBeenCalledWith('/v2/cases/case-7/modules/conviction/executions', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ requestedCharges: [{ requestedCharge: '帮助信息网络犯罪活动罪', chargeKey: '帮助信息网络犯罪活动罪' }] }),
+    }))
   })
 
   it('dispatches a draft render with docType', async () => {
@@ -146,6 +186,56 @@ describe('typed API client', () => {
         method: 'POST',
         body: JSON.stringify({ docType: 'indictment' }),
       }))
+  })
+
+  it('downloads an immutable DOCX artifact with auth and RFC5987 filename', async () => {
+    localStorage.setItem('lexcyber.session', JSON.stringify({ token: 'sess-docx', username: 'tester', displayName: '测试员' }))
+    const fetchMock = vi.fn().mockResolvedValue(new Response(new Uint8Array([80, 75, 3, 4]), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'Content-Disposition': "attachment; filename*=UTF-8''%E5%AE%A1%E6%9F%A5%E6%8A%A5%E5%91%8A.docx",
+      },
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await apiV2.exportArtifactDocx('case/7', 'artifact-9')
+
+    expect(result.filename).toBe('审查报告.docx')
+    expect(result.blob.type).toBe('application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/v2/cases/case%2F7/artifact-versions/artifact-9/export.docx',
+      expect.objectContaining({ headers: expect.objectContaining({
+        Accept: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        Authorization: 'Bearer sess-docx',
+      }) }),
+    )
+  })
+
+  it('preserves structured JSON errors from DOCX export', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response({
+      code: 'DRAFT_EXPORT_UNAVAILABLE', message: '正文尚未具备导出条件。', traceId: 'trace-docx',
+    }, 409)))
+
+    await expect(apiV2.exportArtifactDocx('case-7', 'artifact-9')).rejects.toMatchObject({
+      status: 409, code: 'DRAFT_EXPORT_UNAVAILABLE', traceId: 'trace-docx',
+    } satisfies Partial<ApiError>)
+  })
+
+  it('rejects a successful response with the wrong media type', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('not a docx', {
+      status: 200, headers: { 'Content-Type': 'text/plain' },
+    })))
+
+    await expect(apiV2.exportArtifactDocx('case-7', 'artifact-9')).rejects.toMatchObject({
+      code: 'UNEXPECTED_CONTENT_TYPE', status: 200,
+    } satisfies Partial<ApiError>)
+  })
+
+  it('sanitizes plain filenames, path separators, and control characters', () => {
+    expect(safeDownloadFilename('报告/../\u0000草稿')).toBe('报告_..__草稿.docx')
+    expect(safeDownloadFilename('报告.docx')).toBe('报告.docx')
+    expect(safeDownloadFilename('')).toBe('lexcyber-draft.docx')
   })
 
   it('aborts a request that exceeds the client timeout', async () => {

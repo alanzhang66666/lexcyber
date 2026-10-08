@@ -6,6 +6,8 @@ import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.lexcyber.server.api.ApiException;
 import com.lexcyber.server.engine.ExecutionRequest;
+import com.lexcyber.server.engine.EngineCapabilitiesClient;
+import com.lexcyber.server.engine.EngineRegistryClient;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import java.nio.charset.StandardCharsets;
@@ -13,11 +15,16 @@ import java.security.MessageDigest;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.OffsetDateTime;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.time.format.ResolverStyle;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.dao.EmptyResultDataAccessException;
@@ -33,17 +40,35 @@ public class TaskService {
     private final ObjectMapper objectMapper;
     private final boolean sentencingEnabled;
     private final IdentityService ids;
+    private final EngineCapabilitiesClient capabilities;
+    private final EngineRegistryClient registry;
+    private final ModuleConfirmationService moduleConfirmation;
 
     public TaskService(JdbcTemplate jdbc, ObjectMapper objectMapper) {
-        this(jdbc, objectMapper, false);
+        this(jdbc, objectMapper, false, null, new EngineRegistryClient());
+    }
+
+    public TaskService(JdbcTemplate jdbc, ObjectMapper objectMapper,
+                       @Value("${sentencing.enabled:false}") boolean sentencingEnabled) {
+        this(jdbc, objectMapper, sentencingEnabled, null, new EngineRegistryClient());
+    }
+
+    public TaskService(JdbcTemplate jdbc, ObjectMapper objectMapper,
+                       @Value("${sentencing.enabled:false}") boolean sentencingEnabled,
+                       EngineCapabilitiesClient capabilities) {
+        this(jdbc, objectMapper, sentencingEnabled, capabilities, new EngineRegistryClient());
     }
 
     @Autowired
     public TaskService(JdbcTemplate jdbc, ObjectMapper objectMapper,
-                       @Value("${sentencing.enabled:false}") boolean sentencingEnabled) {
+                       @Value("${sentencing.enabled:false}") boolean sentencingEnabled,
+                       EngineCapabilitiesClient capabilities, EngineRegistryClient registry) {
         this.jdbc = jdbc;
         this.objectMapper = objectMapper;
         this.sentencingEnabled = sentencingEnabled;
+        this.capabilities = capabilities;
+        this.registry = registry;
+        this.moduleConfirmation = new ModuleConfirmationService(jdbc, registry);
         this.ids = new IdentityService(jdbc);
     }
 
@@ -62,18 +87,25 @@ public class TaskService {
     }
 
     private TaskView createInternal(TaskCreate request, boolean moduleDispatch) {
+        registry.lockBarrier(jdbc);
         Map<String, Object> metadata = normalizeJson(
                 request.metadata() == null ? Map.of() : request.metadata());
+        String caseId = ids.caseIdOrNull(request.caseId());
         if (moduleDispatch) {
             TaskPolicies.requireKnown(metadata);
+            if (isLegalV2TaskType(TaskPolicies.taskType(metadata))) {
+                LocalDate asOfDate = requireStructuredV2AsOfDate(metadata);
+                requireCurrentAsOfDate(caseId, asOfDate);
+            }
+            metadata.put("_dispatchOrigin", "v2");
         } else {
+            metadata.remove("_dispatchOrigin");
             TaskPolicies.requireSupported(metadata, sentencingEnabled);
         }
         UUID id = UUID.randomUUID();
         UUID requestId = UUID.randomUUID();
         UUID executionId = UUID.randomUUID();
         UUID resultId = UUID.randomUUID();
-        String caseId = ids.caseIdOrNull(request.caseId());
         String taskType = TaskPolicies.taskType(metadata);
         UUID factsVersionId = requireConfirmedFacts(taskType, caseId);
         ExecutionBinding binding = bindExecution(taskType, caseId, metadata, factsVersionId);
@@ -144,6 +176,7 @@ public class TaskService {
 
     @Transactional
     public TaskView retry(UUID taskId) {
+        registry.lockBarrier(jdbc);
         UUID executionId = UUID.randomUUID();
         Map<String, Object> task;
         try {
@@ -153,7 +186,8 @@ public class TaskService {
         }
         String status = String.valueOf(task.get("status"));
         if (!List.of("failed", "timed_out", "rejected").contains(status)) {
-            throw new IllegalStateException("task is not retryable or does not exist");
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "task is not retryable");
         }
         // 结果序号 = 该任务的第 N 次派发（与 artifact version 解耦；INV-VERSION-005）
         int resultVersion = Optional.ofNullable(jdbc.queryForObject(
@@ -161,14 +195,24 @@ public class TaskService {
                 Integer.class, taskId)).orElse(1);
         UUID resultId = UUID.randomUUID();
         Map<String, Object> metadata = parseMap(task.get("metadata_json"));
-        TaskPolicies.requireSupported(metadata, sentencingEnabled);
         String query = String.valueOf(task.get("query_text"));
         String caseId = task.get("case_id") == null ? null : String.valueOf(task.get("case_id"));
         String sessionId = task.get("session_id") == null ? null : String.valueOf(task.get("session_id"));
         UUID requestId = (UUID) task.get("request_id");
         String taskType = TaskPolicies.taskType(metadata);
-        UUID factsVersionId = requireConfirmedFacts(taskType, caseId);
+        boolean v2 = isStructuredV2Metadata(metadata);
+        if (v2) {
+            LocalDate frozenAsOfDate = requireStructuredV2AsOfDate(metadata);
+            requireCurrentAsOfDate(caseId, frozenAsOfDate);
+            requireV2Capability(metadata, taskType);
+        } else {
+            TaskPolicies.requireSupported(metadata, sentencingEnabled);
+        }
+        UUID factsVersionId = v2
+                ? requireFrozenRetryInput(taskType, caseId, metadata)
+                : requireConfirmedFacts(taskType, caseId);
         ExecutionBinding binding = bindExecution(taskType, caseId, metadata, factsVersionId);
+        if (v2) validateOriginalBinding(taskId, binding, factsVersionId);
         String inputHash = hashInput(query, caseId, sessionId, metadata);
         ExecutionRequest envelope = new ExecutionRequest(taskId, executionId, requestId, resultId, resultVersion, "workflow.output",
                 query, caseId, sessionId, metadata, inputHash, "public-api-0.8",
@@ -187,6 +231,156 @@ public class TaskService {
      * 有案模块任务（sentencing/compliance/conviction）必须有 confirmed FactsVersion ——
      * 它是执行输入快照的权威引用；parse 任务以 document + sha256 为输入引用。
      */
+    private boolean isStructuredV2Metadata(Map<String, Object> metadata) {
+        String taskType = TaskPolicies.taskType(metadata);
+        return ("v2".equals(metadata.get("_dispatchOrigin"))
+                || (metadata.get("factsVersionId") != null && metadata.get("factsSnapshot") != null))
+                && (TaskPolicies.COMPLIANCE_ANALYZE.equals(taskType)
+                || TaskPolicies.CONVICTION_ANALYZE.equals(taskType)
+                || TaskPolicies.SENTENCING_CALCULATE.equals(taskType)
+                || TaskPolicies.DRAFT_RENDER.equals(taskType));
+    }
+
+    private boolean isLegalV2TaskType(String taskType) {
+        return TaskPolicies.COMPLIANCE_ANALYZE.equals(taskType)
+                || TaskPolicies.CONVICTION_ANALYZE.equals(taskType)
+                || TaskPolicies.SENTENCING_CALCULATE.equals(taskType)
+                || TaskPolicies.DRAFT_RENDER.equals(taskType);
+    }
+
+    private void requireV2Capability(Map<String, Object> metadata, String taskType) {
+        if (capabilities == null) {
+            throw new ApiException(HttpStatus.NOT_IMPLEMENTED, "MODULE_EXECUTION_UNAVAILABLE",
+                    "v2 执行能力不可用");
+        }
+        if (TaskPolicies.DRAFT_RENDER.equals(taskType)) {
+            if (!capabilities.templateAvailable(stringOrNull(metadata.get("docType")))) {
+                throw new ApiException(HttpStatus.NOT_IMPLEMENTED, "DRAFT_RENDER_UNAVAILABLE",
+                        "文书渲染能力未启用");
+            }
+            return;
+        }
+        String module = stringOrNull(metadata.get("module"));
+        if (module == null || !capabilities.moduleAvailable(module)) {
+            throw new ApiException(HttpStatus.NOT_IMPLEMENTED, "MODULE_EXECUTION_UNAVAILABLE",
+                    "模块执行能力不可用");
+        }
+    }
+
+    private static final DateTimeFormatter FULL_ISO_DATE =
+            DateTimeFormatter.ISO_LOCAL_DATE.withResolverStyle(ResolverStyle.STRICT);
+
+    /** Legal V2 dispatches must carry the exact case-date snapshot used by Engine. */
+    private LocalDate requireStructuredV2AsOfDate(Map<String, Object> metadata) {
+        String raw = stringOrNull(metadata.get("asOfDate"));
+        if (raw == null || raw.isBlank()) {
+            throw new ApiException(HttpStatus.CONFLICT, "AS_OF_DATE_REQUIRED", "V2 任务必须包含案件基准日期");
+        }
+        try {
+            LocalDate parsed = LocalDate.parse(raw, FULL_ISO_DATE);
+            if (!parsed.toString().equals(raw)) {
+                throw new DateTimeParseException("non-canonical ISO date", raw, 0);
+            }
+            return parsed;
+        } catch (DateTimeParseException ex) {
+            throw new ApiException(HttpStatus.CONFLICT, "AS_OF_DATE_INVALID", "V2 任务基准日期必须是完整 ISO 日期", ex);
+        }
+    }
+
+    private void requireCurrentAsOfDate(String caseId, LocalDate frozen) {
+        if (caseId == null || caseId.isBlank()) {
+            throw new ApiException(HttpStatus.CONFLICT, "DEPENDENCY_STALE", "V2 任务缺少案件基准日期");
+        }
+        LocalDate current = jdbc.queryForObject(
+                "SELECT as_of_date FROM app.cases WHERE id = ?::uuid FOR UPDATE", LocalDate.class, caseId);
+        if (!frozen.equals(current)) {
+            throw new ApiException(HttpStatus.CONFLICT, "DEPENDENCY_STALE", "案件基准日期已变更，必须重新派发");
+        }
+    }
+
+    private UUID requireFrozenRetryInput(String taskType, String caseId, Map<String, Object> metadata) {
+        String raw = stringOrNull(metadata.get("factsVersionId"));
+        if (raw == null || metadata.get("factsSnapshot") == null) {
+            throw new ApiException(HttpStatus.CONFLICT, "DEPENDENCY_STALE", "重试缺少冻结事实快照");
+        }
+        UUID frozen;
+        try {
+            frozen = UUID.fromString(raw);
+        } catch (IllegalArgumentException ex) {
+            throw new ApiException(HttpStatus.CONFLICT, "DEPENDENCY_STALE", "重试事实快照引用无效", ex);
+        }
+        UUID current = requireConfirmedFacts(taskType, caseId);
+        if (!frozen.equals(current)) {
+            throw new ApiException(HttpStatus.CONFLICT, "DEPENDENCY_STALE", "案件事实已变更，必须重新派发");
+        }
+        if (TaskPolicies.SENTENCING_CALCULATE.equals(taskType)) {
+            Object versions = metadata.get("artifactVersions");
+            if (!(versions instanceof Map<?, ?> map) || map.size() != 1 || !map.containsKey("conviction")) {
+                throw new ApiException(HttpStatus.CONFLICT, "DEPENDENCY_STALE", "量刑重试缺少冻结定罪版本");
+            }
+        }
+        if (TaskPolicies.DRAFT_RENDER.equals(taskType) || TaskPolicies.SENTENCING_CALCULATE.equals(taskType)) {
+            requireFrozenArtifactInputs(caseId, metadata);
+        }
+        return frozen;
+    }
+
+    private void requireFrozenArtifactInputs(String caseId, Map<String, Object> metadata) {
+        Object versions = metadata.get("artifactVersions");
+        if (!(versions instanceof Map<?, ?> map)) {
+            throw new ApiException(HttpStatus.CONFLICT, "DEPENDENCY_STALE", "上游依赖快照缺失");
+        }
+        for (Map.Entry<?, ?> entry : map.entrySet()) {
+            UUID version;
+            try {
+                version = UUID.fromString(String.valueOf(entry.getValue()));
+            } catch (IllegalArgumentException ex) {
+                throw new ApiException(HttpStatus.CONFLICT, "DEPENDENCY_STALE", "上游依赖版本无效", ex);
+            }
+            // Keep the upstream version effective until the new outbox entry is
+            // committed, using the same stream → head gate as first dispatch.
+            UUID effective;
+            try {
+                effective = moduleConfirmation.requireEffectiveArtifactVersion(
+                        caseId, String.valueOf(entry.getKey()));
+            } catch (ApiException unavailable) {
+                if (!"MODULE_NOT_CONFIRMED".equals(unavailable.code())) throw unavailable;
+                throw new ApiException(HttpStatus.CONFLICT, "DEPENDENCY_STALE",
+                        "上游模块已失效，必须重新派发", unavailable);
+            }
+            if (!version.equals(effective)) {
+                throw new ApiException(HttpStatus.CONFLICT, "DEPENDENCY_STALE", "上游版本已变更，必须重新派发");
+            }
+            Long valid = jdbc.queryForObject("""
+                    SELECT COUNT(*) FROM app.module_head h
+                    JOIN app.artifact_stream s ON s.artifact_stream_id = h.artifact_stream_id
+                    WHERE h.case_id = ?::uuid AND h.module = ?
+                      AND h.confirmed_version_id = ? AND NOT h.stale
+                      AND s.latest_version_id = ?
+                    """, Long.class, caseId, String.valueOf(entry.getKey()), version, version);
+            if (valid == null || valid == 0L) {
+                throw new ApiException(HttpStatus.CONFLICT, "DEPENDENCY_STALE", "上游模块已变更，必须重新派发");
+            }
+        }
+    }
+
+    private void validateOriginalBinding(UUID taskId, ExecutionBinding binding, UUID factsVersionId) {
+        List<Map<String, Object>> rows = jdbc.queryForList("""
+                SELECT payload_json ->> 'input_snapshot_ref' AS input_snapshot_ref,
+                       payload_json ->> 'artifact_stream_id' AS artifact_stream_id
+                FROM app.task_dispatch_outbox
+                WHERE task_id = ? AND event_type = 'execution.requested'
+                ORDER BY created_at ASC, id ASC LIMIT 1
+                """, taskId);
+        if (rows.isEmpty()
+                || !Objects.equals("facts_version:" + factsVersionId, rows.get(0).get("input_snapshot_ref"))
+                || !Objects.equals(binding.streamId() == null ? null : binding.streamId().toString(),
+                                   rows.get(0).get("artifact_stream_id"))) {
+            throw new ApiException(HttpStatus.CONFLICT, "DEPENDENCY_STALE",
+                    "任务原始输入绑定不一致，必须重新派发");
+        }
+    }
+
     private UUID requireConfirmedFacts(String taskType, String caseId) {
         if (caseId == null || caseId.isBlank()) {
             return null;
@@ -229,7 +423,15 @@ public class TaskService {
             if (docType == null) {
                 throw new ApiException(HttpStatus.BAD_REQUEST, "DOC_TYPE_MISSING", "draft.render 需要 metadata.docType");
             }
-            UUID streamId = publications.ensureStreamLocked(caseId, "draft", "draft:" + docType);
+            String draftId = stringOrNull(metadata.get("draftId"));
+            if (draftId == null) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "DRAFT_ID_MISSING", "draft.render 需要文书 UUID");
+            }
+            UUID streamId = jdbc.queryForObject("""
+                    SELECT h.artifact_stream_id FROM app.draft_head h
+                    JOIN app.case_drafts d ON d.id = h.draft_id
+                    WHERE h.case_id = ?::uuid AND h.draft_id = ?::uuid AND d.draft_type = ?
+                    """, UUID.class, caseId, draftId, docType);
             String ref = factsVersionId == null ? null : "facts_version:" + factsVersionId;
             return new ExecutionBinding(streamId, ref);
         }

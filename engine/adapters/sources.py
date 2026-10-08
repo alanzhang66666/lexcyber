@@ -18,6 +18,13 @@ class SourceSearchUnavailable(Exception):
         super().__init__(message)
 
 
+class SourceDateError(ValueError):
+    code = "INVALID_AS_OF_DATE"
+
+    def __init__(self, message: str = "as_of_date is required and must be YYYY-MM-DD") -> None:
+        super().__init__(message)
+
+
 def _parse_date(value: str | None) -> date | None:
     if not value:
         return None
@@ -25,6 +32,15 @@ def _parse_date(value: str | None) -> date | None:
         return date.fromisoformat(value[:10])
     except ValueError:
         return None
+
+
+def _require_date(value: str | None) -> date:
+    if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        raise SourceDateError()
+    try:
+        return date.fromisoformat(value)
+    except ValueError as exc:
+        raise SourceDateError() from exc
 
 
 def _effective_status(source: dict[str, Any], as_of: date) -> str:
@@ -44,7 +60,7 @@ def _load_sources() -> list[dict[str, Any]]:
 
 
 def get_legal_source(source_id: str, as_of_date: str | None = None) -> dict[str, Any]:
-    as_of = _parse_date(as_of_date) or date.today()
+    as_of = _require_date(as_of_date)
     for source in _load_sources():
         if source["id"] == source_id:
             return {**source, "effective_status": _effective_status(source, as_of), "checked_as_of": as_of.isoformat()}
@@ -61,7 +77,7 @@ def search_legal_sources(
 ) -> dict[str, Any]:
     """Search the versioned official-source corpus limited to the A/B/C demo."""
 
-    as_of = _parse_date(as_of_date) or date.today()
+    as_of = _require_date(as_of_date)
     normalized_query = re.sub(r"\s+", "", query).lower()
     requested = set(source_ids or [])
     scored: list[tuple[float, dict[str, Any]]] = []

@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import { api } from '../api'
 import type { CaseView, DocumentRole, DocumentView, ParseStatus, ResultPayload, TaskStatus } from '../api-types'
 import CaseFactsPanel from '../components/CaseFactsPanel.vue'
+import CaseAnalysisDatePanel from '../components/CaseAnalysisDatePanel.vue'
 import CaseRelationsPanel from '../components/CaseRelationsPanel.vue'
 import DocumentParseResult from '../components/DocumentParseResult.vue'
 import ExtractCandidatesPanel from '../components/ExtractCandidatesPanel.vue'
@@ -239,6 +240,7 @@ onUnmounted(stopPolling)
     </div>
 
     <template v-else>
+      <CaseAnalysisDatePanel v-if="caseItem" :case-item="caseItem" @updated="caseItem = $event" />
       <section class="detail-grid">
         <article class="panel">
           <div class="panel-heading"><div><p class="section-index">01</p><h2>材料上传</h2></div></div>

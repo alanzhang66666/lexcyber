@@ -1,20 +1,29 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { ref } from 'vue'
 import { ApiError, api } from '../api'
 import type { SourceSearchHit } from '../api-types'
 
 const hits = ref<SourceSearchHit[]>([])
 const loading = ref(false)
 const error = ref('')
+const asOfDate = ref('')
+const resultDate = ref('')
 
 async function load() {
+  if (!asOfDate.value) {
+    error.value = '请填写法律分析基准日期。'
+    return
+  }
   loading.value = true
   error.value = ''
+  const requestedDate = asOfDate.value
   try {
-    const res = await api.searchSources({ query: '刑法', asOfDate: null, topK: 20 })
+    const res = await api.searchSources({ query: '刑法', asOfDate: requestedDate, topK: 20 })
     hits.value = res.items
+    resultDate.value = requestedDate
   } catch (caught) {
     hits.value = []
+    resultDate.value = ''
     if (caught instanceof ApiError && caught.status === 501) {
       error.value = '法源检索尚未开放。'
     } else {
@@ -25,7 +34,7 @@ async function load() {
   }
 }
 
-onMounted(() => void load())
+
 </script>
 
 <template>
@@ -38,6 +47,11 @@ onMounted(() => void load())
       </div>
       <span class="subtle-chip">已核法源</span>
     </header>
+    <form class="panel form-stack" @submit.prevent="load">
+      <label><span>法律分析基准日期</span><input v-model="asOfDate" type="date" required /></label>
+      <button class="button button-primary" :disabled="loading || !asOfDate">读取该日期的法源</button>
+    </form>
+    <p v-if="hits.length">结果基准日期：{{ resultDate }}</p>
     <p v-if="error" class="notice notice-error" role="alert">{{ error }}</p>
     <div v-if="loading" class="panel empty-state">正在读取已核法源…</div>
     <section v-else class="panel">

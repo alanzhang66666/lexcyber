@@ -7,7 +7,8 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import date
+import re
+from datetime import date, datetime
 from typing import Any
 
 from psycopg import IntegrityError
@@ -44,12 +45,41 @@ class RegistryError(Exception):
         self.code = code
 
 
+def _require_initial_review(item: dict[str, Any], field: str, allowed: tuple[str, ...]) -> None:
+    value = item.get(field, "pending")
+    if not isinstance(value, str) or value not in allowed:
+        raise RegistryError("REGISTRY_REVIEW_REQUIRED",
+                            f"initial {field} must be one of {allowed}; review requires signoff()")
+
+
+_ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def parse_explicit_date(value: date | str | None, field: str = "asOfDate") -> date:
+    """Parse a required legal-analysis date; never substitute the wall clock."""
+    if isinstance(value, datetime):
+        raise RegistryError("INVALID_AS_OF_DATE", f"{field} must be a date without time")
+    if isinstance(value, date):
+        return value
+    if not isinstance(value, str) or not _ISO_DATE.fullmatch(value):
+        raise RegistryError("INVALID_AS_OF_DATE", f"{field} must be an ISO date (YYYY-MM-DD)")
+    try:
+        return date.fromisoformat(value)
+    except ValueError as exc:
+        raise RegistryError("INVALID_AS_OF_DATE", f"{field} must be a valid ISO date (YYYY-MM-DD)") from exc
+
+
+def require_as_of_date(metadata: dict[str, Any]) -> date:
+    return parse_explicit_date(metadata.get("asOfDate"), "metadata.asOfDate")
+
+
 # ---------------------------------------------------------------------------
 # 法源
 # ---------------------------------------------------------------------------
 
 def register_legal_source(item: dict[str, Any]) -> dict[str, Any]:
     """登记一个法源版本（默认 pending）。source_key+source_version 唯一。"""
+    _require_initial_review(item, "verification_level", ("pending", "verified"))
     required = ("source_key", "title", "authority", "source_version", "effective_from")
     missing = [k for k in required if not item.get(k)]
     if missing:
@@ -117,9 +147,10 @@ def resolve_temporal(source_key: str, conduct_date: date | None,
     with connection() as conn:
         rows = conn.execute(
             """
-            SELECT source_id, source_version, effective_from, effective_to, verification_level,
-                   authority, title, article
-            FROM engine.legal_source WHERE source_key = %s ORDER BY effective_from
+            SELECT source_id, source_key, source_version, effective_from, effective_to,
+                   repeal_date, verification_level, authority, title, article,
+                   document_number, jurisdiction, official_url, excerpt, provenance, coverage
+            FROM engine.effective_legal_source WHERE source_key = %s ORDER BY effective_from
             """,
             (source_key,),
         ).fetchall()
@@ -129,40 +160,57 @@ def resolve_temporal(source_key: str, conduct_date: date | None,
 
     def pick(point: date | None):
         if point is None:
-            return None
-        for r in rows:
-            if r[2] <= point and (r[3] is None or point <= r[3]):
-                return r
-        return None
+            return []
+        return [r for r in rows
+                if r[3] <= point and (r[4] is None or point <= r[4])]
 
     conduct = pick(conduct_date)
     judgment = pick(judgment_date)
-    result: dict[str, Any] = {"found": True, "coverageGap": False, "divergence": []}
-    for label, point, hit in (("conduct", conduct_date, conduct), ("judgment", judgment_date, judgment)):
-        if point is not None and hit is None:
+    result: dict[str, Any] = {"found": True, "coverageGap": False,
+                              "overlap": False, "divergence": []}
+    point_hits = (("conduct", conduct_date, conduct), ("judgment", judgment_date, judgment))
+    for label, point, hits in point_hits:
+        if point is not None and not hits:
             result["coverageGap"] = True
             result.setdefault("gaps", []).append(
                 {"point": label, "date": str(point), "detail": "no version covers this date"})
-    if conduct is not None:
-        result["conduct_law"] = _source_view(conduct)
-    if judgment is not None:
-        result["judgment_law"] = _source_view(judgment)
-    if (conduct is not None and judgment is not None
-            and conduct[0] != judgment[0]):
+        if len(hits) > 1:
+            result["overlap"] = True
+            result.setdefault("overlaps", []).append({
+                "point": label, "date": str(point),
+                "candidates": [_source_view(row) for row in hits],
+            })
+        elif hits:
+            result[f"{label}_law"] = _source_view(hits[0])
+        result.setdefault("resolutions", {})[label] = {
+            "date": str(point) if point is not None else None,
+            "candidates": [_source_view(row) for row in hits],
+        }
+    if (len(conduct) == 1 and len(judgment) == 1
+            and conduct[0][0] != judgment[0][0]):
         result["divergence"] = [{
             "code": "LAW_VERSION_DIVERGENCE",
             "detail": "行为时点与裁判时点落在同一法源的不同版本区间，须人工择法",
-            "conductVersion": conduct[1], "judgmentVersion": judgment[1],
+            "conductVersion": conduct[0][2], "judgmentVersion": judgment[0][2],
         }]
+    if result["overlap"]:
+        result["divergence"].append({
+            "code": "LAW_VERSION_OVERLAP",
+            "detail": "法源有效区间重叠，无法自动选择版本",
+            "points": [item["point"] for item in result["overlaps"]],
+        })
     return result
 
 
 def _source_view(row) -> dict[str, Any]:
     return {
-        "sourceId": str(row[0]), "sourceVersion": row[1],
-        "effectiveFrom": str(row[2]), "effectiveTo": str(row[3]) if row[3] else None,
-        "verificationLevel": row[4], "authority": row[5],
-        "title": row[6], "article": row[7],
+        "sourceId": str(row[0]), "sourceKey": row[1], "sourceVersion": row[2],
+        "effectiveFrom": str(row[3]), "effectiveTo": str(row[4]) if row[4] else None,
+        "repealDate": str(row[5]) if row[5] else None,
+        "verificationLevel": row[6], "authority": row[7],
+        "title": row[8], "article": row[9], "documentNumber": row[10],
+        "jurisdiction": row[11], "officialUrl": row[12], "excerpt": row[13],
+        "provenance": row[14], "coverage": row[15] or {},
     }
 
 
@@ -171,12 +219,22 @@ def _source_view(row) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 def register_rule_package(item: dict[str, Any]) -> dict[str, Any]:
+    from engine.rules.conviction_paths import validate_candidate_path_definitions
+
+    _require_initial_review(item, "legal_review_status", ("pending",))
     required = ("rule_id", "rule_version", "family", "predicate", "outcome")
     missing = [k for k in required if item.get(k) is None]
     if missing:
         raise RegistryError("INVALID_RULE_PACKAGE", f"missing fields: {missing}")
     if item["family"] not in FAMILIES:
         raise RegistryError("INVALID_RULE_PACKAGE", f"unknown family {item['family']}")
+    path_errors = validate_candidate_path_definitions(item["outcome"])
+    if isinstance(item["outcome"], dict) and "candidate_paths" in item["outcome"] and item["family"] not in {"conviction", "distinction"}:
+        raise RegistryError("INVALID_CONVICTION_PATH_PLAN", "candidate_paths requires conviction or distinction family")
+    if path_errors:
+        raise RegistryError("INVALID_CONVICTION_PATH_PLAN", str(path_errors))
+    if isinstance(item["outcome"], dict) and "candidate_paths" in item["outcome"] and not item.get("source_ids"):
+        raise RegistryError("INVALID_CONVICTION_PATH_PLAN", "declared paths require registered legal sources")
     content_hash = item.get("content_hash") or _canonical_hash({
         k: item.get(k) for k in ("rule_id", "rule_version", "family", "predicate",
                                  "outcome", "source_ids", "coverage", "required_evidence_kinds")
@@ -217,6 +275,7 @@ def register_rule_package(item: dict[str, Any]) -> dict[str, Any]:
 
 
 def register_template(item: dict[str, Any]) -> dict[str, Any]:
+    _require_initial_review(item, "legal_review_status", ("pending",))
     required = ("template_id", "template_version", "doc_type", "body_template")
     missing = [k for k in required if not item.get(k)]
     if missing:
@@ -295,11 +354,11 @@ def capabilities() -> dict[str, Any]:
     """每个模块的可用性 = 所需 family 全部存在 approved 规则包。"""
     with connection() as conn:
         rows = conn.execute(
-            "SELECT family, rule_id, rule_version FROM engine.rule_package"
+            "SELECT family, rule_id, rule_version FROM engine.effective_rule_package"
             " WHERE legal_review_status = 'approved' ORDER BY family, rule_id"
         ).fetchall()
         templates = conn.execute(
-            "SELECT template_id, template_version, doc_type FROM engine.template_package"
+            "SELECT template_id, template_version, doc_type FROM engine.effective_template_package"
             " WHERE legal_review_status = 'approved' ORDER BY template_id"
         ).fetchall()
         pending = conn.execute(
@@ -339,7 +398,7 @@ def active_template(doc_type: str) -> dict[str, Any] | None:
             """
             SELECT template_id, template_version, field_schema,
                    body_template, content_hash
-            FROM engine.template_package
+            FROM engine.effective_template_package
             WHERE doc_type = %s AND legal_review_status = 'approved'
             ORDER BY created_at DESC LIMIT 1
             """,
@@ -353,19 +412,20 @@ def active_template(doc_type: str) -> dict[str, Any] | None:
     }
 
 
-def active_rules(family: str, as_of: date | None = None) -> list[dict[str, Any]]:
+def active_rules(family: str, as_of: date | str | None = None) -> list[dict[str, Any]]:
     """产出路径专用：只读 approved 且在有效期内的规则包（INV-RULE-002）。"""
     if family not in FAMILIES:
         raise RegistryError("INVALID_FAMILY", f"unknown family {family}")
+    as_of = parse_explicit_date(as_of)
     with connection() as conn:
         rows = conn.execute(
             """
             SELECT rule_package_id, rule_id, rule_version, source_ids, predicate, outcome,
                    required_evidence_kinds, coverage, content_hash
-            FROM engine.rule_package
+            FROM engine.effective_rule_package
             WHERE family = %s AND legal_review_status = 'approved'
-              AND (effective_from IS NULL OR effective_from <= COALESCE(%s, current_date))
-              AND (effective_to IS NULL OR effective_to >= COALESCE(%s, current_date))
+              AND (effective_from IS NULL OR effective_from <= %s)
+              AND (effective_to IS NULL OR effective_to >= %s)
             ORDER BY rule_id
             """,
             (family, as_of, as_of),
@@ -378,9 +438,9 @@ def active_rules(family: str, as_of: date | None = None) -> list[dict[str, Any]]
     } for r in rows]
 
 
-def coverage_check(family: str, needed_keys: list[str]) -> dict[str, Any]:
+def coverage_check(family: str, needed_keys: list[str], as_of: date | str | None = None) -> dict[str, Any]:
     """INV-LEGAL-007：覆盖边界外的查询返回明确缺口，不返回近似结果。"""
-    active = active_rules(family)
+    active = active_rules(family, as_of)
     covered: set[str] = set()
     for rule in active:
         cov = rule.get("coverage") or {}

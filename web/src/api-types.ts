@@ -281,6 +281,8 @@ export type DraftView = {
   updatedAt: string
   templateVersion?: string | null
   sourceVersion?: string | null
+  /** The immutable artifact version backing this manual draft, when available. */
+  artifactVersionId?: string | null
 }
 
 export type ModuleStateUpdate = {
@@ -288,6 +290,15 @@ export type ModuleStateUpdate = {
   content: Record<string, unknown>
   sourceVersion?: string | null
   version: number
+}
+
+export type RequestedCharge = {
+  requestedCharge: string
+  chargeKey?: string | null
+}
+
+export type ModuleDispatchOptions = {
+  requestedCharges?: RequestedCharge[]
 }
 
 export type ModuleStateView = {
@@ -402,10 +413,20 @@ export type CandidatePath = {
   id?: string | null
   title: string
   kind?: CandidatePathKind | null
+  actorId?: string | null
+  chargeKey?: string | null
   summary?: string | null
+  exclusionReason?: string | null
+  exclusionPending?: boolean
   supporting?: EvidenceRef[]
   contrary?: EvidenceRef[]
+  legalSourceIds?: string[]
+  ruleId?: string | null
+  ruleVersion?: string | null
+  point?: 'as_of' | 'conduct' | 'judgment' | null
   status?: VerificationStatus | null
+  calculationStatus?: 'calculated' | 'blocked' | null
+  blockers?: Blocker[]
 }
 
 /** 合规事实清单项（C 案）：T3 `analyses.compliance.checklist[]` 的维度 + 客观状态 + 证据，不做合规等级→罪责映射。 */
@@ -463,7 +484,19 @@ export type SentencingStep = {
   value?: string | null
 }
 
+/** sentencing.v2 的逐规则结果，保留审计所需的规则状态与计算明细。 */
+export type SentencingRuleResult = {
+  ruleId?: string | null
+  ruleVersion?: string | null
+  status?: string | null
+  termMonths?: number | null
+  fine?: string | null
+  steps?: SentencingStep[]
+  blockers?: Blocker[]
+}
+
 export type SentencingResult = {
+  status?: string | null
   ruleVersion?: string | null
   parameters?: SentencingParameter[]
   steps?: SentencingStep[]
@@ -471,6 +504,7 @@ export type SentencingResult = {
   missing?: string[]
   amounts?: AmountEntry[]
   blockers?: Blocker[]
+  ruleResults?: SentencingRuleResult[]
 }
 
 /* ── 协作导入（case-import.v1；独立于案件工作链路）── */

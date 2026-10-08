@@ -4,12 +4,13 @@ import hashlib
 import secrets
 import tempfile
 from pathlib import Path
+from typing import Any
 from uuid import UUID
 
 import dramatiq
-from fastapi import Depends, FastAPI, Header, HTTPException, status
+from fastapi import Body, Depends, FastAPI, Header, HTTPException, Response, status
 
-from engine.adapters.sources import SourceSearchUnavailable
+from engine.adapters.sources import SourceDateError, SourceSearchUnavailable
 from engine.adapters.sources import search as search_sources_adapter
 from engine.adapters.t1_contract import build_t1_case_create, build_t1_fact_view, build_t1_module_state
 from engine.contracts import (
@@ -21,8 +22,15 @@ from engine.contracts import (
     SourceSearchResponse,
     canonical_input_hash,
 )
+from engine.docx_export import DOCX_MIME, DocxExportError, DocxExportRequest, render_docx
 from engine.import_package import ImportPackageValidationError, load_import_package
 from engine.object_store import fetch_object_bytes
+from engine.rules.dependency_validity import (
+    validate_dependency_request,
+    verify_coordination,
+    verify_dependencies,
+)
+from engine.rules.registry import RegistryError
 from engine.settings import settings
 from engine.store import claim_enqueue, create_execution, get_execution, mark_enqueued, release_enqueue
 
@@ -34,9 +42,71 @@ def require_service_token(x_service_token: str = Header(default="")) -> None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid service token")
 
 
+@app.post("/internal/v1/registry/verify-dependencies", dependencies=[Depends(require_service_token)])
+def verify_registry_dependencies(payload: Any = Body(default=None)) -> dict:
+    parsed, errors = validate_dependency_request(payload)
+    if errors:
+        raise HTTPException(status_code=400, detail={"code": "INVALID_REGISTRY_DEPENDENCIES", "errors": errors})
+    from engine.store import connection
+    try:
+        with connection() as conn:
+            if not verify_coordination(conn, parsed["backendPid"], parsed["challenge"]):
+                raise HTTPException(status_code=409, detail={"code": "REGISTRY_COORDINATION_REQUIRED"})
+            invalid = verify_dependencies(conn, parsed["dependencies"])
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="registry persistence unavailable") from exc
+    return {"valid": not invalid, "invalidDependencies": invalid}
+
+
+@app.get("/internal/v1/registry/invalidations", dependencies=[Depends(require_service_token)])
+def registry_invalidations(limit: int = 100) -> dict:
+    if limit < 1 or limit > 100:
+        raise HTTPException(status_code=400, detail={"code": "INVALID_LIMIT"})
+    from engine.store import connection
+    try:
+        with connection() as conn:
+            rows = conn.execute("SELECT event_id, dependencies, created_at FROM engine.registry_invalidation_event WHERE acknowledged_at IS NULL ORDER BY created_at, event_id LIMIT %s", (limit,)).fetchall()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="registry persistence unavailable") from exc
+    return {"events": [{"eventId": str(row[0]), "occurredAt": row[2].isoformat(), "dependencies": row[1]} for row in rows]}
+
+
+@app.post("/internal/v1/registry/invalidations/{event_id}/ack", dependencies=[Depends(require_service_token)])
+def acknowledge_registry_invalidation(event_id: UUID) -> dict:
+    from engine.store import connection
+    try:
+        with connection() as conn:
+            row = conn.execute("UPDATE engine.registry_invalidation_event SET acknowledged_at = COALESCE(acknowledged_at, now()) WHERE event_id = %s RETURNING event_id", (event_id,)).fetchone()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="registry persistence unavailable") from exc
+    if row is None:
+        raise HTTPException(status_code=404, detail="invalidation event not found")
+    return {"acknowledged": True}
+
+
 @app.get("/healthz")
 def healthz() -> dict[str, str]:
     return {"status": "ok", "service": "lexcyber-engine", "version": "0.8.0"}
+
+
+@app.post(
+    "/internal/v1/draft-exports/docx",
+    dependencies=[Depends(require_service_token)],
+    response_class=Response,
+)
+def export_draft_docx(payload: DocxExportRequest) -> Response:
+    """Render one exact immutable draft version; never consults a mutable head."""
+    try:
+        content = render_docx(payload.model_dump(mode="python"))
+    except DocxExportError as exc:
+        raise HTTPException(status_code=422, detail=exc.code) from exc
+    return Response(
+        content=content,
+        media_type=DOCX_MIME,
+        headers={"Content-Disposition": "attachment; filename=lexcyber-draft.docx", "Cache-Control": "no-store"},
+    )
 
 
 @app.post("/internal/v1/executions", status_code=status.HTTP_202_ACCEPTED, dependencies=[Depends(require_service_token)])
@@ -129,18 +199,22 @@ def signoff_endpoint(payload: dict) -> dict:
 
 @app.post("/internal/v1/registry/resolve", dependencies=[Depends(require_service_token)])
 def resolve_temporal_endpoint(payload: dict) -> dict:
-    from datetime import date as _date
+    from engine.rules.registry import RegistryError, parse_explicit_date, resolve_temporal
 
-    from engine.rules.registry import resolve_temporal
-
-    def _parse(value):
-        return _date.fromisoformat(value) if value else None
-
-    return resolve_temporal(
-        payload.get("sourceKey", ""),
-        _parse(payload.get("conductDate")),
-        _parse(payload.get("judgmentDate")),
-    )
+    source_key = payload.get("sourceKey")
+    if not isinstance(source_key, str) or not source_key.strip():
+        raise HTTPException(status_code=400, detail={
+            "code": "INVALID_SOURCE_KEY", "message": "sourceKey is required"})
+    try:
+        conduct = payload.get("conductDate")
+        judgment = payload.get("judgmentDate")
+        return resolve_temporal(
+            source_key,
+            parse_explicit_date(conduct, "conductDate") if conduct is not None else None,
+            parse_explicit_date(judgment, "judgmentDate") if judgment is not None else None,
+        )
+    except RegistryError as exc:
+        raise HTTPException(status_code=400, detail={"code": exc.code, "message": str(exc)}) from exc
 
 
 @app.get("/internal/v1/executions/{execution_id}", dependencies=[Depends(require_service_token)])
@@ -160,6 +234,8 @@ def search_sources(payload: SourceSearchRequest) -> SourceSearchResponse:
         items = search_sources_adapter(payload.model_dump())
     except SourceSearchUnavailable as exc:
         raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail=exc.code) from exc
+    except (RegistryError, SourceDateError) as exc:
+        raise HTTPException(status_code=400, detail={"code": exc.code, "message": str(exc)}) from exc
     return SourceSearchResponse.model_validate({"items": items})
 
 

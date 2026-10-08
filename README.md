@@ -36,11 +36,16 @@ Copy-Item .env.v03.example .env.v03
 docker compose --env-file .env.v03 up --build
 ```
 
-Open `http://127.0.0.1:18080`. The console submits a generic stub task, polls
-its state, displays the result reference, and can approve or reject a
-development review. The default `WORKFLOW_PROFILE=stub` needs no external model
-key. `.env.v03` is gitignored; put real `MODEL_*` values there only when you
-need a live model call.
+Open `http://127.0.0.1:18080` and register or log in before using the console.
+After signing in, open `/tasks` to submit a generic stub task and poll its
+state. The result reference identifies the stored result; reviews require a
+session and an owned case. The curl example below accepts a caseless generic
+stub task without login. The default `WORKFLOW_PROFILE=stub` needs no external model
+key. `.env.v03` is gitignored. For a live model call, replace the stub settings
+with your provider's `MODEL_PROVIDER`, `MODEL_NAME`, `MODEL_API_BASE_URL` and
+`MODEL_API_KEY`. For an OpenAI-compatible endpoint, use `MODEL_PROVIDER=openai`.
+The model-probe and local-closeout commands below require these real settings;
+they are separate from the offline demo.
 
 ```powershell
 curl.exe http://127.0.0.1:18080/healthz
@@ -55,6 +60,13 @@ immutable Stub content. Caseless stub tasks stay public so this path still works
 without a session. Reviews require Bearer and are scoped to cases the account
 owns (`GET /v1/reviews`); see [`docs/archive/t1-api-01-increment.md`](docs/archive/t1-api-01-increment.md).
 
+For legal module execution, fill the analysis date when creating the case.
+For an existing undated case, set it in the case workspace before dispatching.
+Executions bind this date, and retries retain it. Changing the date preserves
+historical versions and invalidates confirmed modules and approved drafts;
+run and review new results under the new date. Source searches also require
+an explicit analysis date. Missing dates never default to today.
+
 ## T1 on main
 
 Measured against the public API (`contracts/public-api.yaml`). Request and
@@ -67,7 +79,7 @@ Three-case field increment and owner-scoped reviews: [`docs/archive/t1-api-01-in
 | Auto-parse | Engine re-reads stored bytes and returns `workflow.output` with `content.schemaVersion=document.parse.v1` (locators). Fatal/timeout map to `DOCUMENT_PARSE_FAILED` / `DOCUMENT_PARSE_TIMEOUT`. |
 | Facts | `GET`/`PUT /v1/cases/{id}/facts` and `POST .../facts/confirm`. Confirm locks further `PUT` (`409`). Optional item `verificationStatus` / `sourceVersion`; case-level confirm does not rewrite item status. |
 | Reviews | Bearer + owner case via task / draft / stored `case_id`. Payload includes `caseId` and derived `module`. Optional `?module=` / `?archiveStatus=`. `POST /v1/cases/{id}/reviews` can open a review without a task. `POST /v1/reviews/{id}/archive`. Other-case / missing → `404`; unauthenticated list is `401`, not the global queue. |
-| Drafts | Opaque `GET`/`POST`/`PUT /v1/cases/{id}/drafts`. Body is a string; version mismatch is `409`. Optional `templateVersion` / `sourceVersion`. A successful `PUT` supersedes pending/approved reviews on the old draft version. No Word/PDF and no legal checks. |
+| Drafts | Opaque `GET`/`POST`/`PUT /v1/cases/{id}/drafts`. Body is a string; version mismatch is `409`. Optional `templateVersion` / `sourceVersion`; `artifactVersionId` identifies the immutable body. A successful `PUT` supersedes pending/approved reviews on the old draft version. Download Word auxiliary drafts through `GET /v2/cases/{caseId}/artifact-versions/{artifactVersionId}/export.docx` with Bearer and case ownership; blocked, empty or unresolved bodies return `409`. The server renders real DOCX and verifies its MinIO round trip. Historical downloads preserve their exact version and do not imply current approval. No PDF or substantive legal validation. |
 | Compliance / conviction shells | Opaque `GET`/`PUT`/`confirm` on `/v1/cases/{id}/compliance` and `/conviction`. Empty GET is `version=0`. Confirmed shells reject further `PUT` (`409 MODULE_CONFIRMED`). `factsStale` is computed; content is not legally validated. |
 | Source search | Public `POST /v1/sources/search` stays `501 SOURCE_SEARCH_UNAVAILABLE` while `LEGAL_SOURCE_SEARCH_ENABLED=false`. The T3 adapter is in Engine; the default Compose flag is off. |
 | Sentencing | Public create stays `501 SENTENCING_UNAVAILABLE` while Java `SENTENCING_ENABLED=false`. When enabled, unconfirmed facts return `409 FACTS_NOT_CONFIRMED`. Java and Engine flags must both be on; Java-only create becomes a `failed` task. |

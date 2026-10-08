@@ -35,12 +35,16 @@ describe('module-content 归一化', () => {
       candidate_paths: [
         { id: 'p1', label: '帮信', baseline_position: 'selected' },
         { id: 'p2', label: '掩隐', baseline_position: 'alternative_to_examine' },
-        { id: 'p3', label: '诈骗共犯', baseline_position: 'excluded' },
+        { id: 'p3', label: '诈骗共犯', baseline_position: 'excluded', exclusion_reason: '明确的排除理由', summary: '独立概述' },
       ],
     })
     expect(paths.map((p) => p.kind)).toEqual(['candidate', 'alternative', 'excluded'])
     expect(paths[0].title).toBe('帮信')
     expect(paths[2].title).toBe('诈骗共犯')
+    expect(paths[2].exclusionReason).toBe('明确的排除理由')
+    expect(paths[2].summary).toBe('独立概述')
+    expect(paths[0].exclusionReason).toBeUndefined()
+    expect(toCandidatePaths({ candidatePaths: [{ title: '兼容字段', exclusionReason: '既有理由' }] })[0].exclusionReason).toBe('既有理由')
   })
 
   it('合规清单从 checklist 提取维度/状态/证据', () => {
