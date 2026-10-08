@@ -339,8 +339,15 @@ public class TaskService {
             }
             // Keep the upstream version effective until the new outbox entry is
             // committed, using the same stream → head gate as first dispatch.
-            UUID effective = moduleConfirmation.requireEffectiveArtifactVersion(
-                    caseId, String.valueOf(entry.getKey()));
+            UUID effective;
+            try {
+                effective = moduleConfirmation.requireEffectiveArtifactVersion(
+                        caseId, String.valueOf(entry.getKey()));
+            } catch (ApiException unavailable) {
+                if (!"MODULE_NOT_CONFIRMED".equals(unavailable.code())) throw unavailable;
+                throw new ApiException(HttpStatus.CONFLICT, "DEPENDENCY_STALE",
+                        "上游模块已失效，必须重新派发", unavailable);
+            }
             if (!version.equals(effective)) {
                 throw new ApiException(HttpStatus.CONFLICT, "DEPENDENCY_STALE", "上游版本已变更，必须重新派发");
             }

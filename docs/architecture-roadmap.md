@@ -206,3 +206,5 @@
 - V8 同时冻结 signed_off/disputed/unsupported 法源版本的全部内容字段；已撤回法源不可原版本改写、重置初审或删除。原内容可以依法重新会签；内容变化必须新版本。会签备注变化或多份批准中删除一份、仍有有效批准时不误发撤回。复合身份从所有者原始字段读取，包含@的ID不拆分。
 - 新回归包括实际数据库双锁证明、blocked writer释放/rollback、V7→V8带历史升级、source/rule/template失效、递归/空版本/事件时间/UUID receipt，以及公开HTTP待审审批原子拒绝、历史归档和DOCX字节不变、审批与直接数据库规则停用并发。新增测试尚待本补丁精确SHA的完整CI验收；本地缺Docker的数据库用例不计为通过。
 - 正式法学会签、真实语料按人路径/B/C映射及量刑校正继续依赖负责人资料；本补丁不伪造批准或更改遗留501门闩。
+
+- 首次A27 CI 37742100182（6ed00ba）Java184项中1失败/3错误：重试失效模块返回码偏离原DEPENDENCY_STALE、新测试引用已退役case_drafts.body/version字段。修正为仅转换MODULE_NOT_CONFIRMED（不把Registry503伪装409）和现役文书描述符字段，保留数据库/并发/历史业务断言；首轮Compose因Java失败未运行。后续成功必须以新SHA完整CI为准。

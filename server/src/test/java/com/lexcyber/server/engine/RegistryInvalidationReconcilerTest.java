@@ -173,7 +173,7 @@ class RegistryInvalidationReconcilerTest {
         jdbc.update("UPDATE app.artifact_stream SET latest_version_id=? WHERE artifact_stream_id=?", root, rootStream);
         jdbc.update("INSERT INTO app.module_head(case_id, module, artifact_stream_id, confirmed_version_id, stale, stale_reason) VALUES (?, 'compliance', ?, ?, false, NULL)",
                 caseId, rootStream, root);
-        jdbc.update("INSERT INTO app.case_drafts(id, case_id, draft_type, body, version, updated_by) VALUES (?, ?, 'indictment', '', 1, ?)",
+        jdbc.update("INSERT INTO app.case_drafts(id, case_id, draft_type, updated_by) VALUES (?, ?, 'indictment', ?)",
                 draft, caseId, account);
         jdbc.update("INSERT INTO app.artifact_stream(artifact_stream_id, case_id, kind, scope_key) VALUES (?, ?, 'draft', ?)",
                 draftStream, caseId, "draft:" + draft);
