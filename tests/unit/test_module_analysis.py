@@ -1,6 +1,8 @@
 """模块分析适配器单测：registry 打桩，验证 payload 形状与阻断语义。"""
 from __future__ import annotations
 
+import datetime
+
 import pytest
 
 from engine.adapters import module_analysis
@@ -96,7 +98,7 @@ def test_conviction_declared_single_path_is_incomplete(monkeypatch):
         "when_true": {"baseline_position": "candidate"},
         "when_false": {"baseline_position": "excluded", "exclusion_reason": "reason"},
     }]}
-    rule = {**APPROVED_RULE, "outcome": one_path}
+    rule = {**APPROVED_RULE, "coverage": {"covers": ["charge.one"]}, "outcome": one_path}
     monkeypatch.setattr(module_analysis.registry, "active_rules",
                         lambda fam, *_: [rule] if fam == "conviction" else [])
     monkeypatch.setattr(module_analysis, "_resolve_sources", lambda *a, **k: EMPTY_TEMPORAL)
@@ -122,7 +124,7 @@ def test_temporal_semantics_ignore_candidate_declaration_labels():
 
 
 def test_temporal_declared_false_rule_source_enters_dependencies(monkeypatch):
-    path_rule = {**APPROVED_RULE, "sourceIds": ["temporal-source"], "predicate": {
+    path_rule = {**APPROVED_RULE, "sourceIds": ["temporal-source"], "coverage": {"covers": ["c"]}, "predicate": {
         "path": "facts.upstream_crime_completed.value", "op": "eq", "value": False},
         "outcome": {"candidate_paths": [{
             "path_id": "p1", "label": "p", "charge_key": "c", "actor_fact_key": "actor_fact",
@@ -143,6 +145,19 @@ def test_temporal_declared_false_rule_source_enters_dependencies(monkeypatch):
     })
     body = analyze(_payload("conviction.analyze"), "conviction.analyze")["final_output"]
     assert "temporal-source" in body["dependency_snapshot"]["sources"]
+
+
+@pytest.mark.parametrize("known", [(datetime.date(2024, 3, 1), None),
+                                    (None, datetime.date(2026, 2, 1))])
+def test_single_known_legal_date_gets_its_own_temporal_path(monkeypatch, known):
+    monkeypatch.setattr(module_analysis.registry, "active_rules",
+                        lambda fam, *_: [APPROVED_RULE] if fam == "compliance" else [])
+    paths = module_analysis._temporal_paths(
+        _payload(), "compliance", "case.compliance.v2", "compliance", SNAPSHOT,
+        "facts_version:fv-9", "fv-9", *known, True,
+        lambda *_: {"divergence": [], "blockers": [], "source_versions": [], "resolutions": {}})
+    assert len(paths) == 1
+    assert paths[0]["point"] == ("conduct" if known[0] else "judgment")
 
 
 def test_predicate_error_blocks_not_crashes(monkeypatch):

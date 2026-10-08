@@ -1,6 +1,6 @@
 import { computed, onScopeDispose, ref, type Ref } from 'vue'
 import { api, apiV2 } from '../api'
-import type { CaseView, ModuleApplicability, ModuleName, ModuleStateView } from '../api-types'
+import type { CaseView, ModuleApplicability, ModuleDispatchOptions, ModuleName, ModuleStateView } from '../api-types'
 import { isPlaceholderCaseId } from '../data/placeholder-cases'
 import { rememberT1Case } from '../lib/current-case'
 
@@ -81,11 +81,12 @@ export function useCaseModule(caseId: Ref<string>, module: ModuleName) {
     }
   }
 
-  async function dispatch() {
+  async function dispatch(options?: ModuleDispatchOptions | Event) {
     dispatching.value = true
     dispatchError.value = ''
     try {
-      const created = await apiV2.dispatchModuleExecution(caseId.value, module)
+      const dispatchOptions = options instanceof Event ? undefined : options
+      const created = await apiV2.dispatchModuleExecution(caseId.value, module, dispatchOptions)
       const executionId = String(created.executionId ?? '')
       if (!executionId) throw new Error('派发响应缺少 executionId')
       await pollExecution(executionId)

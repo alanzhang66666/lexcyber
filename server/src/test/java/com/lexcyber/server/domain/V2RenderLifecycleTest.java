@@ -211,6 +211,43 @@ class V2RenderLifecycleTest {
     }
 
     @Test
+    void convictionChargeRequestsAreFrozenInOutboxAndRetry() throws Exception {
+        Map<String, Object> requested = new java.util.LinkedHashMap<>();
+        requested.put("requestedCharge", "明确请求的原始名称");
+        requested.put("chargeKey", "explicit.key");
+        Map<String, Object> dispatched = lifecycle.dispatchModuleExecution(owner, caseView.id(), "conviction",
+                Map.of("requestedCharges", List.of(requested)));
+        UUID taskId = (UUID) dispatched.get("taskId");
+        UUID executionId = (UUID) dispatched.get("executionId");
+        requested.put("chargeKey", "caller.changed.after.dispatch");
+        JsonNode original = MAPPER.readTree(jdbc.queryForObject(
+                "SELECT payload_json::text FROM app.task_dispatch_outbox WHERE task_id=? AND execution_id=?",
+                String.class, taskId, executionId));
+        assertEquals("explicit.key", original.path("metadata").path("requestedCharges").get(0).path("chargeKey").asText());
+        assertEquals("明确请求的原始名称", original.path("metadata").path("requestedCharges").get(0).path("requestedCharge").asText());
+        jdbc.update("UPDATE app.tasks SET status='failed' WHERE id=?", taskId);
+        EngineCapabilitiesClient caps = mock(EngineCapabilitiesClient.class);
+        when(caps.moduleAvailable(anyString())).thenReturn(true);
+        TaskView retry = tx.execute(status -> new TaskService(jdbc, MAPPER, false, caps).retry(taskId));
+        JsonNode retried = MAPPER.readTree(jdbc.queryForObject(
+                "SELECT payload_json::text FROM app.task_dispatch_outbox WHERE task_id=? AND execution_id=?",
+                String.class, taskId, retry.executionId()));
+        assertEquals(original.path("metadata"), retried.path("metadata"));
+        assertEquals(original.path("input_hash"), retried.path("input_hash"));
+        assertEquals(original.path("input_snapshot_ref"), retried.path("input_snapshot_ref"));
+    }
+
+    @Test
+    void invalidChargeRequestDoesNotCreateATask() {
+        ApiException error = assertThrows(ApiException.class,
+                () -> lifecycle.dispatchModuleExecution(owner, caseView.id(), "conviction",
+                        Map.of("requestedCharges", "invalid-array")));
+        assertEquals("INVALID_REQUESTED_CHARGES", error.code());
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM app.tasks WHERE case_id=?::uuid",
+                Integer.class, caseView.id()));
+    }
+
+    @Test
     void callbackUsesFrozenV1DependenciesAndApprovalRejectsStaleUpstream() throws Exception {
         UUID complianceV1 = insertConfirmedModuleVersion(caseView.id(), "compliance", "{\"rule\":\"v1\"}");
         Map<String, Object> dispatched = lifecycle.dispatchDraftRender(owner, caseView.id(), "judgment");

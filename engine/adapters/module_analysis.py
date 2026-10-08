@@ -15,6 +15,13 @@ from typing import Any
 
 from engine.adapters import legal_temporal
 from engine.rules import registry
+from engine.rules.charge_coverage import (
+    coverage_for_rules,
+    coverage_keys_for_rules,
+    missing_plan_items,
+    parse_requested_charges,
+    plan_coverage_rule_versions,
+)
 from engine.rules.conviction_paths import (
     execute_candidate_paths,
     validate_candidate_path_definitions,
@@ -39,6 +46,13 @@ _FAMILIES = {
 def analyze(payload: dict[str, Any], task_type: str) -> dict[str, Any]:
     family, schema_version, module = _FAMILIES[task_type]
     metadata = payload.get("metadata") or {}
+    if "requestedCharges" in metadata and metadata.get("requestedCharges") is None:
+        raise ModuleAnalysisError("INVALID_REQUESTED_CHARGES", "requestedCharges must be an array when supplied")
+    requested_charges, request_blockers = parse_requested_charges(metadata.get("requestedCharges"))
+    if request_blockers:
+        raise ModuleAnalysisError("INVALID_REQUESTED_CHARGES", request_blockers[0]["reason"])
+    if requested_charges and task_type != "conviction.analyze":
+        raise ModuleAnalysisError("INVALID_REQUESTED_CHARGES", "requestedCharges is supported only for conviction analysis")
     snapshot = metadata.get("factsSnapshot")
     if not isinstance(snapshot, dict):
         raise ModuleAnalysisError(
@@ -54,7 +68,6 @@ def analyze(payload: dict[str, Any], task_type: str) -> dict[str, Any]:
     date_resolution = legal_temporal.resolve_case_dates(snapshot, input_validator)
     conduct_date = date_resolution["conduct"]
     judgment_date = date_resolution["judgment"]
-    both_dates = conduct_date is not None and judgment_date is not None
 
     families = [family]
     if module == "conviction":
@@ -70,7 +83,7 @@ def analyze(payload: dict[str, Any], task_type: str) -> dict[str, Any]:
             missing.append(fam)
         rules.extend({"family": fam, **r} for r in active)
     primary_rule_blockers: list[dict[str, Any]] = []
-    if missing and not both_dates:
+    if missing and conduct_date is None and judgment_date is None:
         raise ModuleAnalysisError(
             "MODULE_RULES_UNAVAILABLE",
             f"无已会签规则包覆盖 family: {', '.join(missing)}")
@@ -85,6 +98,17 @@ def analyze(payload: dict[str, Any], task_type: str) -> dict[str, Any]:
     candidate_paths: list[dict[str, Any]] = []
     blockers: list[dict[str, Any]] = primary_rule_blockers[:]
     fired_sources: set[str] = set()
+    asof_charge_checks, asof_missing = coverage_for_rules(
+        requested_charges, rules, point="as_of", date=as_of_date.isoformat())
+    asof_missing.extend(missing_plan_items(rules, coverage_keys_for_rules(rules),
+                                           point="as_of", date=as_of_date.isoformat()))
+    blockers.extend({"code": "CHARGE_OUT_OF_COVERAGE", **item} for item in asof_missing)
+    fired_sources.update(str(source_id) for check in asof_charge_checks
+                         for version in check.get("rule_versions", [])
+                         for source_id in version.get("sourceIds", []))
+    fired_sources.update(str(source_id) for version in plan_coverage_rule_versions(rules)
+                         for source_id in version.get("sourceIds", []))
+    coverage_keys = coverage_keys_for_rules(rules)
     for rule in rules:
         try:
             fired, trace = evaluate(rule["predicate"], view)
@@ -104,7 +128,8 @@ def analyze(payload: dict[str, Any], task_type: str) -> dict[str, Any]:
             blockers.extend(declared_path_blockers)
         paths_for_rule, path_blockers = execute_candidate_paths(
             rule=rule, snapshot=snapshot, input_validator=input_validator,
-            fired=fired, predicate_blockers=input_blockers + evidence.get("blockers", []))
+            fired=fired, predicate_blockers=input_blockers + evidence.get("blockers", []),
+            coverage_keys=coverage_keys)
         if paths_for_rule:
             candidate_paths.extend(paths_for_rule)
             blockers.extend(path_blockers)
@@ -136,12 +161,19 @@ def analyze(payload: dict[str, Any], task_type: str) -> dict[str, Any]:
     temporal_paths = _temporal_paths(
         payload, family, schema_version, module, snapshot, input_ref,
         facts_version_id, conduct_date, judgment_date,
-        both_dates, _resolve_sources,
+        (conduct_date is not None or judgment_date is not None), _resolve_sources, requested_charges,
     )
     path_source_ids = {str(source_id) for path in temporal_paths
                        for rule in path.get("rules", [])
                        for source_id in rule.get("sourceIds", [])
                        if rule.get("fired") or rule.get("candidate_paths")}
+    path_source_ids.update(str(source_id) for path in temporal_paths
+                           for check in path.get("charge_coverage", [])
+                           for version in check.get("rule_versions", [])
+                           for source_id in version.get("sourceIds", []))
+    path_source_ids.update(str(source_id) for path in temporal_paths
+                           for version in path.get("plan_coverage_rule_versions", [])
+                           for source_id in version.get("sourceIds", []))
     if path_source_ids - fired_sources:
         path_temporal = deepcopy(_resolve_sources(path_source_ids, conduct_date, judgment_date))
         divergence.extend(path_temporal.get("divergence", []))
@@ -151,16 +183,34 @@ def analyze(payload: dict[str, Any], task_type: str) -> dict[str, Any]:
             ("sourceId", "sourceVersion", "point"),
         )
         temporal["resolutions"].update(path_temporal.get("resolutions", {}))
+        fired_sources.update(path_source_ids)
     path_semantics = _path_semantic_results(temporal_paths)
     if len(path_semantics) == 2 and path_semantics[0] != path_semantics[1]:
         divergence.append({"code": "RULE_DATE_PATH_DIVERGENCE",
                            "detail": "行为与裁判时点的规则业务结果不同，须人工择法"})
     for path in temporal_paths:
         candidate_paths.extend(path.get("candidate_paths", []))
+        asof_charge_checks.extend(path.get("charge_coverage", []))
+        asof_missing.extend(path.get("missing_items", []))
+        fired_sources.update(str(source_id)
+                             for check in path.get("charge_coverage", [])
+                             for version in check.get("rule_versions", [])
+                             for source_id in version.get("sourceIds", []))
         if path.get("blockers"):
             blockers.append({"code": "TEMPORAL_PATH_BLOCKED",
                              "point": path["point"],
                              "blockers": path["blockers"]})
+    temporal_points = {path.get("point") for path in temporal_paths}
+    for point, point_date in (("conduct", conduct_date), ("judgment", judgment_date)):
+        if point_date is not None and point not in temporal_points:
+            asof_missing.extend(missing_plan_items(rules, set(), point=point,
+                                                   date=point_date.isoformat()))
+    blockers.extend({"code": "CHARGE_OUT_OF_COVERAGE", **item}
+                     for item in asof_missing
+                     if not any(existing.get("code") == "CHARGE_OUT_OF_COVERAGE"
+                                and existing.get("point") == item.get("point")
+                                and existing.get("charge_key") == item.get("charge_key")
+                                for existing in blockers))
     if divergence:
         blockers.extend({"code": item.get("code", "LEGAL_TEMPORAL_DIVERGENCE"), **item}
                          for item in divergence)
@@ -230,6 +280,9 @@ def analyze(payload: dict[str, Any], task_type: str) -> dict[str, Any]:
         "input_snapshot_ref": input_ref or None,
         "rules": rule_results,
         "candidate_paths": candidate_paths,
+        "requested_charges": requested_charges,
+        "charge_coverage": asof_charge_checks,
+        "missing_items": asof_missing,
         "dependency_snapshot": {
             "facts_version_id": facts_version_id,
             "as_of_date": as_of_date.isoformat(),
@@ -317,14 +370,16 @@ def _temporal_paths(payload: dict[str, Any], family: str, schema_version: str,
                     module: str, snapshot: dict[str, Any], input_ref: str,
                     facts_version_id: str | None, conduct: datetime.date | None,
                     judgment: datetime.date | None, divergent: bool,
-                    source_resolver=legal_temporal.resolve_sources) -> list[dict[str, Any]]:
+                    source_resolver=legal_temporal.resolve_sources,
+                    requested_charges: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
     """Execute both approved date paths when the two legal points diverge."""
-    if not divergent or conduct is None or judgment is None:
+    if not divergent or (conduct is None and judgment is None):
         return []
     paths: list[dict[str, Any]] = []
     view = build_view(snapshot)
     families = [family] + (["distinction"] if module == "conviction" else [])
-    for point, point_date in (("conduct", conduct), ("judgment", judgment)):
+    points = [("conduct", conduct), ("judgment", judgment)]
+    for point, point_date in ((label, value) for label, value in points if value is not None):
         input_validator = InputValidator(snapshot, view)
         date_names = ("conduct_date", "offense_date") if point == "conduct" else ("judgment_date",)
         for date_name in date_names:
@@ -354,6 +409,12 @@ def _temporal_paths(payload: dict[str, Any], family: str, schema_version: str,
             path_rules.extend({"family": fam, **rule} for rule in active)
         path_results: list[dict[str, Any]] = []
         path_candidate_paths: list[dict[str, Any]] = []
+        point_checks, point_missing = coverage_for_rules(
+            requested_charges or [], path_rules, point=point, date=point_date.isoformat())
+        path_blockers.extend({"code": "CHARGE_OUT_OF_COVERAGE", **item} for item in point_missing)
+        point_coverage_keys = coverage_keys_for_rules(path_rules)
+        point_missing.extend(missing_plan_items(path_rules, point_coverage_keys,
+                                                point=point, date=point_date.isoformat()))
         for rule in path_rules:
             try:
                 fired, trace = evaluate(rule["predicate"], view)
@@ -375,7 +436,8 @@ def _temporal_paths(payload: dict[str, Any], family: str, schema_version: str,
             paths_for_rule, candidate_blockers = execute_candidate_paths(
                 rule=rule, snapshot=snapshot, input_validator=input_validator,
                 fired=fired, point=point,
-                predicate_blockers=input_blockers + evidence.get("blockers", []))
+                predicate_blockers=input_blockers + evidence.get("blockers", []),
+                coverage_keys=point_coverage_keys)
             path_candidate_paths.extend(paths_for_rule)
             path_blockers.extend(candidate_blockers)
             path_results.append({"ruleId": rule["ruleId"], "ruleVersion": rule["ruleVersion"],
@@ -392,10 +454,18 @@ def _temporal_paths(payload: dict[str, Any], family: str, schema_version: str,
             path_blockers.append({"code": "TEMPORAL_RULE_PATH_UNAVAILABLE",
                                   "point": point, "date": point_date.isoformat(),
                                   "message": "该时点没有已会签规则包覆盖"})
+        point_source_ids = {str(source_id) for rule in path_results
+                            if rule.get("fired") or rule.get("candidate_paths")
+                            for source_id in rule.get("sourceIds", [])}
+        point_source_ids.update(str(source_id)
+                                for check in point_checks
+                                for version in check.get("rule_versions", [])
+                                for source_id in version.get("sourceIds", []))
+        point_source_ids.update(str(source_id)
+                                for version in plan_coverage_rule_versions(path_rules)
+                                for source_id in version.get("sourceIds", []))
         path_sources = deepcopy(source_resolver(
-            {str(source_id) for rule in path_results
-             if rule.get("fired") or rule.get("candidate_paths")
-             for source_id in rule.get("sourceIds", [])},
+            point_source_ids,
             point_date if point == "conduct" else None,
             point_date if point == "judgment" else None,
         ))
@@ -415,6 +485,9 @@ def _temporal_paths(payload: dict[str, Any], family: str, schema_version: str,
                       "status": path_status,
                       "rules": path_results, "blockers": path_blockers,
                       "candidate_paths": path_candidate_paths,
+                      "plan_coverage_rule_versions": plan_coverage_rule_versions(path_rules),
+                      "charge_coverage": point_checks,
+                      "missing_items": point_missing,
                       "input_validation": path_input_validation,
                       "dependency_snapshot": {"facts_version_id": facts_version_id,
                                                 "as_of_date": point_date.isoformat(),

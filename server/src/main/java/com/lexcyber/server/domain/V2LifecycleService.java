@@ -199,6 +199,12 @@ public class V2LifecycleService {
      */
     @Transactional
     public Map<String, Object> dispatchModuleExecution(UUID ownerAccountId, String caseId, String module) {
+        return dispatchModuleExecution(ownerAccountId, caseId, module, null);
+    }
+
+    @Transactional
+    public Map<String, Object> dispatchModuleExecution(UUID ownerAccountId, String caseId, String module,
+                                                      Map<String, Object> body) {
         CaseView caseView = cases.lockOwned(ownerAccountId, caseId);
         caseId = caseView.id();
         if (caseView.asOfDate() == null) {
@@ -210,6 +216,7 @@ public class V2LifecycleService {
             case "sentencing" -> TaskPolicies.SENTENCING_CALCULATE;
             default -> throw new ApiException(HttpStatus.NOT_FOUND, "MODULE_NOT_FOUND", "未知模块");
         };
+        List<Map<String, Object>> requestedCharges = RequestedCharges.freeze(module, body);
         if (!capabilities.moduleAvailable(module)) {
             throw new ApiException(HttpStatus.NOT_IMPLEMENTED, "MODULE_EXECUTION_UNAVAILABLE",
                     "模块执行能力未启用：Engine 无已会签规则包覆盖模块 " + module);
@@ -222,6 +229,9 @@ public class V2LifecycleService {
         metadata.put("factsVersionId", factsVersionId.toString());
         metadata.put("factsSnapshot", factsPayload);
         metadata.put("asOfDate", caseView.asOfDate().toString());
+        if (ModulePolicies.CONVICTION.equals(module)) {
+            metadata.put("requestedCharges", requestedCharges);
+        }
         if (ModulePolicies.SENTENCING.equals(module)) {
             UUID convictionVersionId = moduleConfirmation.requireEffectiveConviction(caseId);
             metadata.put("artifactVersions", Map.of("conviction", convictionVersionId.toString()));

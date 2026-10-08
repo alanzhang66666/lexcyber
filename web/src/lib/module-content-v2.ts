@@ -113,6 +113,43 @@ export interface V2ModuleAnalysis {
   generatedAt?: string
   candidatePaths: V2CandidatePath[]
   pathDiagnostics: V2PathDiagnostic[]
+  requestedCharges: V2RequestedCharge[]
+  chargeCoverage: V2ChargeCoverage[]
+  coverageMissingItems: V2ChargeCoverageMissingItem[]
+  coverageDiagnostics: V2PathDiagnostic[]
+}
+
+export interface V2RequestedCharge {
+  requestedCharge: string
+  chargeKey: string | null
+}
+
+export interface V2ChargeRuleVersion {
+  ruleId: string
+  ruleVersion: string
+  contentHash: string
+  sourceIds: string[]
+}
+
+export interface V2ChargeCoverage {
+  point: V2CandidatePathPoint
+  date: string
+  requestedCharge: string
+  chargeKey: string | null
+  covered: boolean
+  ruleVersions: V2ChargeRuleVersion[]
+}
+
+export interface V2ChargeCoverageMissingItem {
+  id: string
+  missingItem: 'charge_out_of_coverage'
+  kind: 'charge_out_of_coverage'
+  requestedCharge: string | null
+  chargeKey: string | null
+  point: V2CandidatePathPoint
+  date: string
+  status: 'blocked'
+  reason: string
 }
 
 export type V2CandidatePathPosition = 'candidate' | 'alternative_to_examine' | 'excluded' | null
@@ -142,6 +179,75 @@ export interface V2CandidatePath {
 export interface V2PathDiagnostic {
   path: string
   message: string
+}
+
+function parseChargeCoverage(content: Rec): {
+  requestedCharges: V2RequestedCharge[]
+  chargeCoverage: V2ChargeCoverage[]
+  missingItems: V2ChargeCoverageMissingItem[]
+  diagnostics: V2PathDiagnostic[]
+  present: boolean
+} {
+  const fieldsPresent = ['requested_charges', 'charge_coverage', 'missing_items'].some((key) => own(content, key))
+  if (!fieldsPresent) return { requestedCharges: [], chargeCoverage: [], missingItems: [], diagnostics: [], present: false }
+  const diagnostics: V2PathDiagnostic[] = []
+  const requestedCharges: V2RequestedCharge[] = []
+  const chargeCoverage: V2ChargeCoverage[] = []
+  const missingItems: V2ChargeCoverageMissingItem[] = []
+  const text = (value: unknown): string | null => typeof value === 'string' && value.trim() ? value : null
+  const rawText = (value: unknown): string | null => typeof value === 'string' && value.trim() ? value : null
+  const nullable = (value: unknown): string | null => value === null || value === undefined ? null : text(value)
+  const point = (value: unknown): V2CandidatePathPoint | null => ['as_of', 'conduct', 'judgment'].includes(value as string) ? value as V2CandidatePathPoint : null
+  const strings = (value: unknown): string[] | null => Array.isArray(value) && (value as unknown[]).every((v) => text(v) !== null) ? value as string[] : null
+  const fail = (path: string, message: string) => diagnostics.push({ path, message })
+  if (!['requested_charges', 'charge_coverage', 'missing_items'].every((key) => own(content, key))) {
+    fail('charge_coverage', 'requested_charges、charge_coverage、missing_items 必须同时提供。')
+  }
+  if (own(content, 'requested_charges')) {
+    if (!Array.isArray(content.requested_charges)) fail('requested_charges', 'requested_charges 必须是对象数组。')
+    else content.requested_charges.forEach((value, index) => {
+      const requested = isRecord(value) ? rawText(value.requestedCharge) : null
+      const chargeKeyValid = isRecord(value) && (value.chargeKey === undefined || value.chargeKey === null || (typeof value.chargeKey === 'string' && rawText(value.chargeKey) !== null && Array.from(value.chargeKey).length <= 200))
+      const keysValid = isRecord(value) && Object.keys(value).every((key) => key === 'requestedCharge' || key === 'chargeKey')
+      if (!isRecord(value) || !requested || !chargeKeyValid || !keysValid || Array.from(requested).length > 200) {
+        fail(`requested_charges[${index}]`, '请求罪名必须包含非空 requestedCharge，chargeKey 必须是字符串或 null。')
+      } else requestedCharges.push({ requestedCharge: requested, chargeKey: value.chargeKey === undefined ? null : value.chargeKey as string | null })
+    })
+    if (requestedCharges.length > 32) fail('requested_charges', '请求罪名数量不得超过 32 项。')
+    const seen = new Set<string>()
+    requestedCharges.forEach((charge) => {
+      const key = charge.chargeKey === null ? `raw:${charge.requestedCharge}` : `key:${charge.chargeKey}`
+      if (seen.has(key)) fail('requested_charges', '请求罪名存在重复标识。')
+      seen.add(key)
+    })
+  }
+  if (own(content, 'charge_coverage')) {
+    if (!Array.isArray(content.charge_coverage)) fail('charge_coverage', 'charge_coverage 必须是对象数组。')
+    else content.charge_coverage.forEach((value, index) => {
+      const path = `charge_coverage[${index}]`
+      if (!isRecord(value) || !point(value.point) || !text(value.date) || !text(value.requested_charge) || (value.charge_key !== undefined && nullable(value.charge_key) === null && value.charge_key !== null) || typeof value.covered !== 'boolean' || !Array.isArray(value.rule_versions)) {
+        fail(path, '覆盖结果字段形状无效。'); return
+      }
+      const versions: V2ChargeRuleVersion[] = []
+      let valid = true
+      ;(value.rule_versions as unknown[]).forEach((rule, ruleIndex) => {
+        if (!isRecord(rule) || !text(rule.ruleId) || !text(rule.ruleVersion) || !text(rule.contentHash) || !strings(rule.sourceIds)) {
+          fail(`${path}.rule_versions[${ruleIndex}]`, '规则版本字段形状无效.'); valid = false
+        } else versions.push({ ruleId: text(rule.ruleId) as string, ruleVersion: text(rule.ruleVersion) as string, contentHash: text(rule.contentHash) as string, sourceIds: strings(rule.sourceIds) as string[] })
+      })
+      if (valid) chargeCoverage.push({ point: point(value.point) as V2CandidatePathPoint, date: text(value.date) as string, requestedCharge: text(value.requested_charge) as string, chargeKey: nullable(value.charge_key), covered: value.covered as boolean, ruleVersions: versions })
+    })
+  }
+  if (own(content, 'missing_items')) {
+    if (!Array.isArray(content.missing_items)) fail('missing_items', 'missing_items 必须是对象数组。')
+    else content.missing_items.forEach((value, index) => {
+      const path = `missing_items[${index}]`
+      if (!isRecord(value) || !text(value.id) || value.missing_item !== 'charge_out_of_coverage' || value.kind !== 'charge_out_of_coverage' || (value.requested_charge !== null && !text(value.requested_charge)) || (value.charge_key !== undefined && nullable(value.charge_key) === null && value.charge_key !== null) || !point(value.point) || !text(value.date) || value.status !== 'blocked' || !text(value.reason)) {
+        fail(path, '未覆盖请求字段形状无效。')
+      } else missingItems.push({ id: text(value.id) as string, missingItem: 'charge_out_of_coverage', kind: 'charge_out_of_coverage', requestedCharge: value.requested_charge === null ? null : text(value.requested_charge), chargeKey: nullable(value.charge_key), point: point(value.point) as V2CandidatePathPoint, date: text(value.date) as string, status: 'blocked', reason: text(value.reason) as string })
+    })
+  }
+  return { requestedCharges, chargeCoverage, missingItems, diagnostics, present: true }
 }
 
 function own(item: Rec, key: string): boolean {
@@ -256,9 +362,10 @@ function outcomeSummary(outcome: unknown): string | undefined {
 export function toV2ModuleAnalysis(content: Rec): V2ModuleAnalysis | null {
   if (!isModulePayload(content)) return null
   const parsedPaths = toV2CandidatePaths(content)
+  const parsedCoverage = str(content.schema_version) === 'case.conviction.v2' ? parseChargeCoverage(content) : { requestedCharges: [], chargeCoverage: [], missingItems: [], diagnostics: [], present: false }
   return {
     schemaVersion: str(content.schema_version) ?? '',
-    status: parsedPaths.diagnostics.length ? 'blocked' : (str(content.status) ?? ''),
+    status: parsedPaths.diagnostics.length || parsedCoverage.diagnostics.length ? 'blocked' : (str(content.status) ?? ''),
     rules: asArray(content.rules).map((r): V2ModuleRule => ({
       ruleId: str(r.ruleId) ?? '',
       ruleVersion: str(r.ruleVersion) ?? '',
@@ -278,12 +385,17 @@ export function toV2ModuleAnalysis(content: Rec): V2ModuleAnalysis | null {
     blockers: [
       ...asArray(content.blockers).map(toBlockerItem),
       ...parsedPaths.diagnostics.map((diagnostic) => ({ code: 'PATH_FORMAT_INVALID', path: diagnostic.path, message: diagnostic.message })),
+      ...parsedCoverage.diagnostics.map((diagnostic) => ({ code: 'CHARGE_COVERAGE_INVALID', path: diagnostic.path, message: diagnostic.message })),
     ],
     divergence: asArray(content.divergence),
     humanReviewRequired: content.human_review_required === true,
     generatedAt: str(content.generated_at),
     candidatePaths: parsedPaths.paths,
     pathDiagnostics: parsedPaths.diagnostics,
+    requestedCharges: parsedCoverage.requestedCharges,
+    chargeCoverage: parsedCoverage.chargeCoverage,
+    coverageMissingItems: parsedCoverage.missingItems,
+    coverageDiagnostics: parsedCoverage.diagnostics,
   }
 }
 

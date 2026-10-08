@@ -113,10 +113,11 @@ public class V2LifecycleController {
     @PostMapping("/cases/{caseId}/modules/{module}/executions")
     public ResponseEntity<Map<String, Object>> dispatchModuleExecution(@PathVariable String caseId,
             @PathVariable String module,
+            @RequestBody(required = false) Map<String, Object> body,
             @RequestHeader(value = "Authorization", required = false) String authorization) {
         AuthAccount account = auth.require(authorization);
         return ResponseEntity.status(HttpStatus.ACCEPTED)
-                .body(lifecycle.dispatchModuleExecution(account.id(), caseId, module));
+                .body(lifecycle.dispatchModuleExecution(account.id(), caseId, module, body));
     }
 
     @GetMapping("/executions/{executionId}")

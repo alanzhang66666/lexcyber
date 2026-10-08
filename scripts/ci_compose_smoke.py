@@ -326,9 +326,9 @@ def run_parameter_proof_integrity(token):
 def run_declared_conviction_paths(token):
     """Explicit synthetic plans preserve frozen actor/proof identity and review gates."""
     historical = []
-    for date_value, conflict, candidate_proof in [
-            ("2200-01-01", False, False), ("2200-01-01", False, True),
-            ("2201-01-01", True, False)]:
+    for date_value, conflict, candidate_proof, uncovered_request in [
+            ("2200-01-01", False, False, False), ("2200-01-01", False, True, False),
+            ("2201-01-01", True, False, False), ("2200-01-01", False, False, True)]:
         case = request("POST", "/v1/cases", token=token, expected=201, payload={
             "title": "CI explicit actor path fixture", "jurisdiction": "CI", "asOfDate": date_value,
             "metadata": {"purpose": "LEXCYBER_CI_FIXTURES"},
@@ -355,11 +355,23 @@ def run_declared_conviction_paths(token):
         frozen = request("GET", f"{base}/facts-versions/{facts_id}", token=token)
         request("POST", f"{base}/facts-versions/{facts_id}/confirm", token=token,
                 payload={"expectedConfirmedFactsVersionId": None})
-        execution = request("POST", f"{base}/modules/conviction/executions", token=token, expected=202)
+        requests = [{"requestedCharge": "明确请求的 CI 原始名称", "chargeKey": "ci.synthetic_a"}]
+        if uncovered_request:
+            requests.extend([{"requestedCharge": "未覆盖的显式请求", "chargeKey": "ci.synthetic_outside"},
+                             {"requestedCharge": "没有已审定标识的原始名称"}])
+        invalid_request = request("POST", f"{base}/modules/conviction/executions", token=token,
+                                  expected=400, payload={"requestedCharges": "invalid-array"})
+        assert invalid_request["code"] == "INVALID_REQUESTED_CHARGES", invalid_request
+        execution = request("POST", f"{base}/modules/conviction/executions", token=token, expected=202,
+                            payload={"requestedCharges": requests})
         wait_execution(token, _id(execution, "executionId"))
         head = request("GET", f"{base}/modules/conviction", token=token)
         artifact = request("GET", f"/v2/artifact-versions/{_id(head, 'latestVersionId')}", token=token)
         body = artifact["payload"]
+        assert body["requested_charges"] == requests, body
+        checks = body["charge_coverage"]
+        assert checks[0]["covered"] and checks[0]["charge_key"] == "ci.synthetic_a", checks
+        assert checks[0]["rule_versions"][0]["ruleId"] == "ci-fixture-candidate-path-plan", checks
         paths = body["candidate_paths"]
         assert len(paths) == 2 and len({row["actor_id"] for row in paths}) == 2, body
         actor_ids = {row["id"]: row["entityId"] for row in frozen["payload"]["entities"]["actors"]}
@@ -373,14 +385,21 @@ def run_declared_conviction_paths(token):
         assert body["dependency_snapshot"]["sources"] and all(row["legal_source_ids"] for row in paths), body
         review = request("POST", f"/v2/artifact-versions/{artifact['artifactVersionId']}/reviews", token=token,
                          expected=201, payload={"comment": "CI explicit synthetic candidate paths"})
-        if conflict or candidate_proof:
+        if conflict or candidate_proof or uncovered_request:
             assert artifact["outcomeStatus"] == "blocked", body
-            expected_code = "CONVICTION_PATH_CONFLICT" if conflict else "INPUT_UNCONFIRMED"
+            expected_code = ("CHARGE_OUT_OF_COVERAGE" if uncovered_request else
+                             "CONVICTION_PATH_CONFLICT" if conflict else "INPUT_UNCONFIRMED")
             assert any(row.get("code") == expected_code for row in body["blockers"]), body
             assert all(row["baseline_position"] is None and row["exclusion_reason"] is None for row in paths), paths
             if conflict:
                 assert first["verification_status"] == "conflicted", first
                 assert first["contrary_evidence_ids"] == [proof_ids["ci-path-counter-a"]], first
+            if uncovered_request:
+                missing = body["missing_items"]
+                assert {row["requested_charge"] for row in missing} == {
+                    "未覆盖的显式请求", "没有已审定标识的原始名称"}, missing
+                assert all(row["missing_item"] == "charge_out_of_coverage" for row in missing), missing
+                assert all(row["charge_key"] != "ci.synthetic_outside" for row in paths), paths
             request("POST", f"/v1/reviews/{_id(review, 'reviewId')}/approve", token=token,
                     expected=409, payload={"resultVersion": artifact["version"]})
             assert not request("GET", f"{base}/modules/conviction", token=token)["effectivelyConfirmed"]
@@ -397,6 +416,7 @@ def run_declared_conviction_paths(token):
     for artifact in historical:
         assert request("GET", f"/v2/artifact-versions/{artifact['artifactVersionId']}", token=token)["payload"] == artifact["payload"]
     print("PASS explicit actor-scoped candidate/excluded paths, canonical proofs, unconfirmed proof and subjective conflict approval rejection", flush=True)
+    print("PASS explicit charge requests, exact coverage provenance, uncovered/raw-only missing items and approval rejection", flush=True)
 
 
 def run_lifecycle(token):

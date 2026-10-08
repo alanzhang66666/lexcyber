@@ -31,6 +31,7 @@ import type {
   SourceSearchResponse,
   TaskCreate,
   TaskView,
+  ModuleDispatchOptions,
 } from './api-types'
 import { getAccessToken } from './lib/session'
 
@@ -424,10 +425,10 @@ export const apiV2 = {
     return request<Record<string, unknown>>(`/v2/cases/${encodeURIComponent(caseId)}/facts-head`)
   },
 
-  dispatchModuleExecution(caseId: string, module: string) {
+  dispatchModuleExecution(caseId: string, module: string, options?: ModuleDispatchOptions) {
     return request<Record<string, unknown>>(
       `/v2/cases/${encodeURIComponent(caseId)}/modules/${encodeURIComponent(module)}/executions`,
-      { method: 'POST' })
+      { method: 'POST', ...(options ? { body: JSON.stringify(options) } : {}) })
   },
 
   dispatchDraftRender(caseId: string, docType: string) {

@@ -104,6 +104,13 @@ describe('module-content-v2 严格读取', () => {
     expect(analysis.candidatePaths[0].contraryEvidenceIds).toEqual(['same-proof'])
   })
 
+  it('严格保留请求原文并拒绝空白或超长标识', () => {
+    const valid = toV2ModuleAnalysis({ ...CONVICTION_PAYLOAD, requested_charges: [{ requestedCharge: '  自定义名称  ', chargeKey: '  key-x  ' }], charge_coverage: [], missing_items: [] })!
+    expect(valid.requestedCharges[0]).toEqual({ requestedCharge: '  自定义名称  ', chargeKey: '  key-x  ' })
+    const invalid = toV2ModuleAnalysis({ ...CONVICTION_PAYLOAD, requested_charges: [{ requestedCharge: '名称', chargeKey: '   ' }], charge_coverage: [], missing_items: [] })!
+    expect(invalid.coverageDiagnostics).toHaveLength(1)
+  })
+
   it('未知 schema 一律返回 null，不猜读', () => {
     expect(toV2ModuleAnalysis({ schema_version: 'case.module.v1', rules: [] })).toBeNull()
     expect(toV2ModuleAnalysis({ status: 'calculated' })).toBeNull()

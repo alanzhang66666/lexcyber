@@ -157,7 +157,8 @@ def _proof_ids(fact: dict[str, Any], evidence_rows: list[dict[str, Any]]) -> tup
 
 def execute_candidate_paths(rule: dict[str, Any], snapshot: dict[str, Any],
                             input_validator: Any, fired: bool, point: str = "as_of",
-                            predicate_blockers: list[dict[str, Any]] | None = None) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+                            predicate_blockers: list[dict[str, Any]] | None = None,
+                            coverage_keys: set[str] | None = None) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Execute only paths explicitly declared by ``rule.outcome``."""
     outcome = rule.get("outcome") if isinstance(rule, dict) else None
     definitions = _definitions(outcome)
@@ -198,6 +199,11 @@ def execute_candidate_paths(rule: dict[str, Any], snapshot: dict[str, Any],
         path_id = item.get("path_id") if isinstance(item, dict) else "<invalid>"
         prefix = f"outcome.candidate_paths[{path_id}]"
         local = list(blockers)
+        charge_key = item.get("charge_key")
+        if coverage_keys is not None and (not isinstance(charge_key, str) or charge_key not in coverage_keys):
+            local.append(_block("CHARGE_OUT_OF_COVERAGE", "declared candidate path charge is outside approved coverage", prefix))
+            all_blockers.extend(local)
+            continue
         if not isinstance(rule.get("sourceIds"), list) or not rule.get("sourceIds"):
             local.append(_block("CONVICTION_PATH_LEGAL_SOURCE_MISSING", "declared path requires approved legal source ids", prefix))
         actor_key = item.get("actor_fact_key")

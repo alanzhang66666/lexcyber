@@ -161,6 +161,20 @@ describe('typed API client', () => {
       expect.objectContaining({ method: 'POST' }))
   })
 
+  it('dispatches requested conviction charges with the explicit request body', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(response({ executionId: 'ex-charge' }, 202))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await apiV2.dispatchModuleExecution('case-7', 'conviction', {
+      requestedCharges: [{ requestedCharge: '帮助信息网络犯罪活动罪', chargeKey: '帮助信息网络犯罪活动罪' }],
+    })
+
+    expect(fetchMock).toHaveBeenCalledWith('/v2/cases/case-7/modules/conviction/executions', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ requestedCharges: [{ requestedCharge: '帮助信息网络犯罪活动罪', chargeKey: '帮助信息网络犯罪活动罪' }] }),
+    }))
+  })
+
   it('dispatches a draft render with docType', async () => {
     const fetchMock = vi.fn().mockResolvedValue(response({ executionId: 'ex-2' }, 202))
     vi.stubGlobal('fetch', fetchMock)

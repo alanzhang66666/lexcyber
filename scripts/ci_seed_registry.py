@@ -81,7 +81,8 @@ def _candidate_path_rules(source_id: str) -> list[dict[str, object]]:
         "rule_version": version, "family": "conviction",
         "predicate": {"path": "facts.ci_path_flag.value", "op": "eq", "value": True},
         "outcome": {"candidate_paths": [first, excluded]},
-        "source_ids": [source_id], "coverage": {"fixture": True, "name": "CI explicit path plan"},
+        "source_ids": [source_id], "coverage": {"fixture": True, "name": "CI explicit path plan",
+                                               "covers": ["ci.synthetic_a", "ci.synthetic_b"]},
         "effective_from": start, "effective_to": end,
     } for version, start, end, first in [
         ("2200.1", "2200-01-01", "2200-12-31", candidate),

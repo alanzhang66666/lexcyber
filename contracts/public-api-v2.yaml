@@ -232,12 +232,25 @@ paths:
       parameters:
         - { $ref: '#/components/parameters/CaseId' }
         - { $ref: '#/components/parameters/ModuleName' }
+      requestBody:
+        required: false
+        description: >-
+          定罪模块可明确列出本次请求罪名。名称与可选标识原样冻结进执行输入；
+          不从名称推断标识。省略请求体保留旧调用兼容。其他模块不接受非空请求罪名。
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ModuleExecutionRequest' }
       responses:
         '202':
           description: 执行已排队
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ExecutionView' }
+        '400':
+          description: INVALID_REQUESTED_CHARGES — 请求类型、长度、重复标识或模块不合法。
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '501': { $ref: '#/components/responses/NotImplemented' }
@@ -532,6 +545,22 @@ components:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
   schemas:
+    ModuleExecutionRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        requestedCharges:
+          type: array
+          maxItems: 32
+          description: 明确请求；同一标识不得重复，无标识的同名请求也不得重复。空数组明确不限定请求罪名。
+          items: { $ref: '#/components/schemas/RequestedCharge' }
+    RequestedCharge:
+      type: object
+      additionalProperties: false
+      required: [requestedCharge]
+      properties:
+        requestedCharge: { type: string, minLength: 1, maxLength: 200, description: 用户原始名称，不能仅为空白 }
+        chargeKey: { type: string, nullable: true, minLength: 1, maxLength: 200, description: 调用方明确提供的已会签语料标识；缺失或null不得由名称推定 }
     Error:
       type: object
       properties:
@@ -643,11 +672,55 @@ components:
             candidate_paths:
               type: array
               items: { $ref: '#/components/schemas/ConvictionCandidatePath' }
+            requested_charges:
+              type: array
+              maxItems: 32
+              items: { $ref: '#/components/schemas/RequestedCharge' }
+            charge_coverage:
+              type: array
+              description: 按as-of及每个明确已知法律时点，使用同批有效已会签规则的coverage.covers精确匹配。
+              items: { $ref: '#/components/schemas/ChargeCoverageCheck' }
+            missing_items:
+              type: array
+              items: { $ref: '#/components/schemas/ChargeCoverageMissingItem' }
         blockers: { type: array, items: { type: object } }
         dependencySnapshot: { type: object }
         executionId: { type: string, format: uuid, nullable: true }
         outputHash: { type: string }
         createdAt: { type: string, format: date-time }
+    ChargeCoverageCheck:
+      type: object
+      required: [point, date, requested_charge, charge_key, covered, rule_versions]
+      properties:
+        point: { type: string, enum: [as_of, conduct, judgment] }
+        date: { type: string, format: date }
+        requested_charge: { type: string }
+        charge_key: { type: string, nullable: true }
+        covered: { type: boolean }
+        rule_versions:
+          type: array
+          items:
+            type: object
+            required: [ruleId, ruleVersion, contentHash, sourceIds]
+            properties:
+              ruleId: { type: string }
+              ruleVersion: { type: string }
+              contentHash: { type: string }
+              sourceIds: { type: array, items: { type: string } }
+    ChargeCoverageMissingItem:
+      type: object
+      description: 未覆盖的明确请求或规则计划罪名；不得作为candidate_paths输出。
+      required: [id, missing_item, kind, requested_charge, charge_key, point, date, status, reason]
+      properties:
+        id: { type: string }
+        missing_item: { type: string, enum: [charge_out_of_coverage] }
+        kind: { type: string, enum: [charge_out_of_coverage] }
+        requested_charge: { type: string, nullable: true, description: 规则计划缺口没有用户请求名称时为null，不伪造名称 }
+        charge_key: { type: string, nullable: true }
+        point: { type: string, enum: [as_of, conduct, judgment] }
+        date: { type: string, format: date }
+        status: { type: string, enum: [blocked] }
+        reason: { type: string }
     ConvictionCandidatePath:
       type: object
       description: >-

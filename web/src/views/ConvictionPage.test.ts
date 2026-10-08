@@ -37,6 +37,7 @@ async function mountPage(content: Record<string, unknown>) {
   await router.isReady()
   const wrapper = mount(ConvictionPage, { global: { plugins: [router] } })
   await flushPromises()
+  ;(wrapper as typeof wrapper & { __testRouter?: typeof router }).__testRouter = router
   return wrapper
 }
 
@@ -109,6 +110,66 @@ describe('ConvictionPage v2 candidate paths', () => {
     expect(wrapper.text()).toContain('路径结果待确认')
     expect(wrapper.text()).toContain('PATH_FORMAT_INVALID')
     expect(wrapper.text()).not.toContain('已排除路径')
+    wrapper.unmount()
+  })
+
+  it('submits each entered charge verbatim and preserves the request in raw payload', async () => {
+    const wrapper = await mountPage({ ...base, requested_charges: [{ requestedCharge: '自定义罪名', chargeKey: '自定义罪名' }], charge_coverage: [], missing_items: [] })
+    const inputs = wrapper.findAll('input')
+    const input = inputs.find((item) => item.attributes('aria-label') === '请求罪名 1')!
+    const keyInput = inputs.find((item) => item.attributes('aria-label') === '会签标识 1')!
+    await input.setValue('  自定义罪名  ')
+    await keyInput.setValue('  自定义罪名  ')
+    const addButton = wrapper.findAll('button.text-button').find((button) => button.text() === '增加请求')!
+    await addButton.trigger('click')
+    const secondInputs = wrapper.findAll('input')
+    await secondInputs.find((item) => item.attributes('aria-label') === '请求罪名 2')!.setValue('标识-X')
+    await wrapper.find('.action-box .button-quiet').trigger('click')
+    const dispatch = (mockedUseCaseModule.mock.results[0]?.value as { dispatch: ReturnType<typeof vi.fn> }).dispatch
+    expect(dispatch).toHaveBeenCalledWith({ requestedCharges: [
+      { requestedCharge: '  自定义罪名  ', chargeKey: '  自定义罪名  ' },
+      { requestedCharge: '标识-X', chargeKey: null },
+    ]})
+    expect((input.element as HTMLInputElement).value).toContain('  自定义罪名  ')
+    await wrapper.findAll('button.text-button').find((button) => button.text() === '查看')!.trigger('click')
+    expect(wrapper.text()).toContain('requested_charges')
+    wrapper.unmount()
+  })
+
+  it('keeps legacy v2 payloads compatible and blocks malformed coverage shapes', async () => {
+    const legacy = await mountPage(base)
+    expect(legacy.find('[data-testid="charge-coverage"]').exists()).toBe(false)
+    legacy.unmount()
+
+    const malformed = await mountPage({ ...base, requested_charges: [{ requested_charge: '帮信' }] })
+    expect(malformed.text()).toContain('CHARGE_COVERAGE_INVALID')
+    expect(malformed.text()).toContain('覆盖结果待确认')
+    expect(malformed.text()).toContain('已阻断')
+    malformed.unmount()
+  })
+
+  it('resubmits restored requested charges without edits and clears them on case switch', async () => {
+    const wrapper = await mountPage({ ...base, requested_charges: [{ requestedCharge: '案件A罪名' }], charge_coverage: [], missing_items: [] })
+    await wrapper.find('.action-box .button-quiet').trigger('click')
+    const dispatch = (mockedUseCaseModule.mock.results[0]?.value as { dispatch: ReturnType<typeof vi.fn> }).dispatch
+    expect(dispatch).toHaveBeenCalledWith({ requestedCharges: [{ requestedCharge: '案件A罪名', chargeKey: null }] })
+    await (wrapper as typeof wrapper & { __testRouter: { push: (path: string) => Promise<void> } }).__testRouter.push('/cases/case-2/conviction')
+    await flushPromises()
+    expect((wrapper.find('input[aria-label="请求罪名 1"]').element as HTMLInputElement).value).toBe('')
+    wrapper.unmount()
+  })
+
+  it('shows per-point coverage and rule/source provenance', async () => {
+    const wrapper = await mountPage({
+      ...base,
+      requested_charges: [{ requestedCharge: '自定义罪名', chargeKey: 'charge-x' }],
+      charge_coverage: [{ point: 'conduct', date: '2026-01-01', requested_charge: '自定义罪名', charge_key: 'charge-x', covered: true, rule_versions: [{ ruleId: 'r-1', ruleVersion: '1', contentHash: 'hash', sourceIds: ['law-1'] }] }],
+      missing_items: [],
+    })
+    expect(wrapper.text()).toContain('时点覆盖结果')
+    expect(wrapper.text()).toContain('已覆盖')
+    expect(wrapper.text()).toContain('r-1@1')
+    expect(wrapper.text()).toContain('law-1')
     wrapper.unmount()
   })
 

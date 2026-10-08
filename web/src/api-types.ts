@@ -292,6 +292,15 @@ export type ModuleStateUpdate = {
   version: number
 }
 
+export type RequestedCharge = {
+  requestedCharge: string
+  chargeKey?: string | null
+}
+
+export type ModuleDispatchOptions = {
+  requestedCharges?: RequestedCharge[]
+}
+
 export type ModuleStateView = {
   caseId: string
   module: ModuleName
