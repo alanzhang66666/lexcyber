@@ -208,3 +208,5 @@
 - 正式法学会签、真实语料按人路径/B/C映射及量刑校正继续依赖负责人资料；本补丁不伪造批准或更改遗留501门闩。
 
 - 首次A27 CI 37742100182（6ed00ba）Java184项中1失败/3错误：重试失效模块返回码偏离原DEPENDENCY_STALE、新测试引用已退役case_drafts.body/version字段。修正为仅转换MODULE_NOT_CONFIRMED（不把Registry503伪装409）和现役文书描述符字段，保留数据库/并发/历史业务断言；首轮Compose因Java失败未运行。后续成功必须以新SHA完整CI为准。
+
+- 第二轮CI 37742761809（dd92e6b）Java184项及其他三个基础job全部成功，Compose既有blocked模板诊断遇409：收紧下游检查时误将事实更替造成的普通stale一律拒绝。修正为先验证全部confirmed头的外部依赖，再只冻结原本eligible的NOT stale/latest版本；事实型模板和缺资料blocked诊断继续可执行，法源撤回不能通过省略stale头绕过。既有HTTP断言保持不变。

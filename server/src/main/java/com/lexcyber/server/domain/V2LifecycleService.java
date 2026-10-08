@@ -349,12 +349,24 @@ public class V2LifecycleService {
 
     /** Freeze payloads and their exact IDs together; pending/stale results are not draft inputs. */
     private ModuleInputs confirmedModuleInputs(String caseId) {
+        // Never hide a withdrawn registry dependency by silently omitting its
+        // stale head. Ordinary facts/publishing staleness, however, must still
+        // permit a facts-only template or a blocked diagnostic without using
+        // that old module payload.
+        for (UUID confirmed : jdbc.query("""
+                SELECT confirmed_version_id FROM app.module_head
+                WHERE case_id = ?::uuid AND confirmed_version_id IS NOT NULL
+                ORDER BY module
+                """, (rs, ignored) -> rs.getObject(1, UUID.class), caseId)) {
+            registry.requireValid(jdbc, confirmed);
+        }
         List<Map<String, Object>> rows = jdbc.queryForList("""
                 SELECT s.kind, v.artifact_version_id, v.payload::text AS payload
                 FROM app.module_head h
                 JOIN app.artifact_stream s ON s.artifact_stream_id = h.artifact_stream_id
                 JOIN app.artifact_version v ON v.artifact_version_id = h.confirmed_version_id
-                WHERE h.case_id = ?::uuid
+                WHERE h.case_id = ?::uuid AND NOT h.stale
+                  AND s.latest_version_id = h.confirmed_version_id
                   AND v.outcome_status <> 'blocked'
                 ORDER BY s.kind
                 """, caseId);
