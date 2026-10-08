@@ -15,7 +15,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 /** V24 -> V25 invalidates v2 artifacts without a verified input proof. */
 class InputValidationMigrationTest {
     @Test
-    void invalidatesMalformedInputProofsAndRegisteredDescendants() {
+    void invalidatesMalformedInputProofsAndRegisteredDescendants() throws Exception {
         Assumptions.assumeTrue(dockerAvailable(), "migration test requires Docker");
         try (PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16.4-alpine")
                 .withDatabaseName("lexcyber_input_validation_migration")
@@ -83,8 +83,11 @@ class InputValidationMigrationTest {
                     Boolean.class, legacy.stream()));
             assertEquals(valid.version(), latest(jdbc, valid.stream()));
             assertEquals(valid.version(), confirmed(jdbc, valid.stream()));
-            assertEquals(valid(), jdbc.queryForObject("SELECT payload::text FROM app.artifact_version WHERE artifact_version_id = ?",
-                    String.class, valid.version()).replace(" ", ""));
+            String storedPayload = jdbc.queryForObject(
+                    "SELECT payload::text FROM app.artifact_version WHERE artifact_version_id = ?",
+                    String.class, valid.version());
+            assertEquals(new com.fasterxml.jackson.databind.ObjectMapper().readTree(valid()),
+                    new com.fasterxml.jackson.databind.ObjectMapper().readTree(storedPayload));
         }
     }
 

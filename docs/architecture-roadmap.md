@@ -61,6 +61,7 @@
 - A22 新增实际读取参数验证：保持 DSL lazy 真值/原规则阈值比例，普通谓词（包括 false）、基准档、调节项、日期、文书及两时点路径记录输入/证据身份、阶段和时点；候选、重复键、缺失/未核实/歧义证明均阻断。聚合沿原组成去重算法校验真实贡献行和非法数字；计数按实际行核验，空贡献不冒充已核实零。存在性缺失可作显式可选 guard，有值不能绕过核实。管辖至少一个 confirmed 且有有效证明连接，候选顺序不影响结果；actors/events 缺原生证明时不杜撰关联。顶层 marker 汇总全部已执行路径，阻断时量刑数字/步骤和文书正文均隐藏。
 - v2 确认/批准校验严格 input_validation 版本、状态和数组形状，并检查同案递归上游；V25 前向失效缺少/损坏证明的有效 head 和正规化后代，保留全部载荷、确认/批准指针与已归档历史，legacy v1 保留。新增真实 V24→V25 带数据升级回归。仅 CI 合成规则的可选 selector 增加 exists 前置，成功 fixtures 显式关联 confirmed 参数证据；A21 service_log 种类缺失/candidate 用独立 document 参数证明隔离，不改真实 corpus 或生成正式批准。
 - A22 本地 Python 非 integration295项、Ruff、Java21 test-compile、三个 OpenAPI/快照通过；真实 corpus 的9项回归确认 candidate 自首 true/false 均 blocked，全部已核实有证明时原8.4/12月结果保持，缺证据日期/重复日期和仅行为分支读到候选参数遮蔽全部数字。独立复审修正结构→强读取去重误放行、重复证据 canonical 首行裁决、嵌套缺值、非法金额数组、管辖顺序和跨案递归过滤；externalId-only 仅作别名不能冒充 canonical，id-only 兼容保留。实际 Postgres/Compose 新验收仍待精确新提交 CI，不以本地编译代替。
+- `851bbf9` 的 [CI 37705034459](https://github.com/alanzhang66666/lexcyber/actions/runs/37705034459)：Python295/web134/契约成功，Java/PostgreSQL167项、3失败、1错误、0跳过，Compose未执行。V24→V25带数据升级已经执行，但载荷保真误比JSONB字段顺序；另有坏marker循环fixture重复scope、divergence fixture缺合法参数marker而遮蔽原MODULE_BLOCKED，以及归档递归证明校验遮蔽原ARCHIVE_ITEM_CROSS_CASE。现分别改JSON结构比较、独立fixture scope、证明与择法门闩隔离，并将完整归档同案校验置于证明校验之前；保持所有原业务/历史保真断言、唯一约束和严格证明门槛，实际回归须由新提交CI确认。
 - 未扩张旧 prompt 数据库模型：追溯证明 PromptRegistry 只由未挂载到当前图的 worker 节点调用，当前 reserved 任务均直接进入 Engine adapter。该遗留副作用与现役路径不同，本轮未创建第二套 schema 或把旧库脚本当现役启动前置。
 
 ## 阶段状态

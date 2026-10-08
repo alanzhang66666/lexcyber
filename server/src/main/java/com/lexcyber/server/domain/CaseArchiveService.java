@@ -171,6 +171,10 @@ public class CaseArchiveService {
                 throw new ApiException(HttpStatus.CONFLICT, "ARCHIVE_ITEM_CROSS_CASE",
                         "归档清单包含跨案件工件，已阻断");
             }
+        }
+        // Complete archive ownership validation first so a foreign dependency
+        // retains the archive-specific error before recursive proof validation.
+        for (Map<String, Object> item : items) {
             LegalAnalysisContext.requireCurrent(jdbc, caseId,
                     UUID.fromString(String.valueOf(item.get("artifact_version_id"))));
         }

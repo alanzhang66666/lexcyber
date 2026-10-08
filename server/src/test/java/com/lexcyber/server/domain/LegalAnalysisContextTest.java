@@ -70,7 +70,9 @@ class LegalAnalysisContextTest {
     void confirmationRejectsPreviouslyCalculatedLegalDivergence() {
         insertCase("2026-09-06");
         UUID version = insertModuleArtifact("case.compliance.v2", "2026-09-06",
-                "{\"divergence\":[{\"code\":\"LAW_VERSION_DIVERGENCE\"}]}");
+                "{\"divergence\":[{\"code\":\"LAW_VERSION_DIVERGENCE\"}],"
+                        + "\"input_validation\":{\"schema_version\":\"case.input-validation.v1\","
+                        + "\"status\":\"verified\",\"checks\":[],\"blockers\":[]}}");
         insertModuleHead("compliance", version);
 
         ApiException error = assertThrows(ApiException.class,
@@ -138,6 +140,12 @@ class LegalAnalysisContextTest {
         for (String payload : malformed) {
             UUID upstream = insertArtifact("compliance", "case.compliance.v2", payload);
             UUID downstream = insertArtifact("sentencing", "sentencing.v2", validInputValidation());
+            jdbc.update("UPDATE app.artifact_stream SET scope_key = ? WHERE artifact_stream_id = "
+                            + "(SELECT artifact_stream_id FROM app.artifact_version WHERE artifact_version_id = ?)",
+                    "module:compliance:" + upstream, upstream);
+            jdbc.update("UPDATE app.artifact_stream SET scope_key = ? WHERE artifact_stream_id = "
+                            + "(SELECT artifact_stream_id FROM app.artifact_version WHERE artifact_version_id = ?)",
+                    "module:sentencing:" + downstream, downstream);
             jdbc.update("INSERT INTO app.artifact_artifact_dependency(artifact_version_id, depends_on_artifact_version_id) VALUES (?, ?)",
                     downstream, upstream);
             ApiException error = assertThrows(ApiException.class,
