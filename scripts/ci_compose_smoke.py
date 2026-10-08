@@ -253,6 +253,8 @@ def _registry_case(token, as_of, *, approve_draft=True, doc_type="ci.registry_no
         head = request("GET", f"/v2/cases/{case_id}/modules/{module}", token=token)
         artifact_id = _id(head, "latestVersionId")
         artifact = request("GET", f"/v2/artifact-versions/{artifact_id}", token=token)
+        assert artifact["outcomeStatus"] == "calculated", {"module": module, "date": as_of, "artifact": artifact}
+        assert artifact["payload"]["input_validation"]["status"] == "verified", artifact
         review = request("POST", f"/v2/artifact-versions/{artifact_id}/reviews", token=token,
                          expected=201, payload={"comment": "registry fixture module approval"})
         if approve_modules:

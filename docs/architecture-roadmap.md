@@ -210,3 +210,5 @@
 - 首次A27 CI 37742100182（6ed00ba）Java184项中1失败/3错误：重试失效模块返回码偏离原DEPENDENCY_STALE、新测试引用已退役case_drafts.body/version字段。修正为仅转换MODULE_NOT_CONFIRMED（不把Registry503伪装409）和现役文书描述符字段，保留数据库/并发/历史业务断言；首轮Compose因Java失败未运行。后续成功必须以新SHA完整CI为准。
 
 - 第二轮CI 37742761809（dd92e6b）Java184项及其他三个基础job全部成功，Compose既有blocked模板诊断遇409：收紧下游检查时误将事实更替造成的普通stale一律拒绝。修正为先验证全部confirmed头的外部依赖，再只冻结原本eligible的NOT stale/latest版本；事实型模板和缺资料blocked诊断继续可执行，法源撤回不能通过省略stale头绕过。既有HTTP断言保持不变。
+
+- 第三轮CI 37744000470（fe697a5）四项基础job及原23项Compose检查通过；新增2202定罪fixture审批因输入证明blocked被拒。完整HTTP日志定位为2201候选计划effective_to=NULL延伸进2202，缺少其专属actor/proof参数。将CI-only冲突计划结束日期明确为2201-12-31，使2200/2201与2202/2203撤回夹具真正隔离；增加新fixture审批前calculated/verified断言。未更改生产规则、Engine/Java证明校验或既有业务断言。

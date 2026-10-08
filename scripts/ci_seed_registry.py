@@ -86,7 +86,7 @@ def _candidate_path_rules(source_id: str) -> list[dict[str, object]]:
         "effective_from": start, "effective_to": end,
     } for version, start, end, first in [
         ("2200.1", "2200-01-01", "2200-12-31", candidate),
-        ("2201.1", "2201-01-01", None, conflict),
+        ("2201.1", "2201-01-01", "2201-12-31", conflict),
     ]]
 
 
