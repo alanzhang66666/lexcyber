@@ -39,6 +39,7 @@ function evidenceKey(e: EvidenceRef, i: number) {
     </header>
 
     <p v-if="path.summary" class="path-summary">{{ path.summary }}</p>
+    <p v-if="path.exclusionReason" class="path-summary">排除理由：{{ path.exclusionReason }}</p>
 
     <div class="evidence-grid">
       <section class="evidence-col">

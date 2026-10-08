@@ -504,6 +504,26 @@ def test_t1_module_state_projects_conviction_paths_and_jurisdiction():
     assert payload["applicability"] == "unknown"
 
 
+@pytest.mark.parametrize("reason_key", ["exclusion_reason", "exclusionReason"])
+def test_t1_conviction_projection_preserves_explicit_exclusion_reason(reason_key):
+    from copy import deepcopy
+
+    bundle = load_case_bundle("C")
+    excluded = next(item for item in bundle["analyses"]["conviction"]["candidate_paths"]
+                    if item["baseline_position"] == "excluded")
+    excluded[reason_key] = "Explicit fixture reason, not a generated legal conclusion"
+    frozen = deepcopy(bundle)
+    content = build_t1_module_state(bundle, "conviction", "case-server-c")["content"]
+    projected = next(item for item in content["candidatePaths"] if item["id"] == excluded["id"])
+    assert projected["exclusionReason"] == excluded[reason_key]
+    assert projected["exclusion_reason"] == excluded[reason_key]
+    assert projected["baselinePosition"] == "excluded"
+    assert projected["contraryEvidenceIds"] == excluded["contrary_evidence_ids"]
+    assert all("exclusionReason" not in item for item in content["candidatePaths"]
+               if item["id"] != excluded["id"])
+    assert bundle == frozen
+
+
 def test_t1_case_create_and_facts_expose_amounts_without_graph_tables():
     created = build_t1_case_create(load_case_bundle("A"))
     amounts = created["metadata"]["amounts"]

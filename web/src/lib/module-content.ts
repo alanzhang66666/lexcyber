@@ -123,6 +123,7 @@ export function toCandidatePaths(content: Rec): CandidatePath[] {
       title: str(pick(item, ['title', 'name', 'charge', 'path', 'label'])) ?? '未命名路径',
       kind: pathKindOf(item),
       summary: str(pick(item, ['summary', 'reasoning', 'description', 'basis', 'conclusion'])),
+      exclusionReason: str(pick(item, ['exclusion_reason', 'exclusionReason'])),
       supporting: toEvidence(pick(item, ['supporting', 'supporting_evidence', 'supporting_evidence_ids', 'supportingEvidenceIds'])),
       contrary: toEvidence(pick(item, ['contrary', 'contrary_evidence', 'contrary_evidence_ids', 'contraryEvidenceIds', 'opposing'])),
       status: statusOf(pick(item, ['verification_status', 'verificationStatus', 'status'])),

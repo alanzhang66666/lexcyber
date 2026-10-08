@@ -45,9 +45,12 @@ describe('CandidatePathCard 候选路径卡', () => {
 
   it('excluded 路径打上「已排除路径」标签', () => {
     const wrapper = mount(CandidatePathCard, {
-      props: { path: { title: '诈骗共犯', kind: 'excluded', supporting: [], contrary: [] } },
+      props: { path: { title: '诈骗共犯', kind: 'excluded', summary: '保留概述', exclusionReason: '保留明确排除理由', supporting: [], contrary: [{ quote: '独立相反证据' }] } },
     })
     expect(wrapper.text()).toContain('已排除路径')
+    expect(wrapper.text()).toContain('保留概述')
+    expect(wrapper.text()).toContain('排除理由：保留明确排除理由')
+    expect(wrapper.text()).toContain('独立相反证据')
   })
 })
 

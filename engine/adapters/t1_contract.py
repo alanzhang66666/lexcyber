@@ -166,6 +166,10 @@ def _project_candidate_paths(paths: Any) -> list[dict[str, Any]]:
         if item.get("baseline_position"):
             projected["baselinePosition"] = str(item["baseline_position"])
             _alias(projected, "baselinePosition", "baseline_position")
+        reason = item.get("exclusion_reason", item.get("exclusionReason"))
+        if reason is not None:
+            projected["exclusionReason"] = str(reason)
+            _alias(projected, "exclusionReason", "exclusion_reason")
         projected["supportingEvidenceIds"] = _str_list(item.get("supporting_evidence_ids"))
         projected["contraryEvidenceIds"] = _str_list(item.get("contrary_evidence_ids"))
         projected["legalSourceIds"] = _str_list(item.get("legal_source_ids"))

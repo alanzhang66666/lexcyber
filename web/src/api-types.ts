@@ -405,6 +405,7 @@ export type CandidatePath = {
   title: string
   kind?: CandidatePathKind | null
   summary?: string | null
+  exclusionReason?: string | null
   supporting?: EvidenceRef[]
   contrary?: EvidenceRef[]
   status?: VerificationStatus | null
