@@ -1,10 +1,12 @@
 package com.lexcyber.server.domain;
 
 import com.lexcyber.server.api.ApiException;
+import com.lexcyber.server.engine.EngineRegistryClient;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,9 +19,17 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class ModuleConfirmationService {
     private final JdbcTemplate jdbc;
+    private final EngineRegistryClient registry;
 
     public ModuleConfirmationService(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
+        this.registry = new EngineRegistryClient();
+    }
+
+    @Autowired
+    public ModuleConfirmationService(JdbcTemplate jdbc, EngineRegistryClient registry) {
+        this.jdbc = jdbc;
+        this.registry = registry;
     }
 
     /** §5.9 公式。下游判定一律走这里（INV-PIPE-003）。 */
@@ -41,6 +51,7 @@ public class ModuleConfirmationService {
      * cannot replace the upstream version between the gate and task creation.
      */
     public UUID requireEffectiveArtifactVersion(String caseId, String module) {
+        registry.lockBarrier(jdbc);
         lockFactsHead(caseId);
         List<UUID> streamIds = jdbc.query("""
                 SELECT artifact_stream_id FROM app.module_head
@@ -66,6 +77,7 @@ public class ModuleConfirmationService {
             throw new ApiException(HttpStatus.CONFLICT, "MODULE_NOT_CONFIRMED",
                     "模块尚无有效确认（未确认或已失效）");
         }
+        registry.requireValid(jdbc, confirmed);
         return confirmed;
     }
 
@@ -120,6 +132,7 @@ public class ModuleConfirmationService {
      */
     @Transactional
     public UUID confirm(String caseId, String module, UUID actorId) {
+        registry.lockBarrier(jdbc);
         LegalAnalysisContext.lockCase(jdbc, caseId);
         List<Map<String, Object>> heads = jdbc.queryForList("""
                 SELECT artifact_stream_id, confirmed_version_id
@@ -195,6 +208,7 @@ public class ModuleConfirmationService {
         if (ModulePolicies.SENTENCING.equals(module)) {
             requireSentencingDependency(caseId, latest, convictionVersionId);
         }
+        registry.requireValid(jdbc, latest);
         jdbc.update("""
                 UPDATE app.module_head
                 SET confirmed_version_id = ?, stale = false, stale_reason = NULL, updated_at = now()

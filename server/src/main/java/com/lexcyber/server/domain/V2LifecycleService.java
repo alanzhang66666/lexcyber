@@ -2,6 +2,7 @@ package com.lexcyber.server.domain;
 
 import com.lexcyber.server.api.ApiException;
 import com.lexcyber.server.engine.EngineCapabilitiesClient;
+import com.lexcyber.server.engine.EngineRegistryClient;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.OffsetDateTime;
@@ -30,11 +31,22 @@ public class V2LifecycleService {
     private final CaseArchiveService archives;
     private final EngineCapabilitiesClient capabilities;
     private final TaskService tasks;
+    private final EngineRegistryClient registry;
 
     public V2LifecycleService(JdbcTemplate jdbc, CaseService cases, FactsBaselineService baseline,
                               ModuleConfirmationService moduleConfirmation,
                               DraftApprovalService draftApproval, CaseArchiveService archives,
                               EngineCapabilitiesClient capabilities, TaskService tasks) {
+        this(jdbc, cases, baseline, moduleConfirmation, draftApproval, archives, capabilities, tasks,
+                new EngineRegistryClient());
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public V2LifecycleService(JdbcTemplate jdbc, CaseService cases, FactsBaselineService baseline,
+                              ModuleConfirmationService moduleConfirmation,
+                              DraftApprovalService draftApproval, CaseArchiveService archives,
+                              EngineCapabilitiesClient capabilities, TaskService tasks,
+                              EngineRegistryClient registry) {
         this.jdbc = jdbc;
         this.cases = cases;
         this.ids = new IdentityService(jdbc);
@@ -44,6 +56,7 @@ public class V2LifecycleService {
         this.archives = archives;
         this.capabilities = capabilities;
         this.tasks = tasks;
+        this.registry = registry;
     }
 
     // ---------- facts ----------
@@ -63,9 +76,9 @@ public class V2LifecycleService {
         return factsHeadView(caseId);
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public List<Map<String, Object>> listFactsVersions(UUID ownerAccountId, String caseId) {
-        caseId = cases.requireOwned(ownerAccountId, caseId).id();
+        caseId = cases.lockOwned(ownerAccountId, caseId).id();
         return baseline.listVersions(caseId);
     }
 
@@ -147,11 +160,27 @@ public class V2LifecycleService {
         return view;
     }
 
+    private void refreshModuleHead(String caseId, String module, Map<String, Object> row) {
+        UUID version = (UUID) row.get("confirmed_version_id");
+        if (version == null || Boolean.TRUE.equals(row.get("stale"))) return;
+        try {
+            registry.requireValid(jdbc, version);
+        } catch (ApiException invalid) {
+            if (!"DEPENDENCY_STALE".equals(invalid.code())) throw invalid;
+            jdbc.update("""
+                    UPDATE app.module_head SET stale=true, stale_reason='dependency_changed', updated_at=now()
+                    WHERE case_id = ?::uuid AND module = ? AND confirmed_version_id = ? AND NOT stale
+                    """, caseId, module, version);
+            new StalePropagationService(jdbc).propagateArtifactSuperseded(caseId, version, "dependency_changed");
+        }
+    }
+
     // ---------- module head ----------
 
-    @Transactional(readOnly = true)
+    @Transactional
     public Map<String, Object> moduleHead(UUID ownerAccountId, String caseId, String module) {
-        caseId = cases.requireOwned(ownerAccountId, caseId).id();
+        registry.lockBarrier(jdbc);
+        caseId = cases.lockOwned(ownerAccountId, caseId).id();
         String resolved = module.trim();
         if (!List.of("compliance", "conviction", "sentencing").contains(resolved)) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", "unknown module");
@@ -177,6 +206,14 @@ public class V2LifecycleService {
             return view;
         }
         Map<String, Object> r = rows.get(0);
+        refreshModuleHead(caseId, resolved, r);
+        rows = jdbc.queryForList("""
+                SELECT h.artifact_stream_id, h.confirmed_version_id, h.stale, h.stale_reason, h.updated_at,
+                       s.latest_version_id
+                FROM app.module_head h JOIN app.artifact_stream s ON s.artifact_stream_id = h.artifact_stream_id
+                WHERE h.case_id = ?::uuid AND h.module = ?
+                """, caseId, resolved);
+        r = rows.get(0);
         boolean effective = r.get("confirmed_version_id") != null
                 && !Boolean.TRUE.equals(r.get("stale"));
         view.put("streamId", r.get("artifact_stream_id"));
@@ -205,6 +242,7 @@ public class V2LifecycleService {
     @Transactional
     public Map<String, Object> dispatchModuleExecution(UUID ownerAccountId, String caseId, String module,
                                                       Map<String, Object> body) {
+        registry.lockBarrier(jdbc);
         CaseView caseView = cases.lockOwned(ownerAccountId, caseId);
         caseId = caseView.id();
         if (caseView.asOfDate() == null) {
@@ -255,6 +293,7 @@ public class V2LifecycleService {
      */
     @Transactional
     public Map<String, Object> dispatchDraftRender(UUID ownerAccountId, String caseId, String docType) {
+        registry.lockBarrier(jdbc);
         CaseView caseView = cases.lockOwned(ownerAccountId, caseId);
         caseId = caseView.id();
         if (caseView.asOfDate() == null) {
@@ -315,16 +354,22 @@ public class V2LifecycleService {
                 FROM app.module_head h
                 JOIN app.artifact_stream s ON s.artifact_stream_id = h.artifact_stream_id
                 JOIN app.artifact_version v ON v.artifact_version_id = h.confirmed_version_id
-                WHERE h.case_id = ?::uuid AND NOT h.stale
-                  AND s.latest_version_id = h.confirmed_version_id
+                WHERE h.case_id = ?::uuid
                   AND v.outcome_status <> 'blocked'
                 ORDER BY s.kind
                 """, caseId);
         Map<String, Object> out = new LinkedHashMap<>();
         Map<String, String> versions = new LinkedHashMap<>();
         for (Map<String, Object> r : rows) {
+            UUID versionId = (UUID) r.get("artifact_version_id");
+            UUID effective = moduleConfirmation.requireEffectiveArtifactVersion(
+                    caseId, String.valueOf(r.get("kind")));
+            if (!versionId.equals(effective)) {
+                throw new ApiException(HttpStatus.CONFLICT, "DEPENDENCY_STALE",
+                        "上游模块在渲染前已变更，必须重新派发");
+            }
             out.put(String.valueOf(r.get("kind")), parseJson(r.get("payload")));
-            versions.put(String.valueOf(r.get("kind")), r.get("artifact_version_id").toString());
+            versions.put(String.valueOf(r.get("kind")), versionId.toString());
         }
         return new ModuleInputs(out, versions);
     }
@@ -426,6 +471,7 @@ public class V2LifecycleService {
 
     @Transactional
     public Map<String, Object> openReview(UUID ownerAccountId, UUID artifactVersionId, String comment) {
+        registry.lockBarrier(jdbc);
         Map<String, Object> version = artifactForOwner(ownerAccountId, artifactVersionId);
         String caseId = String.valueOf(version.get("case_id"));
         cases.lockOwned(ownerAccountId, caseId);
@@ -488,8 +534,9 @@ public class V2LifecycleService {
 
     // ---------- drafts ----------
 
-    @Transactional(readOnly = true)
+    @Transactional
     public Map<String, Object> draftHead(UUID ownerAccountId, String draftId) {
+        registry.lockBarrier(jdbc);
         String resolved = ids.draftId(draftId);
         List<Map<String, Object>> rows = jdbc.queryForList("""
                 SELECT h.draft_id, h.case_id, h.artifact_stream_id, h.approved_version_id,
@@ -503,6 +550,33 @@ public class V2LifecycleService {
             throw new ApiException(HttpStatus.NOT_FOUND, "DRAFT_NOT_FOUND", "文书不存在或不可访问");
         }
         Map<String, Object> r = rows.get(0);
+        LegalAnalysisContext.lockCase(jdbc, String.valueOf(r.get("case_id")));
+        r = jdbc.queryForMap("""
+                SELECT h.draft_id, h.case_id, h.artifact_stream_id, h.approved_version_id,
+                       h.stale, h.stale_reason, h.updated_at, s.latest_version_id
+                FROM app.draft_head h JOIN app.artifact_stream s ON s.artifact_stream_id = h.artifact_stream_id
+                WHERE h.draft_id = ?::uuid
+                """, resolved);
+        UUID approved = (UUID) r.get("approved_version_id");
+        if (approved != null && !Boolean.TRUE.equals(r.get("stale"))) {
+            try {
+                registry.requireValid(jdbc, approved);
+            } catch (ApiException invalid) {
+                if (!"DEPENDENCY_STALE".equals(invalid.code())) throw invalid;
+                jdbc.update("""
+                        UPDATE app.draft_head SET stale=true, stale_reason='dependency_changed', updated_at=now()
+                        WHERE draft_id = ?::uuid AND approved_version_id = ? AND NOT stale
+                        """, resolved, approved);
+                new StalePropagationService(jdbc).propagateArtifactSuperseded(
+                        String.valueOf(r.get("case_id")), approved, "dependency_changed");
+                r = jdbc.queryForMap("""
+                        SELECT h.draft_id, h.case_id, h.artifact_stream_id, h.approved_version_id,
+                               h.stale, h.stale_reason, h.updated_at, s.latest_version_id
+                        FROM app.draft_head h JOIN app.artifact_stream s ON s.artifact_stream_id = h.artifact_stream_id
+                        WHERE h.draft_id = ?::uuid
+                        """, resolved);
+            }
+        }
         Map<String, Object> view = new LinkedHashMap<>();
         view.put("draftId", r.get("draft_id"));
         view.put("caseId", r.get("case_id"));

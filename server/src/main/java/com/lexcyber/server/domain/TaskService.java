@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.lexcyber.server.api.ApiException;
 import com.lexcyber.server.engine.ExecutionRequest;
 import com.lexcyber.server.engine.EngineCapabilitiesClient;
+import com.lexcyber.server.engine.EngineRegistryClient;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import java.nio.charset.StandardCharsets;
@@ -40,24 +41,34 @@ public class TaskService {
     private final boolean sentencingEnabled;
     private final IdentityService ids;
     private final EngineCapabilitiesClient capabilities;
+    private final EngineRegistryClient registry;
+    private final ModuleConfirmationService moduleConfirmation;
 
     public TaskService(JdbcTemplate jdbc, ObjectMapper objectMapper) {
-        this(jdbc, objectMapper, false, null);
+        this(jdbc, objectMapper, false, null, new EngineRegistryClient());
     }
 
     public TaskService(JdbcTemplate jdbc, ObjectMapper objectMapper,
                        @Value("${sentencing.enabled:false}") boolean sentencingEnabled) {
-        this(jdbc, objectMapper, sentencingEnabled, null);
+        this(jdbc, objectMapper, sentencingEnabled, null, new EngineRegistryClient());
+    }
+
+    public TaskService(JdbcTemplate jdbc, ObjectMapper objectMapper,
+                       @Value("${sentencing.enabled:false}") boolean sentencingEnabled,
+                       EngineCapabilitiesClient capabilities) {
+        this(jdbc, objectMapper, sentencingEnabled, capabilities, new EngineRegistryClient());
     }
 
     @Autowired
     public TaskService(JdbcTemplate jdbc, ObjectMapper objectMapper,
                        @Value("${sentencing.enabled:false}") boolean sentencingEnabled,
-                       EngineCapabilitiesClient capabilities) {
+                       EngineCapabilitiesClient capabilities, EngineRegistryClient registry) {
         this.jdbc = jdbc;
         this.objectMapper = objectMapper;
         this.sentencingEnabled = sentencingEnabled;
         this.capabilities = capabilities;
+        this.registry = registry;
+        this.moduleConfirmation = new ModuleConfirmationService(jdbc, registry);
         this.ids = new IdentityService(jdbc);
     }
 
@@ -76,6 +87,7 @@ public class TaskService {
     }
 
     private TaskView createInternal(TaskCreate request, boolean moduleDispatch) {
+        registry.lockBarrier(jdbc);
         Map<String, Object> metadata = normalizeJson(
                 request.metadata() == null ? Map.of() : request.metadata());
         String caseId = ids.caseIdOrNull(request.caseId());
@@ -164,6 +176,7 @@ public class TaskService {
 
     @Transactional
     public TaskView retry(UUID taskId) {
+        registry.lockBarrier(jdbc);
         UUID executionId = UUID.randomUUID();
         Map<String, Object> task;
         try {
@@ -326,14 +339,10 @@ public class TaskService {
             }
             // Keep the upstream version effective until the new outbox entry is
             // committed, using the same stream → head gate as first dispatch.
-            try {
-                UUID effective = new ModuleConfirmationService(jdbc)
-                        .requireEffectiveArtifactVersion(caseId, String.valueOf(entry.getKey()));
-                if (!version.equals(effective)) {
-                    throw new ApiException(HttpStatus.CONFLICT, "DEPENDENCY_STALE", "上游版本已变更，必须重新派发");
-                }
-            } catch (ApiException unavailable) {
-                throw new ApiException(HttpStatus.CONFLICT, "DEPENDENCY_STALE", "上游模块已失效，必须重新派发", unavailable);
+            UUID effective = moduleConfirmation.requireEffectiveArtifactVersion(
+                    caseId, String.valueOf(entry.getKey()));
+            if (!version.equals(effective)) {
+                throw new ApiException(HttpStatus.CONFLICT, "DEPENDENCY_STALE", "上游版本已变更，必须重新派发");
             }
             Long valid = jdbc.queryForObject("""
                     SELECT COUNT(*) FROM app.module_head h

@@ -1,6 +1,7 @@
 package com.lexcyber.server.domain;
 
 import com.lexcyber.server.api.ApiException;
+import com.lexcyber.server.engine.EngineRegistryClient;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -11,6 +12,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,9 +27,17 @@ public class CaseArchiveService {
     public static final String PROFILE_CASE_FULL = "case.full.v1";
 
     private final JdbcTemplate jdbc;
+    private final EngineRegistryClient registry;
 
     public CaseArchiveService(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
+        this.registry = new EngineRegistryClient();
+    }
+
+    @Autowired
+    public CaseArchiveService(JdbcTemplate jdbc, EngineRegistryClient registry) {
+        this.jdbc = jdbc;
+        this.registry = registry;
     }
 
     public record Gap(String code, String detail) {
@@ -83,6 +93,7 @@ public class CaseArchiveService {
 
     @Transactional
     public Map<String, Object> create(String caseId, String profile, UUID createdBy) {
+        registry.lockBarrier(jdbc);
         if (!PROFILE_CASE_FULL.equals(profile)) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_ARCHIVE_PROFILE",
                     "不支持的归档 profile");
@@ -175,8 +186,9 @@ public class CaseArchiveService {
         // Complete archive ownership validation first so a foreign dependency
         // retains the archive-specific error before recursive proof validation.
         for (Map<String, Object> item : items) {
-            LegalAnalysisContext.requireCurrent(jdbc, caseId,
-                    UUID.fromString(String.valueOf(item.get("artifact_version_id"))));
+            UUID artifactVersionId = UUID.fromString(String.valueOf(item.get("artifact_version_id")));
+            LegalAnalysisContext.requireCurrent(jdbc, caseId, artifactVersionId);
+            registry.requireValid(jdbc, artifactVersionId);
         }
 
         // canonicalize → manifest_hash

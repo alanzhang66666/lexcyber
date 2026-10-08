@@ -218,6 +218,29 @@ def seed() -> dict[str, object]:
                      REVIEWER, ROLE, "approved",
                      "CI synthetic fixture only; not a legal review or production approval")
 
+    # Withdrawal fixtures cannot retire the shared registry used by other tests.
+    withdrawn_source = {**_source(), "source_key": FIXTURE_PREFIX + "registry-source",
+                        "effective_from": "2202-01-01", "effective_to": "2202-12-31"}
+    withdrawn_id = str(registry.register_legal_source(withdrawn_source)["sourceId"])
+    registry.signoff("legal_source", f"{withdrawn_source['source_key']}@1.0.0",
+                     REVIEWER, ROLE, "approved", "CI registry withdrawal fixture only")
+    for item in _rules(withdrawn_id)[:4]:
+        item.update(rule_id=item["rule_id"] + "-registry",
+                    effective_from="2202-01-01", effective_to="2202-12-31")
+        registry.register_rule_package(item)
+        registry.signoff("rule", f"{item['rule_id']}@1.0.0", REVIEWER, ROLE, "approved",
+                         "CI registry withdrawal fixture only")
+    retiring_rule = {**_rules(source_id)[0], "rule_id": FIXTURE_PREFIX + "retire-rule",
+                     "effective_from": "2203-01-01", "effective_to": "2203-12-31"}
+    registry.register_rule_package(retiring_rule)
+    registry.signoff("rule", f"{retiring_rule['rule_id']}@1.0.0", REVIEWER, ROLE, "approved",
+                     "CI registry concurrency fixture only")
+    retiring_template = {**_template(), "template_id": FIXTURE_PREFIX + "registry-note",
+                         "doc_type": "ci.registry_note"}
+    registry.register_template(retiring_template)
+    registry.signoff("template", f"{retiring_template['template_id']}@1.0.0",
+                     REVIEWER, ROLE, "approved", "CI registry withdrawal fixture only")
+
     caps = registry.capabilities()
     unavailable = [name for name in expected if not caps["modules"][name]["available"]]
     if unavailable:

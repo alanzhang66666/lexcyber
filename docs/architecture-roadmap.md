@@ -196,3 +196,13 @@
 - 正式法学会签、真实语料多路径/B/C映射与基准校正仍待负责人资料；技术测试批准不能替代法学批准。
 
 - 本地完整分析器回归曾触发新增分支的UnboundLocalError（path循环变量作用域错误）；已修正并保留回归断言。前端请求键校验误用snake字段、空白/过长标识容错也已修正。首次失败记录不计为既有main缺陷，后续通过须以最终提交CI为准。
+
+## 2026-10-08 注册表撤回与旧工件防御
+
+- A27 前向补丁新增 engine V8 / app V26，不改已应用迁移、旧载荷或历史批准指针。Engine 保存可靠撤回事件；Java 在应用事务提交后 ACK，重复事件以 UUID receipt 幂等，按正规化外部身份和工件依赖闭包传播 stale。
+- 确认、批准、归档、下游首次派发及重试先获取同库全局事务 shared advisory barrier，再按案件/事实/head/review 原有锁序操作。注册表 UPDATE/DELETE 与会签变更的 BEFORE STATEMENT trigger 获取 exclusive barrier。Java 通过内部 API 核验精确规则/模板/法源版本和间接法源闭包；Engine 验证同数据库、同 backend PID 持有 global + 随机 challenge 双 ShareLock，不在 HTTP 验证事务内再次请求 barrier，避免排队 writer 引起锁互等。
+- 读取 confirmed/approved head 也同步检查有效性；失效保留指针并递归传播，首次响应重读事务内新状态。缺失版本不推定 latest；验证故障返回503，真实失效返回409。兼容历史空外部依赖不补造法律版本。
+- 事件与新工件使用实际插入时刻 clock_timestamp，撤回事件只匹配发生前已创建的根工件，防止旧事件重放误伤恢复原内容后新执行的结果。锁住案件后重查闭包，不能遗漏等待期间新发布的后代。
+- V8 同时冻结 signed_off/disputed/unsupported 法源版本的全部内容字段；已撤回法源不可原版本改写、重置初审或删除。原内容可以依法重新会签；内容变化必须新版本。会签备注变化或多份批准中删除一份、仍有有效批准时不误发撤回。复合身份从所有者原始字段读取，包含@的ID不拆分。
+- 新回归包括实际数据库双锁证明、blocked writer释放/rollback、V7→V8带历史升级、source/rule/template失效、递归/空版本/事件时间/UUID receipt，以及公开HTTP待审审批原子拒绝、历史归档和DOCX字节不变、审批与直接数据库规则停用并发。新增测试尚待本补丁精确SHA的完整CI验收；本地缺Docker的数据库用例不计为通过。
+- 正式法学会签、真实语料按人路径/B/C映射及量刑校正继续依赖负责人资料；本补丁不伪造批准或更改遗留501门闩。

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lexcyber.server.api.ApiException;
+import com.lexcyber.server.engine.EngineRegistryClient;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.OffsetDateTime;
@@ -30,29 +31,45 @@ public class ModuleStateService {
     private final ArtifactPublicationService artifacts;
     private final ModuleConfirmationService confirmation;
     private final boolean demoImportEnabled;
+    private final EngineRegistryClient registry;
 
     public ModuleStateService(JdbcTemplate jdbc, ObjectMapper objectMapper, CaseService cases,
                               ArtifactPublicationService artifacts,
                               ModuleConfirmationService confirmation,
                               @Value("${demo.import.enabled:false}") boolean demoImportEnabled) {
+        this(jdbc, objectMapper, cases, artifacts, confirmation, demoImportEnabled,
+                new EngineRegistryClient());
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public ModuleStateService(JdbcTemplate jdbc, ObjectMapper objectMapper, CaseService cases,
+                              ArtifactPublicationService artifacts,
+                              ModuleConfirmationService confirmation,
+                              @Value("${demo.import.enabled:false}") boolean demoImportEnabled,
+                              EngineRegistryClient registry) {
         this.jdbc = jdbc;
         this.objectMapper = objectMapper;
         this.cases = cases;
         this.artifacts = artifacts;
         this.confirmation = confirmation;
         this.demoImportEnabled = demoImportEnabled;
+        this.registry = registry;
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public ModuleStateView get(UUID ownerAccountId, String caseId, String module) {
-        caseId = cases.requireOwned(ownerAccountId, caseId).id();
-        return view(caseId, ModulePolicies.requireModule(module));
+        registry.lockBarrier(jdbc);
+        caseId = cases.lockOwned(ownerAccountId, caseId).id();
+        String resolved = ModulePolicies.requireModule(module);
+        refreshInvalidatedHead(caseId, resolved);
+        return view(caseId, resolved);
     }
 
     @Transactional
     public ModuleStateView replace(UUID ownerAccountId, String caseId, String module,
                                    ModuleStateUpdate update) {
         requireWriteEnabled();
+        registry.lockBarrier(jdbc);
         caseId = cases.lockOwned(ownerAccountId, caseId).id();
         String resolved = ModulePolicies.requireModule(module);
         if (update == null || update.version() == null || update.content() == null) {
@@ -91,6 +108,7 @@ public class ModuleStateService {
     @Transactional
     public ModuleStateView confirm(UUID ownerAccountId, String caseId, String module) {
         requireWriteEnabled();
+        registry.lockBarrier(jdbc);
         caseId = cases.lockOwned(ownerAccountId, caseId).id();
         String resolved = ModulePolicies.requireModule(module);
         ensureHead(caseId, resolved);
@@ -102,6 +120,24 @@ public class ModuleStateService {
         if (!demoImportEnabled) {
             throw new ApiException(HttpStatus.GONE, "MODULE_WRITE_RETIRED",
                     "模块写层已退役：结果仅由执行发布产生；演示导入需显式开启 DEMO_IMPORT_ENABLED");
+        }
+    }
+
+    private void refreshInvalidatedHead(String caseId, String module) {
+        List<UUID> ids = jdbc.query("""
+                SELECT confirmed_version_id FROM app.module_head
+                WHERE case_id = ?::uuid AND module = ? AND confirmed_version_id IS NOT NULL AND NOT stale
+                """, (rs, ignored) -> rs.getObject(1, UUID.class), caseId, module);
+        if (ids.isEmpty()) return;
+        try {
+            registry.requireValid(jdbc, ids.get(0));
+        } catch (ApiException invalid) {
+            if (!"DEPENDENCY_STALE".equals(invalid.code())) throw invalid;
+            jdbc.update("""
+                    UPDATE app.module_head SET stale=true, stale_reason='dependency_changed', updated_at=now()
+                    WHERE case_id = ?::uuid AND module = ? AND confirmed_version_id = ? AND NOT stale
+                    """, caseId, module, ids.get(0));
+            new StalePropagationService(jdbc).propagateArtifactSuperseded(caseId, ids.get(0), "dependency_changed");
         }
     }
 

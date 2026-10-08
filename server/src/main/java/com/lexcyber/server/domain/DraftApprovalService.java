@@ -1,10 +1,12 @@
 package com.lexcyber.server.domain;
 
 import com.lexcyber.server.api.ApiException;
+import com.lexcyber.server.engine.EngineRegistryClient;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,9 +18,17 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class DraftApprovalService {
     private final JdbcTemplate jdbc;
+    private final EngineRegistryClient registry;
 
     public DraftApprovalService(JdbcTemplate jdbc) {
         this.jdbc = jdbc;
+        this.registry = new EngineRegistryClient();
+    }
+
+    @Autowired
+    public DraftApprovalService(JdbcTemplate jdbc, EngineRegistryClient registry) {
+        this.jdbc = jdbc;
+        this.registry = registry;
     }
 
     public boolean isEffectivelyApproved(UUID draftId) {
@@ -42,6 +52,7 @@ public class DraftApprovalService {
      */
     @Transactional
     public UUID approve(String caseId, UUID draftId, UUID actorId) {
+        registry.lockBarrier(jdbc);
         LegalAnalysisContext.lockCase(jdbc, caseId);
         List<Map<String, Object>> heads = jdbc.queryForList("""
                 SELECT artifact_stream_id, approved_version_id
@@ -152,6 +163,7 @@ public class DraftApprovalService {
             throw new ApiException(HttpStatus.CONFLICT, "DEPENDENCY_STALE",
                     "draft.v2 上游工件依赖未按冻结版本精确绑定，批准被阻断");
         }
+        registry.requireValid(jdbc, latest);
         Long staleArtifactDeps = jdbc.queryForObject("""
                 SELECT COUNT(*)
                 FROM app.artifact_artifact_dependency d

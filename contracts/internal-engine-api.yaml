@@ -160,6 +160,113 @@ paths:
       responses:
         '201': { description: Sign-off recorded and status advanced. }
         '409': { description: Invalid subject or decision. }
+  /internal/v1/registry/verify-dependencies:
+    post:
+      summary: Verify exact immutable external dependencies while Java holds the registry barrier
+      description: >-
+        Java acquires transaction-scoped shared advisory locks for the registry barrier and a
+        random challenge before locking application aggregates. Engine verifies both locks in
+        the same database through pg_locks, then reads only its effective reviewed projections.
+        Registry changes take the exclusive barrier before row locks. The caller keeps its
+        transaction open through confirmation, approval or archive commit. No latest-version
+        substitution is permitted; an empty legacy version is invalid.
+      security: [{ serviceToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [coordination, dependencies]
+              properties:
+                coordination:
+                  type: object
+                  additionalProperties: false
+                  required: [backendPid, challenge]
+                  properties:
+                    backendPid: { type: integer, minimum: 1 }
+                    challenge: { type: string, pattern: '^-?[0-9]+$', description: Random signed 64-bit advisory lock key, different from the registry barrier. }
+                dependencies:
+                  type: array
+                  maxItems: 4096
+                  items: { $ref: '#/components/schemas/RegistryExternalDependency' }
+      responses:
+        '200':
+          description: Exact validity results; valid only while the caller retains its transaction locks.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [valid, invalidDependencies]
+                properties:
+                  valid: { type: boolean }
+                  invalidDependencies:
+                    type: array
+                    items:
+                      allOf:
+                        - { $ref: '#/components/schemas/RegistryExternalDependency' }
+                        - type: object
+                          required: [reason]
+                          properties:
+                            reason: { type: string }
+        '400': { description: INVALID_REGISTRY_DEPENDENCIES — malformed or excessive dependency list. }
+        '401': { description: Invalid service token. }
+        '409': { description: REGISTRY_COORDINATION_REQUIRED — caller shared locks absent or in another database. }
+        '503': { description: Registry persistence unavailable; caller must fail closed. }
+  /internal/v1/registry/invalidations:
+    get:
+      summary: Read durable registry invalidation events not yet acknowledged by Java
+      security: [{ serviceToken: [] }]
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 100 }
+      responses:
+        '200':
+          description: Events remain available until Java has committed its idempotent application transaction.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [events]
+                properties:
+                  events:
+                    type: array
+                    maxItems: 100
+                    items:
+                      type: object
+                      additionalProperties: false
+                      required: [eventId, occurredAt, dependencies]
+                      properties:
+                        eventId: { type: string, format: uuid }
+                        occurredAt: { type: string, format: date-time, description: Database wall-clock timestamp after the writer acquired the exclusive barrier. }
+                        dependencies:
+                          type: array
+                          items: { $ref: '#/components/schemas/RegistryExternalDependency' }
+        '401': { description: Invalid service token. }
+        '503': { description: Registry persistence unavailable. }
+  /internal/v1/registry/invalidations/{eventId}/ack:
+    post:
+      summary: Acknowledge an invalidation after the application transaction commits
+      security: [{ serviceToken: [] }]
+      parameters:
+        - { name: eventId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Idempotent acknowledgment; repeated acknowledgment does not replace the event.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [acknowledged]
+                properties:
+                  acknowledged: { type: boolean, const: true }
+        '401': { description: Invalid service token. }
+        '404': { description: Unknown event. }
+        '503': { description: Registry persistence unavailable. }
   /internal/v1/registry/resolve:
     post:
       summary: Dual-time-point legal source resolution (conduct vs judgment date)
@@ -173,6 +280,13 @@ components:
   securitySchemes:
     serviceToken: { type: apiKey, in: header, name: X-Service-Token }
   schemas:
+    RegistryExternalDependency:
+      type: object
+      required: [kind, key, version]
+      properties:
+        kind: { type: string, enum: [rule, legal_source, template] }
+        key: { type: string, description: Rule ID, source UUID or template ID; never a guessed display name. }
+        version: { type: string, description: Exact recorded version; empty legacy values are invalid for approval. }
     ExecutionRequest:
       type: object
       required: [task_id, execution_id, request_id, result_id, result_version, result_type, query, input_hash, contract_version]

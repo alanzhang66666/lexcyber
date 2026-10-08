@@ -8,6 +8,7 @@ import com.lexcyber.server.domain.IdempotencyService;
 import com.lexcyber.server.domain.IdentityService;
 import com.lexcyber.server.domain.ModuleConfirmationService;
 import com.lexcyber.server.domain.ModulePolicies;
+import com.lexcyber.server.engine.EngineRegistryClient;
 import java.nio.charset.StandardCharsets;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -49,16 +50,25 @@ public class ReviewService {
     private final IdempotencyService idempotency;
     private final ModuleConfirmationService moduleConfirmation;
     private final DraftApprovalService draftApproval;
+    private final EngineRegistryClient registry;
 
     public ReviewService(JdbcTemplate jdbc, CaseService cases, IdempotencyService idempotency,
                          ModuleConfirmationService moduleConfirmation,
                          DraftApprovalService draftApproval) {
+        this(jdbc, cases, idempotency, moduleConfirmation, draftApproval, new EngineRegistryClient());
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public ReviewService(JdbcTemplate jdbc, CaseService cases, IdempotencyService idempotency,
+                         ModuleConfirmationService moduleConfirmation,
+                         DraftApprovalService draftApproval, EngineRegistryClient registry) {
         this.jdbc = jdbc;
         this.cases = cases;
         this.ids = new IdentityService(jdbc);
         this.idempotency = idempotency;
         this.moduleConfirmation = moduleConfirmation;
         this.draftApproval = draftApproval;
+        this.registry = registry;
     }
 
     @Transactional(readOnly = true)
@@ -124,6 +134,7 @@ public class ReviewService {
 
     @Transactional
     public Map<String, Object> open(UUID ownerAccountId, String caseId, ReviewOpen request, String idempotencyKey) {
+        registry.lockBarrier(jdbc);
         caseId = cases.lockOwned(ownerAccountId, caseId).id();
         String module = ModulePolicies.requireReviewModule(request.module());
         UUID taskId = request.taskId();
@@ -223,6 +234,7 @@ public class ReviewService {
     @Transactional
     public Map<String, Object> decide(UUID ownerAccountId, UUID reviewId, String decision, int resultVersion,
                                       String actor, String comment) {
+        registry.lockBarrier(jdbc);
         Map<String, Object> current = requireOwned(ownerAccountId, reviewId);
         String caseId = (String) current.get("caseId");
         cases.lockOwned(ownerAccountId, caseId);

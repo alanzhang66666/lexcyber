@@ -4,10 +4,11 @@ import hashlib
 import secrets
 import tempfile
 from pathlib import Path
+from typing import Any
 from uuid import UUID
 
 import dramatiq
-from fastapi import Depends, FastAPI, Header, HTTPException, Response, status
+from fastapi import Body, Depends, FastAPI, Header, HTTPException, Response, status
 
 from engine.adapters.sources import SourceDateError, SourceSearchUnavailable
 from engine.adapters.sources import search as search_sources_adapter
@@ -24,6 +25,11 @@ from engine.contracts import (
 from engine.docx_export import DOCX_MIME, DocxExportError, DocxExportRequest, render_docx
 from engine.import_package import ImportPackageValidationError, load_import_package
 from engine.object_store import fetch_object_bytes
+from engine.rules.dependency_validity import (
+    validate_dependency_request,
+    verify_coordination,
+    verify_dependencies,
+)
 from engine.rules.registry import RegistryError
 from engine.settings import settings
 from engine.store import claim_enqueue, create_execution, get_execution, mark_enqueued, release_enqueue
@@ -34,6 +40,50 @@ app = FastAPI(title="LexCyber Execution Engine", version="0.8.0")
 def require_service_token(x_service_token: str = Header(default="")) -> None:
     if not settings.service_token or not secrets.compare_digest(x_service_token, settings.service_token):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid service token")
+
+
+@app.post("/internal/v1/registry/verify-dependencies", dependencies=[Depends(require_service_token)])
+def verify_registry_dependencies(payload: Any = Body(default=None)) -> dict:
+    parsed, errors = validate_dependency_request(payload)
+    if errors:
+        raise HTTPException(status_code=400, detail={"code": "INVALID_REGISTRY_DEPENDENCIES", "errors": errors})
+    from engine.store import connection
+    try:
+        with connection() as conn:
+            if not verify_coordination(conn, parsed["backendPid"], parsed["challenge"]):
+                raise HTTPException(status_code=409, detail={"code": "REGISTRY_COORDINATION_REQUIRED"})
+            invalid = verify_dependencies(conn, parsed["dependencies"])
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="registry persistence unavailable") from exc
+    return {"valid": not invalid, "invalidDependencies": invalid}
+
+
+@app.get("/internal/v1/registry/invalidations", dependencies=[Depends(require_service_token)])
+def registry_invalidations(limit: int = 100) -> dict:
+    if limit < 1 or limit > 100:
+        raise HTTPException(status_code=400, detail={"code": "INVALID_LIMIT"})
+    from engine.store import connection
+    try:
+        with connection() as conn:
+            rows = conn.execute("SELECT event_id, dependencies, created_at FROM engine.registry_invalidation_event WHERE acknowledged_at IS NULL ORDER BY created_at, event_id LIMIT %s", (limit,)).fetchall()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="registry persistence unavailable") from exc
+    return {"events": [{"eventId": str(row[0]), "occurredAt": row[2].isoformat(), "dependencies": row[1]} for row in rows]}
+
+
+@app.post("/internal/v1/registry/invalidations/{event_id}/ack", dependencies=[Depends(require_service_token)])
+def acknowledge_registry_invalidation(event_id: UUID) -> dict:
+    from engine.store import connection
+    try:
+        with connection() as conn:
+            row = conn.execute("UPDATE engine.registry_invalidation_event SET acknowledged_at = COALESCE(acknowledged_at, now()) WHERE event_id = %s RETURNING event_id", (event_id,)).fetchone()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="registry persistence unavailable") from exc
+    if row is None:
+        raise HTTPException(status_code=404, detail="invalidation event not found")
+    return {"acknowledged": True}
 
 
 @app.get("/healthz")

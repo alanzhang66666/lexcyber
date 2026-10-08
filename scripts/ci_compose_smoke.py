@@ -15,6 +15,7 @@ import urllib.request
 import uuid
 import xml.etree.ElementTree as ET
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 BASE = "http://127.0.0.1:18080"
@@ -162,6 +163,243 @@ def wait_execution(token, execution_id):
             raise RuntimeError(f"execution {execution_id} ended {state}: {view}")
         time.sleep(1)
     raise RuntimeError(f"execution {execution_id} did not complete")
+
+
+def _engine_internal(path, payload):
+    """Call the Engine from inside its container without exposing its token."""
+    script = r'''
+import json, sys, urllib.request, urllib.error
+from engine.settings import settings
+body = json.loads(sys.stdin.read())
+request = urllib.request.Request("http://127.0.0.1:8100" + sys.argv[1],
+    data=json.dumps(body).encode(), headers={"Content-Type": "application/json",
+    "X-Service-Token": settings.service_token}, method="POST")
+try:
+    with urllib.request.urlopen(request, timeout=15) as response:
+        print(json.dumps({"status": response.status, "body": json.loads(response.read() or b"{}")}, sort_keys=True))
+except urllib.error.HTTPError as error:
+    print(json.dumps({"status": error.code, "body": json.loads(error.read() or b"{}")}, sort_keys=True))
+'''
+    result = subprocess.run([
+        "docker", "compose", "exec", "-T", "engine", "python", "-c", script, path,
+    ], input=json.dumps(payload).encode(), capture_output=True, check=True,
+        cwd=Path(__file__).resolve().parent.parent)
+    return json.loads(result.stdout.decode().strip().splitlines()[-1])
+
+
+def _engine_events(key, version):
+    script = r'''
+import json, sys
+from engine.store import connection
+key, version = json.loads(sys.stdin.read())
+with connection() as conn:
+    rows = conn.execute("SELECT event_id, acknowledged_at, dependencies FROM engine.registry_invalidation_event ORDER BY created_at").fetchall()
+print(json.dumps({"events": [{"eventId": str(row[0]), "ack": row[1] is not None,
+    "dependencies": row[2]} for row in rows if any(d.get("key") == key and d.get("version") == version for d in (row[2] or []))]}, sort_keys=True))
+'''
+    result = subprocess.run([
+        "docker", "compose", "exec", "-T", "engine", "python", "-c", script,
+    ], input=json.dumps([key, version]).encode(), capture_output=True, check=True,
+        cwd=Path(__file__).resolve().parent.parent)
+    return json.loads(result.stdout.decode().strip().splitlines()[-1])
+
+
+def _registry_signoff(kind, subject, decision, comment):
+    result = _engine_internal("/internal/v1/registry/signoffs", {
+        "subjectKind": kind, "subjectKey": subject, "reviewer": "ci-fixture-revoker",
+        "role": "automated-ci-fixture", "decision": decision, "comment": comment,
+    })
+    assert result["status"] == 201, result
+    return result["body"]
+
+
+def _registry_case(token, as_of, *, approve_draft=True, doc_type="ci.registry_note",
+                   module_names=("compliance", "conviction", "sentencing"), approve_modules=True, render_draft=True):
+    case = request("POST", "/v1/cases", token=token, expected=201, payload={
+        "title": f"CI registry revocation {as_of}", "jurisdiction": "CI", "asOfDate": as_of,
+        "metadata": {"purpose": "LEXCYBER_CI_FIXTURES"},
+    })
+    case_id = _id(case, "id", "caseId")
+    facts = fixture_linked([
+        {"key": "ci_case_label", "value": "registry", "verificationStatus": "confirmed"},
+        {"key": "ci_confirmed_marker", "value": "yes", "verificationStatus": "confirmed"},
+        {"key": "ci_compliance_flag", "value": True, "verificationStatus": "confirmed"},
+        {"key": "ci_conviction_flag", "value": True, "verificationStatus": "confirmed"},
+        {"key": "ci_distinction_flag", "value": True, "verificationStatus": "confirmed"},
+        {"key": "ci_sentencing_flag", "value": True, "verificationStatus": "confirmed"},
+    ])
+    amounts = [{"id": "ci-registry-amount", "kind": "crime_amount", "label": "fixture",
+                "value": "6", "currency": "CNY", "verificationStatus": "confirmed",
+                "evidenceIds": [PARAMETER_PROOF["id"]]}]
+    jurisdiction = [{"id": "ci-registry-jurisdiction", "type": "territory", "value": "CI",
+                     "verificationStatus": "confirmed", "evidenceIds": [PARAMETER_PROOF["id"]]}]
+    for kind, items in (("evidence", [PARAMETER_PROOF]), ("facts", facts),
+                        ("actors", [{"id": "ci-registry-actor", "type": "person", "name": "fixture",
+                                     "verificationStatus": "confirmed"}]),
+                        ("events", [{"id": "ci-registry-event", "date": as_of, "stage": "fixture",
+                                     "description": "registry fixture", "verificationStatus": "confirmed"}]),
+                        ("amounts", amounts), ("jurisdiction-connections", jurisdiction)):
+        request("PUT", f"/v2/cases/{case_id}/facts-entities/{kind}", token=token,
+                expected=200, payload={"items": items})
+    facts_version = request("POST", f"/v2/cases/{case_id}/facts-versions", token=token, expected=201)
+    facts_id = _id(facts_version, "factsVersionId")
+    request("POST", f"/v2/cases/{case_id}/facts-versions/{facts_id}/confirm", token=token,
+            expected=200, payload={"expectedConfirmedFactsVersionId": None})
+    modules = {}
+    for module in module_names:
+        execution = request("POST", f"/v2/cases/{case_id}/modules/{module}/executions",
+                            token=token, expected=202)
+        wait_execution(token, _id(execution, "executionId"))
+        head = request("GET", f"/v2/cases/{case_id}/modules/{module}", token=token)
+        artifact_id = _id(head, "latestVersionId")
+        artifact = request("GET", f"/v2/artifact-versions/{artifact_id}", token=token)
+        review = request("POST", f"/v2/artifact-versions/{artifact_id}/reviews", token=token,
+                         expected=201, payload={"comment": "registry fixture module approval"})
+        if approve_modules:
+            approved = request("POST", f"/v1/reviews/{_id(review, 'reviewId')}/approve", token=token,
+                               payload={"resultVersion": artifact["version"]})
+            assert approved.get("status") == "approved", approved
+        modules[module] = artifact
+    if not render_draft:
+        return {"case": case_id, "modules": modules, "review": review}
+    render = request("POST", f"/v2/cases/{case_id}/drafts/render", token=token,
+                     expected=201, payload={"docType": doc_type})
+    wait_execution(token, _id(render, "executionId"))
+    draft_id = _id(render, "draftId")
+    draft_head = request("GET", f"/v2/drafts/{draft_id}", token=token)
+    draft_artifact_id = _id(draft_head, "latestVersionId")
+    draft_artifact = request("GET", f"/v2/artifact-versions/{draft_artifact_id}", token=token)
+    draft_review = request("POST", f"/v2/artifact-versions/{draft_artifact_id}/reviews", token=token,
+                           expected=201, payload={"comment": "registry fixture draft approval"})
+    if approve_draft:
+        approved = request("POST", f"/v1/reviews/{_id(draft_review, 'reviewId')}/approve", token=token,
+                           payload={"resultVersion": draft_artifact["version"]})
+        assert approved.get("status") == "approved", approved
+        archive = request("POST", f"/v2/cases/{case_id}/archives", token=token,
+                          expected=201, payload={"archiveProfile": "case.full.v1"})
+    else:
+        archive = None
+    return {"case": case_id, "modules": modules, "draft": draft_artifact,
+            "draftId": draft_id, "review": draft_review, "archive": archive}
+
+
+def _retire_registry_fixture(kind, key):
+    """CI-only direct SQL retirement also exercises the database writer barrier."""
+    script = r'''
+import json, os, sys
+from engine.store import connection
+kind, key = json.load(sys.stdin)
+assert os.environ.get("LEXCYBER_CI_FIXTURES") == "1" and key.startswith("ci-fixture-")
+table, column = {"rule": ("rule_package", "rule_id"), "template": ("template_package", "template_id")}[kind]
+with connection() as conn:
+    changed = conn.execute(f"UPDATE engine.{table} SET legal_review_status='superseded' WHERE {column}=%s AND legal_review_status='approved'", (key,)).rowcount
+assert changed == 1, changed
+print(json.dumps({"changed": changed}))
+'''
+    result = subprocess.run(["docker", "compose", "exec", "-T", "-e", "LEXCYBER_CI_FIXTURES=1",
+                             "engine", "python", "-c", script], input=json.dumps([kind, key]).encode(),
+                            capture_output=True, check=True, cwd=Path(__file__).resolve().parent.parent)
+    return json.loads(result.stdout)
+
+
+def _wait_registry_ack(key, version):
+    for _ in range(40):
+        events = _engine_events(key, version)["events"]
+        if events and all(item["ack"] for item in events):
+            return events
+        time.sleep(1)
+    raise RuntimeError(f"registry event not committed and acknowledged: {key}@{version}: {events}")
+
+
+def run_registry_revocation(token):
+    """Withdraw actual registered dependencies and retain immutable prior history."""
+    source = _registry_case(token, "2202-06-01")
+    pending_module = _registry_case(token, "2202-06-01", module_names=("compliance",),
+                                    approve_modules=False, render_draft=False)
+    template_case = _registry_case(token, "2026-06-01")
+    archive_path = f"/v2/cases/{source['case']}/archives/{_id(source['archive'], 'archiveId')}"
+    archive_before = request("GET", archive_path, token=token)
+    draft_before = request("GET", f"/v2/drafts/{source['draftId']}", token=token)
+    old_artifacts = [*source["modules"].values(), source["draft"]]
+    old_docx = export_docx(token, source["case"], source["draft"]["artifactVersionId"], source["draft"]["payload"]["body"])
+    pending = request("POST", f"/v2/cases/{source['case']}/drafts/render", token=token,
+                      expected=201, payload={"docType": "ci.registry_note"})
+    wait_execution(token, _id(pending, "executionId"))
+    pending_head = request("GET", f"/v2/drafts/{source['draftId']}", token=token)
+    pending_artifact = request("GET", f"/v2/artifact-versions/{_id(pending_head, 'latestVersionId')}", token=token)
+    pending_review = request("POST", f"/v2/artifact-versions/{pending_artifact['artifactVersionId']}/reviews",
+                             token=token, expected=201, payload={"comment": "withdrawal approval rejection"})
+    _registry_signoff("legal_source", "ci-fixture-registry-source@1.0.0", "rejected", "CI revocation fixture")
+    # The first read is itself a synchronous validity check; never permit an effective stale head.
+    for name, old in source["modules"].items():
+        after = request("GET", f"/v2/cases/{source['case']}/modules/{name}", token=token)
+        assert after["stale"] and not after["effectivelyConfirmed"], after
+        assert after["confirmedVersionId"] == old["artifactVersionId"], after
+    after_draft = request("GET", f"/v2/drafts/{source['draftId']}", token=token)
+    assert after_draft["stale"] and after_draft["approvedVersionId"] == draft_before["approvedVersionId"], after_draft
+    for review, artifact in [(pending_review, pending_artifact),
+                             (pending_module["review"], pending_module["modules"]["compliance"])]:
+        path = f"/v1/reviews/{_id(review, 'reviewId')}"
+        before = request("GET", path, token=token)
+        blocked = request("POST", path + "/approve", token=token, expected=409,
+                          payload={"resultVersion": artifact["version"]})
+        assert blocked["code"] == "DEPENDENCY_STALE", blocked
+        assert request("GET", path, token=token) == before
+    downstream = request("POST", f"/v2/cases/{source['case']}/modules/sentencing/executions", token=token, expected=409)
+    assert downstream["code"] in {"MODULE_NOT_CONFIRMED", "DEPENDENCY_STALE"}, downstream
+    request("POST", f"/v2/cases/{source['case']}/drafts/render", token=token,
+            expected=409, payload={"docType": "ci.registry_note"})
+    request("POST", f"/v2/cases/{source['case']}/archives", token=token, expected=409,
+            payload={"archiveProfile": "case.full.v1"})
+    assert request("GET", archive_path, token=token) == archive_before
+    for old in old_artifacts:
+        assert request("GET", f"/v2/artifact-versions/{old['artifactVersionId']}", token=token)["payload"] == old["payload"]
+    assert export_docx(token, source["case"], source["draft"]["artifactVersionId"], source["draft"]["payload"]["body"]) == old_docx
+    _wait_registry_ack("ci-fixture-compliance-registry", "1.0.0")
+    print("PASS legal-source withdrawal: first-read stale, pending module/draft approval rejection, downstream/archive rejection, immutable history/DOCX and durable ACK", flush=True)
+
+    template_archive_path = f"/v2/cases/{template_case['case']}/archives/{_id(template_case['archive'], 'archiveId')}"
+    saved_template_archive = request("GET", template_archive_path, token=token)
+    pending = request("POST", f"/v2/cases/{template_case['case']}/drafts/render", token=token,
+                      expected=201, payload={"docType": "ci.registry_note"})
+    wait_execution(token, _id(pending, "executionId"))
+    head = request("GET", f"/v2/drafts/{template_case['draftId']}", token=token)
+    pending_artifact = request("GET", f"/v2/artifact-versions/{head['latestVersionId']}", token=token)
+    review = request("POST", f"/v2/artifact-versions/{pending_artifact['artifactVersionId']}/reviews", token=token,
+                     expected=201, payload={"comment": "template revocation rejection"})
+    _retire_registry_fixture("template", "ci-fixture-registry-note")
+    draft = request("GET", f"/v2/drafts/{template_case['draftId']}", token=token)
+    assert draft["stale"] and draft["approvedVersionId"] == template_case["draft"]["artifactVersionId"], draft
+    assert all(request("GET", f"/v2/cases/{template_case['case']}/modules/{name}", token=token)["effectivelyConfirmed"]
+               for name in template_case["modules"])
+    blocked = request("POST", f"/v1/reviews/{_id(review, 'reviewId')}/approve", token=token,
+                      expected=409, payload={"resultVersion": pending_artifact["version"]})
+    assert blocked["code"] == "DEPENDENCY_STALE", blocked
+    assert request("GET", template_archive_path, token=token) == saved_template_archive
+    _wait_registry_ack("ci-fixture-registry-note", "1.0.0")
+    print("PASS template withdrawal: pending approval rejected, approved draft stale with pointer retained, modules remain valid, archive preserved", flush=True)
+
+    race = _registry_case(token, "2203-06-01", module_names=("compliance",), approve_modules=False, render_draft=False)
+    artifact = race["modules"]["compliance"]
+    def approve_race():
+        return request("POST", f"/v1/reviews/{_id(race['review'], 'reviewId')}/approve", token=token,
+                       expected=(200, 409), payload={"resultVersion": artifact["version"]})
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        approval = pool.submit(approve_race)
+        retirement = pool.submit(_retire_registry_fixture, "rule", "ci-fixture-retire-rule")
+        result = approval.result()
+        assert result.get("status") == "approved" or result.get("code") == "DEPENDENCY_STALE", result
+        assert retirement.result()["changed"] == 1
+    _wait_registry_ack("ci-fixture-retire-rule", "1.0.0")
+    head = request("GET", f"/v2/cases/{race['case']}/modules/compliance", token=token)
+    assert not head["effectivelyConfirmed"], head
+    if result.get("status") == "approved":
+        assert head["stale"] and head["confirmedVersionId"] == artifact["artifactVersionId"], head
+    else:
+        assert head["confirmedVersionId"] is None, head
+        assert request("GET", f"/v1/reviews/{_id(race['review'], 'reviewId')}", token=token)["status"] == "pending"
+    assert request("GET", f"/v2/artifact-versions/{artifact['artifactVersionId']}", token=token)["payload"] == artifact["payload"]
+    print("PASS concurrent HTTP approval and database rule retirement: final head invalid, failed approval atomic, history retained", flush=True)
 
 
 def run_reference_integrity(token):
@@ -947,6 +1185,7 @@ def main():
             "password": secrets.token_urlsafe(24), "displayName": "CI lifecycle fixture",
         })
         run_lifecycle(lifecycle_session["token"])
+        run_registry_revocation(lifecycle_session["token"])
 
 
 if __name__ == "__main__":
