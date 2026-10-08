@@ -45,6 +45,13 @@ class RegistryError(Exception):
         self.code = code
 
 
+def _require_initial_review(item: dict[str, Any], field: str, allowed: tuple[str, ...]) -> None:
+    value = item.get(field, "pending")
+    if not isinstance(value, str) or value not in allowed:
+        raise RegistryError("REGISTRY_REVIEW_REQUIRED",
+                            f"initial {field} must be one of {allowed}; review requires signoff()")
+
+
 _ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
@@ -72,6 +79,7 @@ def require_as_of_date(metadata: dict[str, Any]) -> date:
 
 def register_legal_source(item: dict[str, Any]) -> dict[str, Any]:
     """登记一个法源版本（默认 pending）。source_key+source_version 唯一。"""
+    _require_initial_review(item, "verification_level", ("pending", "verified"))
     required = ("source_key", "title", "authority", "source_version", "effective_from")
     missing = [k for k in required if not item.get(k)]
     if missing:
@@ -142,7 +150,7 @@ def resolve_temporal(source_key: str, conduct_date: date | None,
             SELECT source_id, source_key, source_version, effective_from, effective_to,
                    repeal_date, verification_level, authority, title, article,
                    document_number, jurisdiction, official_url, excerpt, provenance, coverage
-            FROM engine.legal_source WHERE source_key = %s ORDER BY effective_from
+            FROM engine.effective_legal_source WHERE source_key = %s ORDER BY effective_from
             """,
             (source_key,),
         ).fetchall()
@@ -211,12 +219,22 @@ def _source_view(row) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 def register_rule_package(item: dict[str, Any]) -> dict[str, Any]:
+    from engine.rules.conviction_paths import validate_candidate_path_definitions
+
+    _require_initial_review(item, "legal_review_status", ("pending",))
     required = ("rule_id", "rule_version", "family", "predicate", "outcome")
     missing = [k for k in required if item.get(k) is None]
     if missing:
         raise RegistryError("INVALID_RULE_PACKAGE", f"missing fields: {missing}")
     if item["family"] not in FAMILIES:
         raise RegistryError("INVALID_RULE_PACKAGE", f"unknown family {item['family']}")
+    path_errors = validate_candidate_path_definitions(item["outcome"])
+    if isinstance(item["outcome"], dict) and "candidate_paths" in item["outcome"] and item["family"] not in {"conviction", "distinction"}:
+        raise RegistryError("INVALID_CONVICTION_PATH_PLAN", "candidate_paths requires conviction or distinction family")
+    if path_errors:
+        raise RegistryError("INVALID_CONVICTION_PATH_PLAN", str(path_errors))
+    if isinstance(item["outcome"], dict) and "candidate_paths" in item["outcome"] and not item.get("source_ids"):
+        raise RegistryError("INVALID_CONVICTION_PATH_PLAN", "declared paths require registered legal sources")
     content_hash = item.get("content_hash") or _canonical_hash({
         k: item.get(k) for k in ("rule_id", "rule_version", "family", "predicate",
                                  "outcome", "source_ids", "coverage", "required_evidence_kinds")
@@ -257,6 +275,7 @@ def register_rule_package(item: dict[str, Any]) -> dict[str, Any]:
 
 
 def register_template(item: dict[str, Any]) -> dict[str, Any]:
+    _require_initial_review(item, "legal_review_status", ("pending",))
     required = ("template_id", "template_version", "doc_type", "body_template")
     missing = [k for k in required if not item.get(k)]
     if missing:
@@ -335,11 +354,11 @@ def capabilities() -> dict[str, Any]:
     """每个模块的可用性 = 所需 family 全部存在 approved 规则包。"""
     with connection() as conn:
         rows = conn.execute(
-            "SELECT family, rule_id, rule_version FROM engine.rule_package"
+            "SELECT family, rule_id, rule_version FROM engine.effective_rule_package"
             " WHERE legal_review_status = 'approved' ORDER BY family, rule_id"
         ).fetchall()
         templates = conn.execute(
-            "SELECT template_id, template_version, doc_type FROM engine.template_package"
+            "SELECT template_id, template_version, doc_type FROM engine.effective_template_package"
             " WHERE legal_review_status = 'approved' ORDER BY template_id"
         ).fetchall()
         pending = conn.execute(
@@ -379,7 +398,7 @@ def active_template(doc_type: str) -> dict[str, Any] | None:
             """
             SELECT template_id, template_version, field_schema,
                    body_template, content_hash
-            FROM engine.template_package
+            FROM engine.effective_template_package
             WHERE doc_type = %s AND legal_review_status = 'approved'
             ORDER BY created_at DESC LIMIT 1
             """,
@@ -403,7 +422,7 @@ def active_rules(family: str, as_of: date | str | None = None) -> list[dict[str,
             """
             SELECT rule_package_id, rule_id, rule_version, source_ids, predicate, outcome,
                    required_evidence_kinds, coverage, content_hash
-            FROM engine.rule_package
+            FROM engine.effective_rule_package
             WHERE family = %s AND legal_review_status = 'approved'
               AND (effective_from IS NULL OR effective_from <= %s)
               AND (effective_to IS NULL OR effective_to >= %s)

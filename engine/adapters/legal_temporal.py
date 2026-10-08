@@ -92,7 +92,7 @@ def resolve_sources(source_ids: set[str], conduct: date | None,
                 "blockers": []}
     with connection() as conn:
         rows = conn.execute(
-            "SELECT source_id, source_key, source_version FROM engine.legal_source "
+            "SELECT source_id, source_key, source_version FROM engine.effective_legal_source "
             "WHERE source_id = ANY(%s::uuid[])", (sorted(source_ids),),
         ).fetchall()
     found_ids = {str(source_id) for source_id, _, _ in rows}

@@ -55,6 +55,55 @@ describe('module-content-v2 严格读取', () => {
     expect(analysis!.humanReviewRequired).toBe(true)
   })
 
+  it('严格读取 snake_case 候选路径，并保留排除理由、证据冲突与阻断状态', () => {
+    const analysis = toV2ModuleAnalysis({
+      ...CONVICTION_PAYLOAD,
+      candidate_paths: [{
+        id: 'cp-1', path_id: 'path-1', actor_id: 'actor-1', label: '帮信路径', charge_key: 'help_info',
+        baseline_position: 'excluded', supporting_evidence_ids: ['ev-1'], contrary_evidence_ids: ['ev-2'], legal_source_ids: ['law-1'],
+        rule_id: 'r-1', rule_version: '1', point: 'conduct', verification_status: 'candidate', status: 'calculated',
+        exclusion_reason: '待核对主观认识', blockers: [],
+      }],
+    })!
+    expect(analysis.candidatePaths[0].exclusionReason).toBe('待核对主观认识')
+    expect(analysis.candidatePaths[0].contraryEvidenceIds).toEqual(['ev-2'])
+    expect(analysis.candidatePaths[0].status).toBe('calculated')
+    expect(analysis.pathDiagnostics).toEqual([])
+  })
+
+  it('畸形路径成为诊断，未知 schema 不读取路径', () => {
+    const malformed = toV2ModuleAnalysis({ ...CONVICTION_PAYLOAD, candidate_paths: [{ path_id: 'p', actor_id: 'a', label: '缺少字段' }] })!
+    expect(malformed.candidatePaths).toEqual([])
+    expect(malformed.pathDiagnostics[0].path).toBe('candidate_paths[0]')
+    expect(toV2ModuleAnalysis({ schema_version: 'case.other.v2', candidate_paths: [] })).toBeNull()
+  })
+
+  it('拒绝互相矛盾的计算状态、阻断状态与重复证据引用', () => {
+    const row = {
+      id: 'cp', path_id: 'p', actor_id: 'a', label: '路径', charge_key: 'charge', baseline_position: 'candidate',
+      supporting_evidence_ids: ['e', 'e'], contrary_evidence_ids: [], legal_source_ids: [], rule_id: 'r', rule_version: '1',
+      point: 'conduct', verification_status: 'candidate', status: 'calculated', exclusion_reason: null, blockers: [],
+    }
+    const duplicate = toV2ModuleAnalysis({ ...CONVICTION_PAYLOAD, candidate_paths: [row] })!
+    expect(duplicate.pathDiagnostics).toHaveLength(1)
+    const conflicted = toV2ModuleAnalysis({ ...CONVICTION_PAYLOAD, candidate_paths: [{ ...row, supporting_evidence_ids: [], verification_status: 'conflicted' }] })!
+    expect(conflicted.pathDiagnostics[0].message).toContain('conflicted')
+    const blocked = toV2ModuleAnalysis({ ...CONVICTION_PAYLOAD, candidate_paths: [{ ...row, supporting_evidence_ids: [], status: 'blocked', blockers: [{ code: 'MISSING_FACT' }] }] })!
+    expect(blocked.pathDiagnostics[0].message).toContain('blocked')
+  })
+
+  it('允许同一证据在支持与相反两侧分别出现', () => {
+    const path = {
+      id: 'cp-cross', path_id: 'p-cross', actor_id: 'a', label: '交叉证据路径', charge_key: 'charge', baseline_position: 'candidate',
+      supporting_evidence_ids: ['same-proof'], contrary_evidence_ids: ['same-proof'], legal_source_ids: [], rule_id: 'r', rule_version: '1',
+      point: 'conduct', verification_status: 'candidate', status: 'calculated', exclusion_reason: null, blockers: [],
+    }
+    const analysis = toV2ModuleAnalysis({ ...CONVICTION_PAYLOAD, candidate_paths: [path] })!
+    expect(analysis.pathDiagnostics).toEqual([])
+    expect(analysis.candidatePaths[0].supportingEvidenceIds).toEqual(['same-proof'])
+    expect(analysis.candidatePaths[0].contraryEvidenceIds).toEqual(['same-proof'])
+  })
+
   it('未知 schema 一律返回 null，不猜读', () => {
     expect(toV2ModuleAnalysis({ schema_version: 'case.module.v1', rules: [] })).toBeNull()
     expect(toV2ModuleAnalysis({ status: 'calculated' })).toBeNull()

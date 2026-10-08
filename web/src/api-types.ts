@@ -404,11 +404,20 @@ export type CandidatePath = {
   id?: string | null
   title: string
   kind?: CandidatePathKind | null
+  actorId?: string | null
+  chargeKey?: string | null
   summary?: string | null
   exclusionReason?: string | null
+  exclusionPending?: boolean
   supporting?: EvidenceRef[]
   contrary?: EvidenceRef[]
+  legalSourceIds?: string[]
+  ruleId?: string | null
+  ruleVersion?: string | null
+  point?: 'as_of' | 'conduct' | 'judgment' | null
   status?: VerificationStatus | null
+  calculationStatus?: 'calculated' | 'blocked' | null
+  blockers?: Blocker[]
 }
 
 /** 合规事实清单项（C 案）：T3 `analyses.compliance.checklist[]` 的维度 + 客观状态 + 证据，不做合规等级→罪责映射。 */

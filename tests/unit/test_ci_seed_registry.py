@@ -59,13 +59,15 @@ def test_fixture_inputs_drive_all_real_adapters(monkeypatch):
         "predicate": item["predicate"], "outcome": item["outcome"],
         "sourceIds": item["source_ids"], "contentHash": "ci-fixture-hash",
     } for item in raw_rules]
-    by_family = {}
-    for item, normalized in zip(raw_rules, rules):
-        by_family.setdefault(item["family"], []).append(normalized)
+    def active_rules(family, as_of):
+        return [normalized for item, normalized in zip(raw_rules, rules)
+                if item["family"] == family
+                and (not item.get("effective_from") or item["effective_from"] <= str(as_of))
+                and (not item.get("effective_to") or item["effective_to"] >= str(as_of))]
     monkeypatch.setattr(module_analysis.registry, "active_rules",
-                        lambda family, *_: by_family.get(family, []))
+                        active_rules)
     monkeypatch.setattr(sentencing_v2.registry, "active_rules",
-                        lambda family, *_: by_family.get(family, []))
+                        active_rules)
     template = fixture._template()
     monkeypatch.setattr(document_render.registry, "active_template", lambda _: {
         "templateId": template["template_id"], "templateVersion": template["template_version"],

@@ -323,6 +323,82 @@ def run_parameter_proof_integrity(token):
           flush=True)
 
 
+def run_declared_conviction_paths(token):
+    """Explicit synthetic plans preserve frozen actor/proof identity and review gates."""
+    historical = []
+    for date_value, conflict, candidate_proof in [
+            ("2200-01-01", False, False), ("2200-01-01", False, True),
+            ("2201-01-01", True, False)]:
+        case = request("POST", "/v1/cases", token=token, expected=201, payload={
+            "title": "CI explicit actor path fixture", "jurisdiction": "CI", "asOfDate": date_value,
+            "metadata": {"purpose": "LEXCYBER_CI_FIXTURES"},
+        })
+        base = f"/v2/cases/{_id(case, 'id', 'caseId')}"
+        actors = [{"id": "ci-path-a", "type": "person", "name": "CI actor A"},
+                  {"id": "ci-path-b", "type": "person", "name": "CI actor B"}]
+        proofs = [PARAMETER_PROOF,
+                  {"id": "ci-path-proof-a", "type": "document", "verificationStatus": "candidate" if candidate_proof else "confirmed"},
+                  {"id": "ci-path-proof-b", "type": "document", "verificationStatus": "confirmed"},
+                  {"id": "ci-path-counter-a", "type": "document", "verificationStatus": "confirmed"}]
+        facts = fixture_linked([{ "id": "path-selector", "key": "ci_path_flag", "value": True, "verificationStatus": "confirmed"}])
+        for key, actor, proof in [("ci_path_actor_a", "ci-path-a", "ci-path-proof-a"),
+                                  ("ci_path_actor_b", "ci-path-b", "ci-path-proof-b"),
+                                  ("ci_path_counter_a", "ci-path-a", "ci-path-counter-a")]:
+            facts.append({"id": key, "key": key, "actorId": actor, "value": True,
+                          "verificationStatus": "confirmed", "evidenceIds": [proof]})
+        for kind, rows in {"actors": actors, "evidence": proofs, "facts": facts,
+                           "jurisdiction-connections": fixture_linked([
+                               {"id": "ci-path-juri", "type": "territory", "value": "CI", "verificationStatus": "confirmed"}])}.items():
+            request("PUT", f"{base}/facts-entities/{kind}", token=token, payload={"items": rows})
+        version = request("POST", f"{base}/facts-versions", token=token, expected=201)
+        facts_id = _id(version, "factsVersionId")
+        frozen = request("GET", f"{base}/facts-versions/{facts_id}", token=token)
+        request("POST", f"{base}/facts-versions/{facts_id}/confirm", token=token,
+                payload={"expectedConfirmedFactsVersionId": None})
+        execution = request("POST", f"{base}/modules/conviction/executions", token=token, expected=202)
+        wait_execution(token, _id(execution, "executionId"))
+        head = request("GET", f"{base}/modules/conviction", token=token)
+        artifact = request("GET", f"/v2/artifact-versions/{_id(head, 'latestVersionId')}", token=token)
+        body = artifact["payload"]
+        paths = body["candidate_paths"]
+        assert len(paths) == 2 and len({row["actor_id"] for row in paths}) == 2, body
+        actor_ids = {row["id"]: row["entityId"] for row in frozen["payload"]["entities"]["actors"]}
+        proof_ids = {row["id"]: row["entityId"] for row in frozen["payload"]["entities"]["evidence"]}
+        first = next(row for row in paths if row["path_id"] == "fixture-candidate-a")
+        excluded = next(row for row in paths if row["path_id"] == "fixture-excluded-b")
+        assert first["actor_id"] == actor_ids["ci-path-a"] and excluded["actor_id"] == actor_ids["ci-path-b"], paths
+        expected_support = [] if candidate_proof else [proof_ids["ci-path-proof-a"]]
+        assert first["supporting_evidence_ids"] == expected_support, first
+        assert excluded["contrary_evidence_ids"] == [proof_ids["ci-path-proof-b"]], excluded
+        assert body["dependency_snapshot"]["sources"] and all(row["legal_source_ids"] for row in paths), body
+        review = request("POST", f"/v2/artifact-versions/{artifact['artifactVersionId']}/reviews", token=token,
+                         expected=201, payload={"comment": "CI explicit synthetic candidate paths"})
+        if conflict or candidate_proof:
+            assert artifact["outcomeStatus"] == "blocked", body
+            expected_code = "CONVICTION_PATH_CONFLICT" if conflict else "INPUT_UNCONFIRMED"
+            assert any(row.get("code") == expected_code for row in body["blockers"]), body
+            assert all(row["baseline_position"] is None and row["exclusion_reason"] is None for row in paths), paths
+            if conflict:
+                assert first["verification_status"] == "conflicted", first
+                assert first["contrary_evidence_ids"] == [proof_ids["ci-path-counter-a"]], first
+            request("POST", f"/v1/reviews/{_id(review, 'reviewId')}/approve", token=token,
+                    expected=409, payload={"resultVersion": artifact["version"]})
+            assert not request("GET", f"{base}/modules/conviction", token=token)["effectivelyConfirmed"]
+        else:
+            assert artifact["outcomeStatus"] == "calculated", body
+            assert first["baseline_position"] == "candidate" and excluded["baseline_position"] == "excluded", paths
+            assert excluded["exclusion_reason"] == "Explicit CI fixture exclusion, not a legal conclusion", excluded
+            approved = request("POST", f"/v1/reviews/{_id(review, 'reviewId')}/approve", token=token,
+                               payload={"resultVersion": artifact["version"]})
+            assert approved["status"] == "approved", approved
+            assert request("GET", f"{base}/modules/conviction", token=token)["effectivelyConfirmed"]
+        assert request("GET", f"{base}/facts-versions/{facts_id}", token=token)["payload"] == frozen["payload"]
+        historical.append(artifact)
+    for artifact in historical:
+        assert request("GET", f"/v2/artifact-versions/{artifact['artifactVersionId']}", token=token)["payload"] == artifact["payload"]
+    print("PASS explicit actor-scoped candidate/excluded paths, canonical proofs, unconfirmed proof and subjective conflict approval rejection", flush=True)
+
+
 def run_lifecycle(token):
     """Exercise the v2 facts → modules → draft → archive chain through nginx."""
     case = request("POST", "/v1/cases", token=token, expected=201, payload={
@@ -778,6 +854,7 @@ def run_lifecycle(token):
     print("PASS evidence missing/candidate blockers, confirmed evidence calculation and frozen CAS binding", flush=True)
     run_reference_integrity(token)
     run_parameter_proof_integrity(token)
+    run_declared_conviction_paths(token)
 
 
 def main():

@@ -109,7 +109,7 @@ jobs:
           docker compose -f docker-compose.yml run --rm --no-deps \
             -e LEXCYBER_REQUIRE_INTEGRATION_DB=1 \
             -v "$PWD/tests/integration:/tmp/registry-tests:ro" \
-            engine sh -c 'python -m pip install "pytest>=8,<9" && python -m pytest -q /tmp/registry-tests/test_rule_registry.py'
+            engine sh -c 'python -m pip install "pytest>=8,<9" && python -m pytest -q /tmp/registry-tests/test_rule_registry.py /tmp/registry-tests/test_registry_review_gates.py'
       - if: always()
         run: docker compose -f docker-compose.yml logs --no-color
       - if: always()

@@ -57,6 +57,38 @@ def _temporal_source(version: str, effective_from: str, effective_to: str | None
     }
 
 
+def _candidate_path_rules(source_id: str) -> list[dict[str, object]]:
+    """Explicit synthetic path semantics, isolated from all 2026 fixtures."""
+    candidate = {
+        "path_id": "fixture-candidate-a", "label": "CI synthetic candidate A",
+        "charge_key": "ci.synthetic_a", "actor_fact_key": "ci_path_actor_a",
+        "supporting_fact_keys": ["ci_path_actor_a"], "contrary_fact_keys": [],
+        "when_true": {"baseline_position": "candidate"},
+        "when_false": {"baseline_position": "alternative_to_examine"},
+    }
+    excluded = {
+        "path_id": "fixture-excluded-b", "label": "CI synthetic exclusion B",
+        "charge_key": "ci.synthetic_b", "actor_fact_key": "ci_path_actor_b",
+        "supporting_fact_keys": [], "contrary_fact_keys": ["ci_path_actor_b"],
+        "when_true": {"baseline_position": "excluded",
+                      "exclusion_reason": "Explicit CI fixture exclusion, not a legal conclusion"},
+        "when_false": {"baseline_position": "alternative_to_examine"},
+    }
+    conflict = {**candidate, "subjective": True,
+                "contrary_fact_keys": ["ci_path_counter_a"]}
+    return [{
+        "rule_id": FIXTURE_PREFIX + "candidate-path-plan",
+        "rule_version": version, "family": "conviction",
+        "predicate": {"path": "facts.ci_path_flag.value", "op": "eq", "value": True},
+        "outcome": {"candidate_paths": [first, excluded]},
+        "source_ids": [source_id], "coverage": {"fixture": True, "name": "CI explicit path plan"},
+        "effective_from": start, "effective_to": end,
+    } for version, start, end, first in [
+        ("2200.1", "2200-01-01", "2200-12-31", candidate),
+        ("2201.1", "2201-01-01", None, conflict),
+    ]]
+
+
 def _rules(source_id: str, temporal_source_ids: tuple[str, str] | None = None) -> list[dict[str, object]]:
     def rule(rule_id: str, family: str, field: str, outcome: dict[str, object],
              *, rule_version: str = "1.0.0", source_ids: list[str] | None = None,
@@ -99,6 +131,7 @@ def _rules(source_id: str, temporal_source_ids: tuple[str, str] | None = None) -
         component_guard,
         evidence_guard,
     ]
+    rules.extend(_candidate_path_rules(source_id))
     if temporal_source_ids is not None:
         rules.extend([
             rule("temporal-guard", "compliance", "ci_temporal_guard_flag",

@@ -636,11 +636,42 @@ components:
             实际参数未核实、未关联证据或引用未核实/歧义证据时 blocked；
             requiredEvidenceKinds 种类门槛独立校验。blocked 量刑无可用刑期/罚金/步骤，blocked 文书无正文。
             旧 v2 缺少有效输入证明时不能确认或批准；旧不可变载荷仍可查询。
+            case.conviction.v2 可含 candidate_paths，逐路径绑定冻结参与人、支持/相反证据及规则版本；
+            仅显式规则计划生成路径，缺少计划不从旧 charge_candidate 或未命中规则推断。
+            整体 blocked 时保留证明诊断但清除路径基准位置和排除结论。
+          properties:
+            candidate_paths:
+              type: array
+              items: { $ref: '#/components/schemas/ConvictionCandidatePath' }
         blockers: { type: array, items: { type: object } }
         dependencySnapshot: { type: object }
         executionId: { type: string, format: uuid, nullable: true }
         outputHash: { type: string }
         createdAt: { type: string, format: date-time }
+    ConvictionCandidatePath:
+      type: object
+      description: >-
+        显式已批准规则计划的路径结果，始终待人工复核。
+        calculated 须有基准位置且无 blockers；blocked 须有 blockers，基准位置及排除理由为 null。
+        conflicted 只能 blocked；同一文档可分别支持和反驳不同事实，两个证据数组分别去重。
+      required: [id, path_id, actor_id, label, charge_key, baseline_position, supporting_evidence_ids, contrary_evidence_ids, legal_source_ids, rule_id, rule_version, point, verification_status, status, exclusion_reason, blockers]
+      properties:
+        id: { type: string }
+        path_id: { type: string }
+        actor_id: { type: string, nullable: true, description: 冻结参与人规范身份；无法解析时为 null 且 blocked }
+        label: { type: string }
+        charge_key: { type: string }
+        baseline_position: { type: string, nullable: true, enum: [candidate, alternative_to_examine, excluded, null] }
+        supporting_evidence_ids: { type: array, uniqueItems: true, items: { type: string } }
+        contrary_evidence_ids: { type: array, uniqueItems: true, items: { type: string } }
+        legal_source_ids: { type: array, uniqueItems: true, items: { type: string } }
+        rule_id: { type: string }
+        rule_version: { type: string }
+        point: { type: string, enum: [as_of, conduct, judgment] }
+        verification_status: { type: string, enum: [candidate, conflicted] }
+        status: { type: string, enum: [calculated, blocked] }
+        exclusion_reason: { type: string, nullable: true }
+        blockers: { type: array, items: { type: object } }
     ModuleHeadView:
       type: object
       properties:

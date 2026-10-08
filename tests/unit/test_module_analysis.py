@@ -88,6 +88,63 @@ def test_conviction_pulls_distinction_family(monkeypatch):
     assert out["final_output"]["schema_version"] == "case.conviction.v2"
 
 
+def test_conviction_declared_single_path_is_incomplete(monkeypatch):
+    one_path = {"candidate_paths": [{
+        "path_id": "only", "label": "one", "charge_key": "charge.one",
+        "actor_fact_key": "actor_fact", "supporting_fact_keys": ["support"],
+        "contrary_fact_keys": ["contrary"],
+        "when_true": {"baseline_position": "candidate"},
+        "when_false": {"baseline_position": "excluded", "exclusion_reason": "reason"},
+    }]}
+    rule = {**APPROVED_RULE, "outcome": one_path}
+    monkeypatch.setattr(module_analysis.registry, "active_rules",
+                        lambda fam, *_: [rule] if fam == "conviction" else [])
+    monkeypatch.setattr(module_analysis, "_resolve_sources", lambda *a, **k: EMPTY_TEMPORAL)
+    body = analyze(_payload("conviction.analyze"), "conviction.analyze")["final_output"]
+    assert any(item["code"] == "CONVICTION_PATHS_INCOMPLETE" for item in body["blockers"])
+    assert body["candidate_paths"]
+    assert body["candidate_paths"][0]["status"] == "blocked"
+    assert body["candidate_paths"][0]["blockers"]
+
+
+def test_temporal_semantics_ignore_candidate_declaration_labels():
+    paths = [{"point": "conduct", "rules": [{"fired": True, "status": "calculated",
+        "outcome": {"finding": "same", "candidate_paths": [{"label": "old"}]}}],
+        "candidate_paths": [{"path_id": "p", "actor_id": "a", "charge_key": "c",
+                              "baseline_position": "candidate", "verification_status": "candidate",
+                              "status": "calculated", "exclusion_reason": None}]},
+             {"point": "judgment", "rules": [{"fired": True, "status": "calculated",
+        "outcome": {"finding": "same", "candidate_paths": [{"label": "new"}]}}],
+        "candidate_paths": [{"path_id": "p", "actor_id": "a", "charge_key": "c",
+                              "baseline_position": "candidate", "verification_status": "candidate",
+                              "status": "calculated", "exclusion_reason": None}]}]
+    assert module_analysis._path_semantic_results(paths)[0] == module_analysis._path_semantic_results(paths)[1]
+
+
+def test_temporal_declared_false_rule_source_enters_dependencies(monkeypatch):
+    path_rule = {**APPROVED_RULE, "sourceIds": ["temporal-source"], "predicate": {
+        "path": "facts.upstream_crime_completed.value", "op": "eq", "value": False},
+        "outcome": {"candidate_paths": [{
+            "path_id": "p1", "label": "p", "charge_key": "c", "actor_fact_key": "actor_fact",
+            "supporting_fact_keys": ["support"], "contrary_fact_keys": ["contrary"],
+            "when_true": {"baseline_position": "candidate"},
+            "when_false": {"baseline_position": "excluded", "exclusion_reason": "reason"},
+        }]}}
+    old_rule = {**APPROVED_RULE, "sourceIds": ["asof-source"]}
+    def active_rules(fam, as_of=None):
+        if fam != "conviction":
+            return []
+        # The declared false rule exists only at the conduct point.  It must
+        # enter dependencies through the temporal path, not the as-of rule.
+        return [path_rule] if str(as_of) == "2024-03-01" else [old_rule]
+    monkeypatch.setattr(module_analysis.registry, "active_rules", active_rules)
+    monkeypatch.setattr(module_analysis, "_resolve_sources", lambda source_ids, *_: {
+        "divergence": [], "blockers": [], "source_versions": [], "resolutions": {},
+    })
+    body = analyze(_payload("conviction.analyze"), "conviction.analyze")["final_output"]
+    assert "temporal-source" in body["dependency_snapshot"]["sources"]
+
+
 def test_predicate_error_blocks_not_crashes(monkeypatch):
     bad_rule = dict(APPROVED_RULE, predicate={"all": []})
     monkeypatch.setattr(module_analysis.registry, "active_rules",

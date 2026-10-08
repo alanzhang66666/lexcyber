@@ -1,6 +1,8 @@
 import type {
   AmountEntry,
   Blocker,
+  CandidatePath,
+  EvidenceRef,
   SentencingResult,
   SentencingRuleResult,
   SentencingStep,
@@ -109,6 +111,137 @@ export interface V2ModuleAnalysis {
   divergence: Rec[]
   humanReviewRequired: boolean
   generatedAt?: string
+  candidatePaths: V2CandidatePath[]
+  pathDiagnostics: V2PathDiagnostic[]
+}
+
+export type V2CandidatePathPosition = 'candidate' | 'alternative_to_examine' | 'excluded' | null
+export type V2CandidatePathPoint = 'as_of' | 'conduct' | 'judgment'
+export type V2CandidatePathStatus = 'candidate' | 'conflicted'
+export type V2CandidatePathCalculationStatus = 'calculated' | 'blocked'
+
+export interface V2CandidatePath {
+  id: string
+  pathId: string
+  actorId: string
+  label: string
+  chargeKey: string
+  baselinePosition: V2CandidatePathPosition
+  supportingEvidenceIds: string[]
+  contraryEvidenceIds: string[]
+  legalSourceIds: string[]
+  ruleId: string
+  ruleVersion: string
+  point: V2CandidatePathPoint
+  verificationStatus: V2CandidatePathStatus
+  status: V2CandidatePathCalculationStatus
+  exclusionReason: string | null
+  blockers: V2BlockerItem[]
+}
+
+export interface V2PathDiagnostic {
+  path: string
+  message: string
+}
+
+function own(item: Rec, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(item, key)
+}
+
+function requiredText(item: Rec, key: string): string | null {
+  return own(item, key) && typeof item[key] === 'string' && item[key].trim() ? item[key] as string : null
+}
+
+function strictStringArray(item: Rec, key: string): string[] | null {
+  if (!own(item, key) || !Array.isArray(item[key])) return null
+  const values = item[key] as unknown[]
+  return values.every((v) => typeof v === 'string' && v.trim()) ? values as string[] : null
+}
+
+function hasDuplicate(values: string[]): boolean {
+  return new Set(values).size !== values.length
+}
+
+function parseV2CandidatePath(item: Rec, index: number): { path?: V2CandidatePath; diagnostic?: V2PathDiagnostic } {
+  const prefix = `candidate_paths[${index}]`
+  const fail = (message: string) => ({ diagnostic: { path: prefix, message } })
+  const id = requiredText(item, 'id')
+  const pathId = requiredText(item, 'path_id')
+  const actorId = requiredText(item, 'actor_id')
+  const label = requiredText(item, 'label')
+  if (!id || !pathId || !actorId || !label) return fail('缺少必需的 id、path_id、actor_id 或 label。')
+  const chargeKey = requiredText(item, 'charge_key')
+  const baseline = item.baseline_position
+  if (!own(item, 'charge_key') || chargeKey === null) return fail('charge_key 必须是非空字符串。')
+  if (!own(item, 'baseline_position') || !['candidate', 'alternative_to_examine', 'excluded', null].includes(baseline as never)) return fail('baseline_position 不是有效值。')
+  const supporting = strictStringArray(item, 'supporting_evidence_ids')
+  const contrary = strictStringArray(item, 'contrary_evidence_ids')
+  const legal = strictStringArray(item, 'legal_source_ids')
+  if (!supporting || !contrary || !legal) return fail('supporting_evidence_ids、contrary_evidence_ids、legal_source_ids 必须是字符串数组。')
+  const ruleId = requiredText(item, 'rule_id')
+  const ruleVersion = requiredText(item, 'rule_version')
+  if (!ruleId || !ruleVersion) return fail('rule_id 与 rule_version 必须是非空字符串。')
+  const point = item.point
+  if (!['as_of', 'conduct', 'judgment'].includes(point as string)) return fail('point 不是有效值。')
+  const verificationStatus = item.verification_status
+  if (!['candidate', 'conflicted'].includes(verificationStatus as string)) return fail('verification_status 不是有效值。')
+  const status = item.status
+  if (!['calculated', 'blocked'].includes(status as string)) return fail('status 不是有效值。')
+  const exclusionReason = item.exclusion_reason
+  if (!own(item, 'exclusion_reason') || (exclusionReason !== null && typeof exclusionReason !== 'string')) return fail('exclusion_reason 必须是字符串或 null。')
+  if (baseline === 'excluded' && !(typeof exclusionReason === 'string' && exclusionReason.trim())) return fail('excluded 路径必须提供非空 exclusion_reason。')
+  if (!own(item, 'blockers') || !Array.isArray(item.blockers) || (item.blockers as unknown[]).some((b) => !isRecord(b))) return fail('blockers 必须是对象数组。')
+  if (hasDuplicate(supporting) || hasDuplicate(contrary) || hasDuplicate(legal)) return fail('证据或法源引用存在重复 ID。')
+  const blockerItems = (item.blockers as Rec[]).map(toBlockerItem)
+  const hasMeaningfulBlocker = blockerItems.some((b) => Boolean(b.code || b.path || b.message || b.reason))
+  if (status === 'calculated' && (baseline === null || blockerItems.length > 0)) return fail('calculated 路径必须有基准位置且不得包含阻断项。')
+  if (status === 'blocked' && (baseline !== null || exclusionReason !== null || !hasMeaningfulBlocker)) return fail('blocked 路径不得声明基准位置或排除理由，且必须提供有效阻断项。')
+  if (verificationStatus === 'conflicted' && status === 'calculated') return fail('conflicted 路径不得处于 calculated 状态。')
+  return { path: {
+    id, pathId, actorId, label, chargeKey,
+    baselinePosition: baseline as V2CandidatePathPosition,
+    supportingEvidenceIds: supporting, contraryEvidenceIds: contrary, legalSourceIds: legal,
+    ruleId, ruleVersion, point: point as V2CandidatePathPoint,
+    verificationStatus: verificationStatus as V2CandidatePathStatus,
+    status: status as V2CandidatePathCalculationStatus,
+    exclusionReason: exclusionReason as string | null,
+    blockers: blockerItems,
+  } }
+}
+
+export function toV2CandidatePaths(content: Rec): { paths: V2CandidatePath[]; diagnostics: V2PathDiagnostic[]; present: boolean } {
+  if (str(content.schema_version) !== 'case.conviction.v2') return { paths: [], diagnostics: [], present: false }
+  if (!own(content, 'candidate_paths')) return { paths: [], diagnostics: [], present: false }
+  if (!Array.isArray(content.candidate_paths)) return { paths: [], diagnostics: [{ path: 'candidate_paths', message: 'candidate_paths 必须是对象数组。' }], present: true }
+  const paths: V2CandidatePath[] = []
+  const diagnostics: V2PathDiagnostic[] = []
+  content.candidate_paths.forEach((value, index) => {
+    if (!isRecord(value)) { diagnostics.push({ path: `candidate_paths[${index}]`, message: '路径必须是对象。' }); return }
+    const parsed = parseV2CandidatePath(value, index)
+    if (parsed.path) paths.push(parsed.path)
+    if (parsed.diagnostic) diagnostics.push(parsed.diagnostic)
+  })
+  return { paths, diagnostics, present: true }
+}
+
+function sharedCandidatePath(path: V2CandidatePath): CandidatePath {
+  const kind = path.baselinePosition === 'alternative_to_examine' ? 'alternative' : path.baselinePosition
+  return {
+    id: `${path.id}:${path.actorId}:${path.point}`, title: path.label, kind,
+    actorId: path.actorId, chargeKey: path.chargeKey,
+    supporting: path.supportingEvidenceIds.map((id): EvidenceRef => ({ id })),
+    contrary: path.contraryEvidenceIds.map((id): EvidenceRef => ({ id })),
+    legalSourceIds: path.legalSourceIds, ruleId: path.ruleId, ruleVersion: path.ruleVersion, point: path.point,
+    status: path.verificationStatus, calculationStatus: path.status,
+    exclusionReason: path.baselinePosition === 'excluded' ? path.exclusionReason : null,
+    exclusionPending: path.baselinePosition === 'excluded',
+    blockers: path.blockers.map((b): Blocker => ({ code: b.code, path: b.path, message: b.message ?? b.reason })),
+  }
+}
+
+export function v2CandidatePathCards(content: Rec): { paths: CandidatePath[]; diagnostics: V2PathDiagnostic[]; present: boolean } {
+  const parsed = toV2CandidatePaths(content)
+  return { paths: parsed.paths.map(sharedCandidatePath), diagnostics: parsed.diagnostics, present: parsed.present }
 }
 
 function outcomeSummary(outcome: unknown): string | undefined {
@@ -122,9 +255,10 @@ function outcomeSummary(outcome: unknown): string | undefined {
 
 export function toV2ModuleAnalysis(content: Rec): V2ModuleAnalysis | null {
   if (!isModulePayload(content)) return null
+  const parsedPaths = toV2CandidatePaths(content)
   return {
     schemaVersion: str(content.schema_version) ?? '',
-    status: str(content.status) ?? '',
+    status: parsedPaths.diagnostics.length ? 'blocked' : (str(content.status) ?? ''),
     rules: asArray(content.rules).map((r): V2ModuleRule => ({
       ruleId: str(r.ruleId) ?? '',
       ruleVersion: str(r.ruleVersion) ?? '',
@@ -141,10 +275,15 @@ export function toV2ModuleAnalysis(content: Rec): V2ModuleAnalysis | null {
         result: typeof t.result === 'boolean' ? t.result : undefined,
       })),
     })),
-    blockers: asArray(content.blockers).map(toBlockerItem),
+    blockers: [
+      ...asArray(content.blockers).map(toBlockerItem),
+      ...parsedPaths.diagnostics.map((diagnostic) => ({ code: 'PATH_FORMAT_INVALID', path: diagnostic.path, message: diagnostic.message })),
+    ],
     divergence: asArray(content.divergence),
     humanReviewRequired: content.human_review_required === true,
     generatedAt: str(content.generated_at),
+    candidatePaths: parsedPaths.paths,
+    pathDiagnostics: parsedPaths.diagnostics,
   }
 }
 

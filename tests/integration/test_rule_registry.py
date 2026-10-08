@@ -142,6 +142,8 @@ def test_temporal_divergence_and_gap(subject_prefix):
     key = f"{subject_prefix}-div"
     registry.register_legal_source(_source(key, "old", "2010-01-01", "2019-12-31"))
     registry.register_legal_source(_source(key, "new", "2020-01-01"))
+    for version in ("old", "new"):
+        registry.signoff("legal_source", f"{key}@{version}", "it-reviewer", "reviewer", "approved")
     divergent = registry.resolve_temporal(
         key, datetime.date(2015, 6, 1), datetime.date(2021, 6, 1))
     assert divergent["divergence"], "conduct/judgment 跨版本必须产生 divergence"
@@ -158,6 +160,8 @@ def test_temporal_overlap_is_reported_by_real_registry(subject_prefix):
     key = f"{subject_prefix}-overlap"
     registry.register_legal_source(_source(key, "v1", "2020-01-01", "2025-12-31"))
     registry.register_legal_source(_source(key, "v2", "2024-01-01"))
+    for version in ("v1", "v2"):
+        registry.signoff("legal_source", f"{key}@{version}", "it-reviewer", "reviewer", "approved")
     resolved = registry.resolve_temporal(key, datetime.date(2024, 6, 1), datetime.date(2024, 6, 1))
     assert resolved["overlap"] is True
     assert any(item["code"] == "LAW_VERSION_OVERLAP" for item in resolved["divergence"])
@@ -170,6 +174,8 @@ def test_real_db_adapter_keeps_both_temporal_paths_and_blocks_missing_evidence(s
     old_source = registry.register_legal_source(
         _source(key, "old", "2020-01-01", "2024-12-31"))
     new_source = registry.register_legal_source(_source(key, "new", "2025-01-01"))
+    for version in ("old", "new"):
+        registry.signoff("legal_source", f"{key}@{version}", "it-reviewer", "reviewer", "approved")
     rule_id = f"{subject_prefix}-temporal"
     item = _rule(rule_id, "1", sources=[old_source["sourceId"], new_source["sourceId"]],
                  effective_from="2020-01-01")

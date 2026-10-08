@@ -14,7 +14,7 @@ import {
   toJurisdictionConnections,
   toMissingItems,
 } from '../lib/module-content'
-import { toV2ModuleAnalysis } from '../lib/module-content-v2'
+import { toV2ModuleAnalysis, v2CandidatePathCards } from '../lib/module-content-v2'
 
 const route = useRoute()
 const router = useRouter()
@@ -22,6 +22,7 @@ const caseId = computed(() => String(route.params.caseId || ''))
 const { loading, error, caseItem, moduleState, confirming, confirmError, dispatching, dispatchError, isPlaceholder, load, dispatch, confirm } = useCaseModule(caseId, 'conviction')
 
 const v2Analysis = computed(() => (moduleState.value ? toV2ModuleAnalysis(moduleState.value.content) : null))
+const v2PathCards = computed(() => (moduleState.value ? v2CandidatePathCards(moduleState.value.content) : { paths: [], diagnostics: [], present: false }))
 const facts = computed(() => (moduleState.value ? toAnalysisFacts(moduleState.value.content) : []))
 const paths = computed(() => (moduleState.value ? toCandidatePaths(moduleState.value.content) : []))
 const connections = computed(() => (moduleState.value ? toJurisdictionConnections(moduleState.value.content) : []))
@@ -133,6 +134,23 @@ watch(caseId, () => void load())
         <div class="panel-heading"><div><p class="section-index">02</p><h2>规则执行结果</h2></div></div>
         <p class="panel-note">approved 规则包对确认事实快照的逐条求值；不构成定罪结论。</p>
         <RuleResultsPanel :analysis="v2Analysis" />
+      </section>
+
+      <section v-if="v2Analysis" class="panel" data-testid="v2-candidate-paths">
+        <div class="panel-heading"><div><p class="section-index">03</p><h2>定罪路径研判</h2></div></div>
+        <p class="panel-note">分别展示规则执行返回的候选路径；支持与相反证据并列，系统不自动选择路径。</p>
+        <div v-if="v2PathCards.diagnostics.length" class="blocker-list">
+          <p v-for="diagnostic in v2PathCards.diagnostics" :key="diagnostic.path" class="notice notice-warning" role="alert">
+            <strong>路径结果待确认</strong> <span class="mono">{{ diagnostic.path }}</span> {{ diagnostic.message }}
+          </p>
+        </div>
+        <div v-if="v2PathCards.paths.length" class="path-list">
+          <CandidatePathCard v-for="p in v2PathCards.paths" :key="p.id ?? p.title" :path="p" @locate="handleLocate" />
+        </div>
+        <div v-else class="empty-state">
+          <strong>{{ v2PathCards.present ? '本次结果尚未返回有效定罪路径' : '本次结果尚未返回定罪路径计划' }}</strong>
+          <p>{{ v2PathCards.present ? '路径数据存在格式或核验问题，不能据此作出路径结论。' : '当前仅展示规则执行结果；路径计划尚未生成，不能视为定罪架构已完成。' }}</p>
+        </div>
       </section>
 
       <template v-else>
