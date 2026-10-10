@@ -14,9 +14,21 @@ export function handler(req,res){
   if(req.method==="GET"&&route==="/healthz")return json(res,200,{ok:true,storage:process.env.DATABASE_URL?"mysql":"demo-memory"});
   if(req.method==="GET"&&route==="/api/state")return json(res,200,{...(await readState()),rules:ruleDefs});
   if(req.method==="POST"&&route==="/api/action"){
+   if(process.env.DEMO_WRITE_TOKEN && req.headers["x-demo-token"]!==process.env.DEMO_WRITE_TOKEN)throw Object.assign(new Error("操作需要演示授权令牌"),{status:401});
    if(!["application/json"].includes((req.headers["content-type"]||"").split(";")[0]))throw Object.assign(new Error("需要 application/json"),{status:415});
    const action=await body(req);if(!action||typeof action!=="object"||Array.isArray(action))throw Object.assign(new Error("无效动作"),{status:400});
    return json(res,200,await changeState(action));
+  }
+  if(req.method==="GET"&&route.startsWith("/api/cases/")){
+   const parts=route.split("/");const c=(await readState()).cases.find(x=>x.id===parts[3]);if(!c)throw Object.assign(new Error("事项不存在"),{status:404});
+   if(parts[4]==="risk-signals")return json(res,200,c.artifacts.at(-1)?.stale?[]:c.artifacts.at(-1)?.riskSignals??[]);
+   if(parts[4]==="evidence")return json(res,200,c.evidence??[]);
+   if(parts[4]==="candidate-facts")return json(res,200,c.candidates??[]);
+   if(parts[4]==="legal-paths")return json(res,200,c.artifacts.at(-1)?.stale?[]:c.artifacts.at(-1)?.legalPaths??[]);
+   if(parts[4]==="facts-diff"){
+     const v=c.versions;if(v.length<2)return json(res,200,[]);const prev=v.at(-2).facts,next=v.at(-1).facts;
+     return json(res,200,Object.keys(next).filter(k=>prev[k]!==next[k]).map(k=>({field:k,before:prev[k]??null,after:next[k]})));
+   }
   }
   if(req.method==="GET"&&route==="/api/explain"){
    const s=await readState(),c=s.cases.find(x=>x.id===url.searchParams.get("caseId"));
