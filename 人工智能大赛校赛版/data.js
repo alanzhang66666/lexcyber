@@ -1,3 +1,4 @@
+import {createRiskSignals,derivePaths,verifyCandidate} from "./legal-review.js";
 // 仅供校赛展示的合成数据；所有规则为演示策略而非法定或监管阈值。
 export const ruleDefs = [
  {id:"FIN-KYB-001",label:"实际控制人尚未核验",source:"演示内部审查规则",field:"beneficial_owner_verified",op:"eq",value:false,action:"建议增强人工核验"},
@@ -10,16 +11,17 @@ export const ruleDefs = [
  {id:"FIN-TXN-004",label:"多个风险特征组合",source:"演示内部审查规则",field:"transaction_frequency_24h",op:"combo",value:20,other:"transaction_total_30d",otherValue:100000,action:"建议提高复核优先级"}
 ];
 export function initialState(){
- const make=(id,title,facts)=>({id,title,documents:[{name:"合成演示业务材料",locator:"DEMO:"+id+":1",note:"仅为演示摘要，不对应真实客户或原始卷宗"}],draft:{...facts},versions:[],artifacts:[],reviews:[],events:[]});
+ const make=(id,title,facts)=>({id,title,documents:[{name:"合成演示业务材料",locator:"DEMO:"+id+":1",note:"仅为演示摘要，不对应真实客户或原始卷宗"}],draft:{...facts},versions:[],artifacts:[],reviews:[],events:[],candidates:[],evidence:[],archives:[]});
  return {schema:1,cases:[
   make("F1","企业客户业务准入审查",{beneficial_owner_verified:true,business_purpose_verified:true,source_of_funds_verified:false,supporting_documents_complete:false}),
-  make("F2","异常交易风险辅助研判",{account_age_days:12,transaction_frequency_24h:32,transaction_total_30d:180000,cross_border_transaction:true,high_risk_region:true,source_of_funds_verified:false})
+  make("F2","异常交易风险辅助研判",{account_age_days:12,transaction_frequency_24h:32,transaction_total_30d:180000,cross_border_transaction:true,high_risk_region:true,source_of_funds_verified:false}),
+  make("F4","涉卡资金与刑事证据关联（合成）",{help_activity:false,knowledge:false,upstream:false,seriousness:false,proceeds_nature:false,transfer_action:false,knowledge_of_proceeds:false,timing:false,joint_intent:false,prior_agreement:false,substantive_role:false,fraud_evidence:false})
  ]};
 }
 export function evaluate(facts){
  return ruleDefs.map(rule=>{
   const left=facts[rule.field], right=rule.other?facts[rule.other]:undefined;
-  const scenario=Object.hasOwn(facts,"beneficial_owner_verified")?"KYB":"TXN";
+  const scenario=Object.hasOwn(facts,"beneficial_owner_verified")?"KYB":Object.hasOwn(facts,"account_age_days")?"TXN":"LEGAL";
   if(rule.id.startsWith("FIN-KYB")&&scenario!=="KYB" || rule.id.startsWith("FIN-TXN")&&scenario!=="TXN")return {ruleId:rule.id,version:"demo-1.0",label:rule.label,source:rule.source,status:"not_applicable",fired:false,action:null,trace:{reason:"此规则不适用于当前演示场景"},blocker:null};
   const valid=typeof left=== (rule.op==="gte"||rule.op==="combo"?"number":"boolean") && (!rule.other || typeof right === (rule.other==="transaction_total_30d"?"number":"boolean"));
   const fired=valid && (rule.op==="eq"?left===rule.value:rule.op==="gte"?left>=rule.value:rule.op==="both"?left===rule.value&&right===rule.otherValue:rule.op==="combo"?left<(rule.id==="FIN-TXN-002"?rule.value:-Infinity)&&right>=rule.otherValue: false);
@@ -33,10 +35,23 @@ export function apply(state,action){
  const c=state.cases.find(x=>x.id===action.caseId);
  if(!c)throw Object.assign(new Error("事项不存在"),{status:404});
  if(action.type==="edit"){
+  if(c.id==="F4")throw Object.assign(new Error("F4 事实只能通过带证据的候选核验修改"),{status:409});
   if(!Object.hasOwn(c.draft,action.field))throw Object.assign(new Error("不支持该字段"),{status:400});
   const old=c.draft[action.field],v=action.value;
   if(typeof old!==typeof v || (typeof v==="number"&&(!Number.isFinite(v)||v<0)))throw Object.assign(new Error("字段类型或数值无效"),{status:400});
   c.draft[action.field]=v;
+ } else if(action.type==="evidence"){
+  if(c.id!=="F4")throw Object.assign(new Error("仅 F4 支持此演示证据流程"),{status:400});
+  if(typeof action.description!=="string"||!action.description.trim()||action.description.length>300)throw Object.assign(new Error("证据摘要必须为 1–300 字"),{status:400});
+  c.evidence.push({id:c.id+"-EV-"+(c.evidence.length+1),description:action.description.trim(),sourceType:"synthetic_note",locator:"DEMO:F4:"+(c.evidence.length+1),verificationStatus:"candidate"});
+ } else if(action.type==="candidate"){
+  if(c.id!=="F4")throw Object.assign(new Error("仅 F4 支持候选事实"),{status:400});
+  if(!Object.hasOwn(c.draft,action.field)||typeof action.value!=="boolean")throw Object.assign(new Error("不支持的事实字段"),{status:400});
+  if(!Array.isArray(action.evidenceRefs)||action.evidenceRefs.length===0||action.evidenceRefs.some(x=>!c.evidence.some(e=>e.id===x)))throw Object.assign(new Error("需关联本案演示证据"),{status:409});
+  c.candidates.push({id:c.id+"-CF-"+(c.candidates.length+1),key:action.field,value:action.value,evidenceRefs:[...new Set(action.evidenceRefs)],status:"pending",createdAt:now});
+ } else if(action.type==="verify"){
+  if(c.id!=="F4")throw Object.assign(new Error("仅 F4 支持候选核验"),{status:400});
+  verifyCandidate(c,action.candidateId,action.decision);
  } else if(action.type==="confirm"){
   const version=c.versions.length+1;
   c.versions.push({id:c.id+"-facts-v"+version,number:version,facts:{...c.draft},confirmedAt:now});
@@ -44,14 +59,20 @@ export function apply(state,action){
   c.events.push({at:now,type:"facts.confirmed",version});
  } else if(action.type==="run"){
   const v=c.versions.at(-1);if(!v)throw Object.assign(new Error("请先确认事实"),{status:409});
-  const results=evaluate(v.facts);
-  const a={id:c.id+"-artifact-v"+(c.artifacts.length+1),factsVersionId:v.id,createdAt:now,results,stale:false,humanReviewRequired:true};
+  const results=c.id==="F4"?[]:evaluate(v.facts);
+  const a={id:c.id+"-artifact-v"+(c.artifacts.length+1),factsVersionId:v.id,createdAt:now,results,stale:false,humanReviewRequired:true,legalPaths:c.id==="F4"?derivePaths(c):[],riskSignals:[]};
+  a.riskSignals=createRiskSignals({...c,artifacts:[a]});
   c.artifacts.push(a);c.events.push({at:now,type:"artifact.published",artifactId:a.id});
+ } else if(action.type==="archive"){
+  const a=c.artifacts.at(-1);if(!a||a.stale)throw Object.assign(new Error("只有有效结果可以归档"),{status:409});
+  const review=c.reviews.findLast(r=>r.artifactId===a.id&&r.decision==="approved");
+  if(!review)throw Object.assign(new Error("必须先人工批准该结果"),{status:409});
+  c.archives.push({id:c.id+"-archive-"+(c.archives.length+1),factsVersionId:a.factsVersionId,artifactId:a.id,reviewAt:review.at,at:now,synthetic:true});
  } else if(action.type==="review"){
   const a=c.artifacts.at(-1);
   if(!a||a.stale)throw Object.assign(new Error("无可复核的当前分析结果"),{status:409});
   if(!["approved","rejected"].includes(action.decision))throw Object.assign(new Error("复核动作不合法"),{status:400});
-  if(a.results.some(x=>x.status==="blocked")&&action.decision==="approved")throw Object.assign(new Error("存在阻断规则，不能批准"),{status:409});
+  if((a.results.some(x=>x.status==="blocked")||(c.id==="F4"&&a.legalPaths.some(p=>p.items.some(x=>x.status!=="evidence_linked"))))&&action.decision==="approved")throw Object.assign(new Error("存在阻断规则，不能批准"),{status:409});
   if(typeof action.comment!=="string"||action.comment.length>1000)throw Object.assign(new Error("复核意见不合法"),{status:400});
   c.reviews.push({artifactId:a.id,decision:action.decision,comment:action.comment,at:now,actor:"校赛演示操作员"});
   c.events.push({at:now,type:"review."+action.decision,artifactId:a.id});
