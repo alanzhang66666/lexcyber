@@ -15,7 +15,7 @@
       "effective_to": null,
       "official_url": "https://www.samr.gov.cn/zw/zfxxgk/fdzdgknr/bgt/art/2025/art_890f1333b6284c3cbb225c3cd2647c4b.html",
       "excerpt": "规定明知他人利用信息网络实施犯罪并提供技术支持、广告推广、支付结算等帮助，情节严重时的刑事责任；同时规定单位犯罪和竞合处理。",
-      "aliases": ["帮信罪", "帮助信息网络犯罪活动罪", "支付结算帮助", "广告推广帮助"]
+      "aliases": ["帮信罪", "帮助信息网络犯罪活动罪", "支付结算帮助", "广告推广帮助", "两卡犯罪"]
     },
     {
       "id": "cn-criminal-law-266-current",
@@ -30,7 +30,7 @@
       "effective_to": null,
       "official_url": "https://www.samr.gov.cn/zw/zfxxgk/fdzdgknr/bgt/art/2025/art_890f1333b6284c3cbb225c3cd2647c4b.html",
       "excerpt": "规定诈骗公私财物的基本刑、数额巨大或者有其他严重情节、数额特别巨大或者有其他特别严重情节的法定刑层级。",
-      "aliases": ["诈骗罪", "诈骗共犯", "共同诈骗"]
+      "aliases": ["诈骗罪", "诈骗共犯", "共同诈骗", "电诈", "电信网络诈骗"]
     },
     {
       "id": "cn-criminal-law-312-current",
@@ -75,7 +75,7 @@
       "effective_to": null,
       "official_url": "https://www.court.gov.cn/fabu/xiangqing/193711.html",
       "excerpt": "第十一条列举可认定主观明知的情形并保留相反证据审查；第十二条列举情节严重情形及客观条件受限时的特别规则。",
-      "aliases": ["2019帮信解释", "帮信解释", "明知推定", "情节严重", "支付结算二十万元", "违法所得一万元"]
+      "aliases": ["2019帮信解释", "帮信解释", "明知推定", "情节严重", "支付结算二十万元", "违法所得一万元", "提供资金五万元"]
     },
     {
       "id": "cn-telefraud-opinion-2016-common-crime",
@@ -105,7 +105,7 @@
       "effective_to": null,
       "official_url": "https://www.court.gov.cn/zixun/xiangqing/472121.html",
       "excerpt": "明确帮信罪主客观审查、明知、情节严重，以及与掩隐罪和信息网络犯罪共犯的区分；列出组织性、职业性和跨境协同等从严情形。",
-      "aliases": ["2025帮信意见", "帮信意见", "帮信与掩隐界分", "稳定配合关系", "跨境协同"]
+      "aliases": ["2025帮信意见", "帮信意见", "帮信与掩隐界分", "稳定配合关系", "跨境帮助", "跨境支持", "情节严重情形", "帮信与诈骗共犯界分"]
     },
     {
       "id": "cn-sentencing-guidance-2024-2",
@@ -150,7 +150,7 @@
       "effective_to": null,
       "official_url": "https://www.court.gov.cn/zixun/xiangqing/474141.html",
       "excerpt": "明确犯罪所得、其他方法和明知，规定情节严重、事前通谋、竞合、上游犯罪事实前提及单位犯罪；同时废止2015年解释及2021年修改决定。",
-      "aliases": ["2025掩隐解释", "掩饰隐瞒犯罪所得解释", "法释2025第13号", "事前通谋", "犯罪所得形成", "五十万元"]
+      "aliases": ["2025掩隐解释", "掩饰隐瞒犯罪所得解释", "法释2025第13号", "事前通谋", "犯罪所得形成", "新掩隐解释", "掩隐与诈骗共犯界分"]
     }
   ]
 }

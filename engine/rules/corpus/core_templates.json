@@ -4,7 +4,7 @@
   "templates": [
     {
       "template_id": "indictment-assist",
-      "template_version": "1.0.0",
+      "template_version": "1.0.1",
       "doc_type": "indictment-assist",
       "legal_review_status": "pending",
       "provenance": "corpus:core_templates.json",

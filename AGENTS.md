@@ -64,7 +64,8 @@ python scripts/concurrency_check.py
 - **规则注册表**（engine V6）：法源 + 新旧链 + 规则包/模板包 + 会签记录；approved/superseded 不可变；所有评审结论必须走 `signoff()`（`engine.signoff_authorized` GUC，直连 SQL 被拒）
 - **v2 执行体**：合规/定罪/界分（`module_analysis.py`）、可解释量刑（`sentencing_v2.py`）、文书渲染（`document_render.py`）——只消费 approved 规则/模板 + 确认事实快照，恒 `human_review_required`
 - **语料**：`engine/rules/corpus/core_rules.json`（7 条法学底稿）+ `core_templates.json`（文书模板）+ `engine/adapters/legal_sources.json`；播种 `python -m engine.rules.seed [--rules|--templates] <path>`，**当前会签人为占位 `e2e-reviewer`，非正式批准**
-- **演示**：`scripts/import_three_case_demo.py` 导入三案（需 `DEMO_IMPORT_ENABLED=true` 才写模块壳）；案例 A 已加键化覆盖层跑通全管道，B/C 覆盖层待法学审定
-- **遗留缺口**：量刑基准档与案载裁量有偏差（8.1 vs 12–18 月，待法学校正）；`module-content.ts` 容错读取器仅服务 /v1 演示壳（v2 工件用 `module-content-v2.ts`）
+- **演示**：`scripts/import_three_case_demo.py` 导入三案（需 `DEMO_IMPORT_ENABLED=true` 才写模块壳）；案例 A/C 已注入键化覆盖层，B 案按行为人拆为 `demo-case-b-proceeds#huang`/`#chen` 注入
+- **遗留缺口**：案载 12–18 月基准被复核裁定为偏重应修正（系统 9.0 月无异常，规则不改）；`module-content.ts` 容错读取器仅服务 /v1 演示壳（v2 工件用 `module-content-v2.ts`）；合规两规则依赖未会签的 `cn-cybersecurity-law-2025`，暂不进有效视图
+- **2026-10-09 法学生复核版会签已入册**：10 法源 signed_off（别名修正+掩隐新旧链）、规则/模板同内容升版正式会签（旧版 superseded）；复核人非法学负责人，有条件同意的实质修改待负责人确认后另出新版本。明细见 `docs/legal-signoff-checklist.md`、`docs/legal-review/`、执行脚本 `scripts/apply_legal_signoff_2026_10_09.py`
 
-下一步：真实法学负责人会签（规则/法源/模板 + B/C 覆盖层映射 + 量刑基准校正）。
+下一步：正式法学负责人复核（在法学生结论基础上裁定有条件同意项）、案例 A 案载基准修正、合规法源 `cn-cybersecurity-law-2025` 会签。

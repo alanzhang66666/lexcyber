@@ -4,7 +4,7 @@
   "rules": [
     {
       "rule_id": "rule-conviction-assist-287-2-elements",
-      "rule_version": "1.0.0",
+      "rule_version": "1.0.1",
       "family": "conviction",
       "predicate": {"all": [
         {"path": "facts.knowledge_of_crime.value", "op": "in",
@@ -25,7 +25,7 @@
     },
     {
       "rule_id": "rule-conviction-assist-severity-2019-threshold",
-      "rule_version": "1.0.1",
+      "rule_version": "1.0.2",
       "family": "conviction",
       "predicate": {"any": [
         {"path": "amounts.payment_settlement_amount.confirmedSum", "op": "gte", "value": 200000},
@@ -42,7 +42,7 @@
     },
     {
       "rule_id": "rule-distinction-concealment-after-upstream",
-      "rule_version": "1.0.0",
+      "rule_version": "1.0.1",
       "family": "distinction",
       "predicate": {"all": [
         {"path": "facts.upstream_crime_completed.value", "op": "eq", "value": true},
@@ -56,7 +56,7 @@
     },
     {
       "rule_id": "rule-distinction-fraud-accomplice-prior-collusion",
-      "rule_version": "1.0.0",
+      "rule_version": "1.0.1",
       "family": "distinction",
       "predicate": {"all": [
         {"path": "facts.prior_collusion.value", "op": "eq", "value": true},
@@ -70,7 +70,7 @@
     },
     {
       "rule_id": "rule-compliance-logs-retention-6m",
-      "rule_version": "1.0.0",
+      "rule_version": "1.0.1",
       "family": "compliance",
       "predicate": {"all": [
         {"path": "facts.log_retention_months.value", "op": "gte", "value": 6}
@@ -83,7 +83,7 @@
     },
     {
       "rule_id": "rule-compliance-realname-verification",
-      "rule_version": "1.0.0",
+      "rule_version": "1.0.1",
       "family": "compliance",
       "predicate": {"all": [
         {"path": "facts.has_realname_verification.value", "op": "eq", "value": true}
@@ -96,7 +96,7 @@
     },
     {
       "rule_id": "rule-sentencing-assist-base",
-      "rule_version": "1.0.1",
+      "rule_version": "1.0.2",
       "family": "sentencing",
       "predicate": {"path": "facts.upstream_crime_established.value", "op": "eq", "value": true},
       "outcome": {

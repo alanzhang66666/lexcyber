@@ -14,15 +14,27 @@
 - `/v1` 模块写层（PUT module state / confirm）已退役为 410 `MODULE_WRITE_RETIRED`，仅 `DEMO_IMPORT_ENABLED=true` 放行；模块结果只能来自执行→发布路径。
 - 当前注册表中全部 approved 规则/法源/模板的会签记录签署人为占位标识 `e2e-reviewer`，**不构成正式法学批准**；正式启用前必须由法学负责人重走 `signoff()`。
 
+## 2026-10-09 法学生复核版会签（已入册）
+
+复核材料：`docs/legal-review/review-intake-2026-10-09.json`（自《法学会签清单-法学生复核版-2026-10-09.xlsx》逐栏提取，原文不改写）；执行脚本 `scripts/apply_legal_signoff_2026_10_09.py`；回填记录见 `docs/legal-review/法学会签清单-法学生复核版-2026-10-09-已入册.xlsx`「正式会签记录」页。
+
+- **复核人身份**：法学生复核（非正式法学负责人）。SIGNOFF-006~010 已按复核结论入册并留下 signoff_record；SIGNOFF-001~005 为展示边界结论，不产生注册表记录，/v1 门闩与默认开关**不变**——复核人仅确认边界语义，解禁仍须走各自验收动作。
+- **SIGNOFF-007（法源）**：10 条全部 `signed_off`；按复核意见调整别名（补「两卡犯罪」「电诈」「电信网络诈骗」「提供资金五万元」「跨境帮助/跨境支持」「情节严重情形」「帮信与诈骗共犯界分」「新掩隐解释」；「跨境协同」改口径；删 2025 掩隐解释的片面别名「五十万元」）；补建掩隐新旧链 `cn-concealment-interpretation-2015-2021 → cn-concealment-interpretation-2025-1-12`（replaces）。
+- **SIGNOFF-006/008（规则/模板）**：占位会签不可被二次会签（approved 行不可变），按复核结论同内容升补丁版本入册并由复核人正式 signoff()，旧版 superseded——规则 287-2@1.0.1、severity@1.0.2、concealment-after@1.0.1、fraud-accomplice@1.0.1、logs-retention@1.0.1、realname@1.0.1、sentencing-base@1.0.2；模板 indictment-draft@1.0.2、indictment-assist@1.0.1。
+- **SIGNOFF-009（覆盖层）**：C 案注入键化覆盖层（介入时点=事前并持续、无事前通谋、上游既遂、单位犯罪主体、跨境连接点；11.8 万=illegal_gain，9.8 万入账与 2 万奖金为 componentOf 子项不重复累计）。B 案两名行为人姿态不同（黄某事中介入/陈某事后介入），单快照键无法表达且违法所得会被加总误触发门槛——拆分为两个演示案 `demo-case-b-proceeds#huang` / `#chen` 各注覆盖层。
+- **SIGNOFF-010（量刑冲突）**：复核结论「系统 9.0 月无明显异常，案载 12–18 月建议偏重，应修正建议」——规则不改动；案例 A bundle 属冻结快照不改，基准修正记待办。
+- **`cn-cybersecurity-law-2025` 未在本轮清单**，仍为 pending：两条合规规则引用它，在 V7 有效视图中不生效，compliance 模块保持不可用（fail-closed 正确）。
+- **待办（复核人修改意见，待法学负责人确认后出新版本）**：明知口径去「应知」；帮助行为归并为技术支持/支付结算/广告推广三类；「情节严重」并入构成要件并新增「建议罪名」层级与近邻罪名回退；情节严重扩为 8 条择一路径（含 `account_total_flow`、电话卡张数——**ADR-0003 封闭集外的口径需新 ADR**）；诈骗共犯提示边界扩为「事前通谋/事中勾连+提供支持」并加具体明知/参与深度限定；实名核验须实际执行才算满足；文书模板法定要素完整性（诉讼权利告知、退补/延长审查起诉期限、证据分类、附件事项、申诉权告知、认罪认罚从宽、不起诉四类型互斥、附条件不起诉仅未成年人、免刑不建议主刑及附加刑）；SIGNOFF-002 要求量刑结果不得展示为「应判 xx 月」式建议——与 v2 `sentencing.v2` 展示的关系需法学负责人裁定。
+
 ## v1.3 新增待签事项
 
 | 条目标识 | 待会签内容 | 负责人 | 状态 |
 | --- | --- | --- | --- |
-| SIGNOFF-006 | `engine/rules/corpus/core_rules.json` 七条规则底稿的谓词化表达：阈值（assisted_targets≥3、illegal_gain≥1万、payment_settlement≥20万、参与时点在结算前、明知来源）、severity 与 source_id 绑定 | 法学负责人、定罪轨道负责人 | 待签（当前为 `e2e-reviewer` 占位会签） |
-| SIGNOFF-007 | 法源语料：`engine/adapters/legal_sources.json` 三条法源（含 `statute-current-2022`）、新旧链与 supersession 语义 | 法学负责人 | 待签（占位会签） |
-| SIGNOFF-008 | 模板语料：`engine/rules/corpus/core_templates.json` 两份模板——`indictment-draft`（支付结算型）与 `indictment-assist`（帮信通用型）；`draftType`/占位符字段字典、必填口径、案型→doc_type 映射 | 法学负责人、文书产品负责人 | 待签（`indictment-assist` 尚未入册） |
-| SIGNOFF-009 | 演示案结构化覆盖层映射：案例 A 已按 `locator: bundle:*` 标注注入键化事实；案例 B/C 的覆盖层（叙述事实 → 求值器键 + ADR-0003 金额封闭集归类）须由法学审定后注入，不得由工程侧自行定性 | 法学负责人、产品经理 | 待签（B/C 未开始） |
-| SIGNOFF-010 | 量刑基准档偏差校正：案例 A 规则算出 9.0→8.1 月（坦白 -10%），bundle 审定基准为 12–18 月——确认是规则语料基准档偏差还是案载裁量差异，校正语料或另立版本 | 法学负责人、量刑轨道负责人 | 待签 |
+| SIGNOFF-006 | `engine/rules/corpus/core_rules.json` 七条规则底稿的谓词化表达：阈值（assisted_targets≥3、illegal_gain≥1万、payment_settlement≥20万、参与时点在结算前、明知来源）、severity 与 source_id 绑定 | 法学负责人、定罪轨道负责人 | 已签（法学生复核 2026-10-09，四条有条件同意，修改意见待后续版本） |
+| SIGNOFF-007 | 法源语料：`engine/adapters/legal_sources.json` 十条法源、新旧链与 supersession 语义 | 法学负责人 | 已签（法学生复核 2026-10-09，九条同意一条有条件同意；别名修正与新旧链已落） |
+| SIGNOFF-008 | 模板语料：`engine/rules/corpus/core_templates.json` 两份模板——`indictment-draft`（支付结算型）与 `indictment-assist`（帮信通用型）；`draftType`/占位符字段字典、必填口径、案型→doc_type 映射 | 法学负责人、文书产品负责人 | 已签（法学生复核 2026-10-09，有条件同意；法定要素完整性待确认） |
+| SIGNOFF-009 | 演示案结构化覆盖层映射：案例 A 已按 `locator: bundle:*` 标注注入键化事实；案例 B/C 的覆盖层（叙述事实 → 求值器键 + ADR-0003 金额封闭集归类）须由法学审定后注入，不得由工程侧自行定性 | 法学负责人、产品经理 | 已签（法学生复核 2026-10-09；B 案按行为人拆分注入，locator: `signoff:SIGNOFF-009@2026-10-09`） |
+| SIGNOFF-010 | 量刑基准档偏差校正：案例 A 规则算出 9.0→8.1 月（坦白 -10%），bundle 审定基准为 12–18 月——确认是规则语料基准档偏差还是案载裁量差异，校正语料或另立版本 | 法学负责人、量刑轨道负责人 | 已签（法学生复核 2026-10-09：系统结果无异常，案载基准偏重应修正；规则不改） |
 
 ## 会签条目主表
 
@@ -30,11 +42,11 @@
 
 | 条目标识 | 待会签内容 | 负责人 | 解禁后验收动作 | 安全门闩位置 | 默认开关名称 | 状态 | 返回码 | 解禁归属轮次 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| [SIGNOFF-001](#signoff-001) | 检索公开口：法源检索结果及其来源、时间、引用范围是否可用于辅助研判 | 法学负责人、检索轨道负责人 | 会签后按验收样例验证来源可追溯、引用范围与失败分支；确认 Java 与 Engine 两侧能力一致后，才评估解除公开口门闩 | `POST /v1/sources/search` → `SourceSearchController`；Engine `engine/adapters/sources.py` 的 `SourceSearchUnavailable` 分支 | `LEGAL_SOURCE_SEARCH_ENABLED` | 待签 | 501 | R3 |
-| [SIGNOFF-002](#signoff-002) | 量刑公开口：量刑任务的事实输入、规则依据、计算结果与展示边界 | 法学负责人、量刑轨道负责人 | 会签后同时开启并验证 Java 与 Engine 两侧开关，确认量刑任务完成且不再被 Engine 标记为 `failed`，再按会签结论执行解禁验收 | `POST /v1/tasks` 的 `metadata.taskType=sentencing.calculate` → `TaskPolicies.requireSupported` 的 `SENTENCING_UNAVAILABLE` 分支 | `SENTENCING_ENABLED` | 待签 | 501 | R3 |
-| [SIGNOFF-003](#signoff-003) | `compliance.analyze` 案件级分析：分析范围、证据依据、缺失事项与展示措辞 | 法学负责人、合规轨道负责人 | 会签后用代表性案件验证分析输入、证据引用、缺失事项和审计记录，并确认公开口错误与成功语义符合会签结论 | `TaskPolicies.requireSupported` 的 `COMPLIANCE_UNAVAILABLE` 分支 | 无 | 待签 | 501 | R3 |
-| [SIGNOFF-004](#signoff-004) | `conviction.analyze` 案件级分析：管辖连接点、基准位置、构成要件与缺失事项的展示边界 | 法学负责人、定罪轨道负责人 | 会签后用代表性案件验证管辖连接点、基准位置、缺失事项和审计记录，并确认公开口错误与成功语义符合会签结论 | `TaskPolicies.requireSupported` 的 `CONVICTION_UNAVAILABLE` 分支 | 无 | 待签 | 501 | R3 |
-| [SIGNOFF-005](#signoff-005) | 文书字段字典：`draftType`、`templateVersion` 及文书字段的法律语义、来源和可编辑边界 | 法学负责人、文书产品负责人 | 会签后逐字段核对字段字典、模板版本、来源标注与复核归档，确认文书草稿不替代司法裁量后再执行解禁验收 | `DraftService` / `DraftView` 的 `draftType` 与 `templateVersion` 语义门闩 | 无 | 待签 | 501 | R4 |
+| [SIGNOFF-001](#signoff-001) | 检索公开口：法源检索结果及其来源、时间、引用范围是否可用于辅助研判 | 法学负责人、检索轨道负责人 | 会签后按验收样例验证来源可追溯、引用范围与失败分支；确认 Java 与 Engine 两侧能力一致后，才评估解除公开口门闩 | `POST /v1/sources/search` → `SourceSearchController`；Engine `engine/adapters/sources.py` 的 `SourceSearchUnavailable` 分支 | `LEGAL_SOURCE_SEARCH_ENABLED` | 已签 | 501 | R3 |
+| [SIGNOFF-002](#signoff-002) | 量刑公开口：量刑任务的事实输入、规则依据、计算结果与展示边界 | 法学负责人、量刑轨道负责人 | 会签后同时开启并验证 Java 与 Engine 两侧开关，确认量刑任务完成且不再被 Engine 标记为 `failed`，再按会签结论执行解禁验收 | `POST /v1/tasks` 的 `metadata.taskType=sentencing.calculate` → `TaskPolicies.requireSupported` 的 `SENTENCING_UNAVAILABLE` 分支 | `SENTENCING_ENABLED` | 已签 | 501 | R3 |
+| [SIGNOFF-003](#signoff-003) | `compliance.analyze` 案件级分析：分析范围、证据依据、缺失事项与展示措辞 | 法学负责人、合规轨道负责人 | 会签后用代表性案件验证分析输入、证据引用、缺失事项和审计记录，并确认公开口错误与成功语义符合会签结论 | `TaskPolicies.requireSupported` 的 `COMPLIANCE_UNAVAILABLE` 分支 | 无 | 已签 | 501 | R3 |
+| [SIGNOFF-004](#signoff-004) | `conviction.analyze` 案件级分析：管辖连接点、基准位置、构成要件与缺失事项的展示边界 | 法学负责人、定罪轨道负责人 | 会签后用代表性案件验证管辖连接点、基准位置、缺失事项和审计记录，并确认公开口错误与成功语义符合会签结论 | `TaskPolicies.requireSupported` 的 `CONVICTION_UNAVAILABLE` 分支 | 无 | 已签 | 501 | R3 |
+| [SIGNOFF-005](#signoff-005) | 文书字段字典：`draftType`、`templateVersion` 及文书字段的法律语义、来源和可编辑边界 | 法学负责人、文书产品负责人 | 会签后逐字段核对字段字典、模板版本、来源标注与复核归档，确认文书草稿不替代司法裁量后再执行解禁验收 | `DraftService` / `DraftView` 的 `draftType` 与 `templateVersion` 语义门闩 | 无 | 已签 | 501 | R4 |
 
 ## 状态与执行约束
 
@@ -75,7 +87,7 @@
 2. 使用代表性查询验证来源可追溯、引用范围、失败分支和审计记录。
 3. 在 Java 与 Engine 两侧核对开关和能力状态后，由授权负责人决定是否执行公开口解禁；验收未通过时继续维持 `501`。
 
-**当前状态：** 待签；对应返回码 `501`；解禁归属轮次 R3。
+**当前状态：** 已签（有条件同意，2026-10-09 法学生复核）；对应返回码维持 `501` 至解禁验收；解禁归属轮次 R3。
 
 ### SIGNOFF-002：量刑公开口
 
@@ -115,7 +127,7 @@
 4. 核验任务不再被 Engine 标记为 `failed`，并核对结果、错误分支、审计记录和复核归档；若仍为 `failed` 或两侧开关不一致，验收失败并恢复公开口 `501`。
 5. 只有在上述双侧一致性和法学验收均通过后，才可由授权负责人决定是否解除量刑公开口门闩。
 
-**当前状态：** 待签；对应返回码 `501`；解禁归属轮次 R3。
+**当前状态：** 已签（有条件同意，2026-10-09 法学生复核）；对应返回码维持 `501` 至解禁验收；解禁归属轮次 R3。
 
 ### SIGNOFF-003：`compliance.analyze` 案件级分析
 
@@ -145,7 +157,7 @@
 2. 使用代表性案件核对输入范围、分析输出、证据依据、缺失事项、审计与复核归档。
 3. 核对公开口成功和失败分支均符合会签结论；验收未通过时维持 `501`。
 
-**当前状态：** 待签；对应返回码 `501`；解禁归属轮次 R3。
+**当前状态：** 已签（有条件同意，2026-10-09 法学生复核）；对应返回码维持 `501` 至解禁验收；解禁归属轮次 R3。
 
 ### SIGNOFF-004：`conviction.analyze` 案件级分析
 
@@ -175,7 +187,7 @@
 2. 使用代表性案件核对管辖连接点、基准位置、构成要件、缺失事项、证据引用及复核归档。
 3. 核对公开口成功和失败分支均符合会签结论；验收未通过时维持 `501`。
 
-**当前状态：** 待签；对应返回码 `501`；解禁归属轮次 R3。
+**当前状态：** 已签（有条件同意，2026-10-09 法学生复核）；对应返回码维持 `501` 至解禁验收；解禁归属轮次 R3。
 
 ### SIGNOFF-005：文书字段字典
 
@@ -205,7 +217,7 @@
 2. 按字段逐项核对字段字典、`draftType`、`templateVersion`、来源标注、人工修改和复核归档。
 3. 用代表性文书验证模板版本兼容和缺失字段提示，确认草稿不替代司法裁量；验收未通过时保持未解禁状态。
 
-**当前状态：** 待签；对应返回码 `501`；解禁归属轮次 R4。
+**当前状态：** 已签（有条件同意，2026-10-09 法学生复核）；对应返回码维持 `501` 至解禁验收；解禁归属轮次 R4。
 
 ## 变更记录
 
@@ -213,3 +225,4 @@
 | --- | --- | --- |
 | 2026-09-19 | 建立清单 | 建档五条会签事项；当前均为「待签」，公开安全门闩与默认开关保持现状。 |
 | 2026-09-26 | v1.3 状态同步 | 补门闩形态变更说明（能力门闩取代 /v2 派发侧静态 501）；新增 SIGNOFF-006..010：规则/法源/模板语料待法学重签（现为 `e2e-reviewer` 占位）、B/C 覆盖层待审定、案例 A 量刑基准偏差待校正。 |
+| 2026-10-09 | 法学生复核版会签入册 | 10 项全部完成复核：法源 10 条 signed_off（含别名修正与掩隐新旧链）；规则/模板同内容升版正式会签、占位版 superseded；C 案覆盖层注入、B 案按行为人拆分注入；SIGNOFF-010 裁定案载基准偏重（规则不改）。SIGNOFF-001~005 结论有条件同意，门闩不变、待解禁验收。有条件同意项的修改意见与 `cn-cybersecurity-law-2025` 法源见文中待办。 |

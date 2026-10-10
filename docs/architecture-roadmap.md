@@ -212,3 +212,13 @@
 - 第二轮CI 37742761809（dd92e6b）Java184项及其他三个基础job全部成功，Compose既有blocked模板诊断遇409：收紧下游检查时误将事实更替造成的普通stale一律拒绝。修正为先验证全部confirmed头的外部依赖，再只冻结原本eligible的NOT stale/latest版本；事实型模板和缺资料blocked诊断继续可执行，法源撤回不能通过省略stale头绕过。既有HTTP断言保持不变。
 
 - 第三轮CI 37744000470（fe697a5）四项基础job及原23项Compose检查通过；新增2202定罪fixture审批因输入证明blocked被拒。完整HTTP日志定位为2201候选计划effective_to=NULL延伸进2202，缺少其专属actor/proof参数。将CI-only冲突计划结束日期明确为2201-12-31，使2200/2201与2202/2203撤回夹具真正隔离；增加新fixture审批前calculated/verified断言。未更改生产规则、Engine/Java证明校验或既有业务断言。
+
+## 2026-10-09 法学生复核版会签入册
+
+- 复核材料《法学会签清单-法学生复核版-2026-10-09.xlsx》逐栏提取为 `docs/legal-review/review-intake-2026-10-09.json`（原文不改写）；执行 `scripts/apply_legal_signoff_2026_10_09.py`（registry 阶段在 engine 容器内走 `registry.signoff()`，cases 阶段走公开 /v1+/v2）。
+- 10 条法源 signed_off（别名按复核意见修正，2025 掩隐解释删「五十万元」别名；掩隐新旧链补建 replaces）。`cn-cybersecurity-law-2025` 不在清单仍为 pending → 合规两规则不进有效视图，模块不可用属正确行为。
+- 7 条规则 + 2 份模板：approved 行不可二次会签，同内容升补丁版本（见 docs/legal-signoff-checklist.md）正式 signoff，占位版 superseded。「有条件同意」的实质修改（明知口径、三类帮助行为、情节严重入要件、8 条择一路径含 account_total_flow、诈骗共犯边界、实名实际执行、文书法定要素）列为待办，需法学负责人确认后出新版本，其中新金额 kind 需新 ADR。
+- SIGNOFF-009：C 案（ff917bbd）注入键化覆盖层 locator=`signoff:SIGNOFF-009@2026-10-09`，11.8 万 illegal_gain（9.8 万/2 万 componentOf 不重复累计）。B 案两名行为人介入姿态互斥且违法所得会被加总误触发门槛，拆分为 `demo-case-b-proceeds#huang`/`#chen` 两个演示案各注覆盖层。
+- SIGNOFF-010：复核裁定系统 9.0 月结果无异常、案载 12–18 月偏重应修正——规则不改；冻结 bundle 不动，基准修正列待办。
+- SIGNOFF-001~005 有条件同意的边界结论仅落文档；/v1 门闩与默认开关不变。SIGNOFF-002「不得输出应判 xx 月式建议」与 v2 量刑展示的关系待法学负责人裁定。
+- 待办汇总：见 `docs/legal-signoff-checklist.md` 2026-10-09 节末待办清单；复核人为法学生，正式法学负责人复核仍待安排。
