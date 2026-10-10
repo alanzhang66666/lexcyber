@@ -1,9 +1,9 @@
-# 人工智能大赛校赛版 · LexCyber Campus Lite
+# 人工智能大赛校赛版 · LexCyber Campus Lite V1.2
 
 > 独立 JoyCode / JD DevCloud 演示子项目；**不修改原 LexCyber Java/Python/Vue/Postgres/MinIO 全栈系统**。
 > 本目录围绕上传的三份校赛 Word 所定义的金融方向 F1/F2/F3 演示，而不是司法帮信罪生产系统。
 
-## 功能
+## V1.2 增量\n- F4 涉卡资金合成案例：模拟证据、候选事实核验、帮信/掩隐/诈骗共犯审查问题清单。\n- F2 风控 RiskSignal 与法律审查区分，风险指标不转化为犯罪事实。\n- 增加风险线索、证据、法律路径、事实 Diff 的只读 API，以及简化归档动作。\n- 公开部署设置 \`DEMO_WRITE_TOKEN\`；网页「设置写入令牌」后才允许写入。共享演示密钥不等于个人认证。\n- 详见 [V1.2 实施记录](V1.2-IMPLEMENTATION.md)。\n\n## 功能
 - F1 企业准入、F2 异常交易，使用**合成事实及演示规则**（8 条，不是监管法定标准）。
 - 工作副本事实编辑、不可变 FactsVersion 确认；确认新版自动使旧 Artifact stale。
 - 逐规则结果和条件 Trace、人工批准/退回、HTML 审查报告/打印。
