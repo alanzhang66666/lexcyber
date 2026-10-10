@@ -1,4 +1,5 @@
 import {createRiskSignals,derivePaths,verifyCandidate} from "./legal-review.js";
+import {transferRisk,listTransfers} from "./risk-transfer.js";
 // 仅供校赛展示的合成数据；所有规则为演示策略而非法定或监管阈值。
 export const ruleDefs = [
  {id:"FIN-KYB-001",label:"实际控制人尚未核验",source:"演示内部审查规则",field:"beneficial_owner_verified",op:"eq",value:false,action:"建议增强人工核验"},
@@ -12,7 +13,7 @@ export const ruleDefs = [
 ];
 export function initialState(){
  const make=(id,title,facts)=>({id,title,documents:[{name:"合成演示业务材料",locator:"DEMO:"+id+":1",note:"仅为演示摘要，不对应真实客户或原始卷宗"}],draft:{...facts},versions:[],artifacts:[],reviews:[],events:[],candidates:[],evidence:[],archives:[]});
- return {schema:1,cases:[
+ return {schema:2,transfers:[],cases:[
   make("F1","企业客户业务准入审查",{beneficial_owner_verified:true,business_purpose_verified:true,source_of_funds_verified:false,supporting_documents_complete:false}),
   make("F2","异常交易风险辅助研判",{account_age_days:12,transaction_frequency_24h:32,transaction_total_30d:180000,cross_border_transaction:true,high_risk_region:true,source_of_funds_verified:false}),
   make("F4","涉卡资金与刑事证据关联（合成）",{help_activity:false,knowledge:false,upstream:false,seriousness:false,proceeds_nature:false,transfer_action:false,knowledge_of_proceeds:false,timing:false,joint_intent:false,prior_agreement:false,substantive_role:false,fraud_evidence:false})
@@ -32,6 +33,7 @@ export function evaluate(facts){
 export function apply(state,action){
  const now=new Date().toISOString();
  if(action.type==="reset")return initialState();
+ if(action.type==="transfer"){transferRisk(state,action,now);return state;}
  const c=state.cases.find(x=>x.id===action.caseId);
  if(!c)throw Object.assign(new Error("事项不存在"),{status:404});
  if(action.type==="edit"){
@@ -54,7 +56,15 @@ export function apply(state,action){
   verifyCandidate(c,action.candidateId,action.decision);
  } else if(action.type==="confirm"){
   const version=c.versions.length+1;
-  c.versions.push({id:c.id+"-facts-v"+version,number:version,facts:{...c.draft},confirmedAt:now});
+  const proofs={};
+  if(c.id==="F4"){
+   for(const [key,value] of Object.entries(c.draft)){
+    const entries=c.candidates.filter(x=>x.key===key&&x.status==="confirmed"&&x.value===value);
+    if(entries.length>1)throw Object.assign(new Error("同一事实有多个确认记录，无法唯一冻结"),{status:409});
+    if(entries.length){const candidate=entries[0];if(candidate.evidenceRefs.some(ref=>!c.evidence.some(e=>e.id===ref)))throw Object.assign(new Error("证据引用失效"),{status:409});proofs[key]={candidateFactId:candidate.id,evidenceRefs:[...candidate.evidenceRefs]};}
+   }
+  }
+  c.versions.push({id:c.id+"-facts-v"+version,number:version,facts:{...c.draft},proofs,confirmedAt:now});
   c.artifacts.forEach(a=>{a.stale=true});
   c.events.push({at:now,type:"facts.confirmed",version});
  } else if(action.type==="run"){
@@ -65,6 +75,7 @@ export function apply(state,action){
   c.artifacts.push(a);c.events.push({at:now,type:"artifact.published",artifactId:a.id});
  } else if(action.type==="archive"){
   const a=c.artifacts.at(-1);if(!a||a.stale)throw Object.assign(new Error("只有有效结果可以归档"),{status:409});
+  const existing=c.archives.find(x=>x.artifactId===a.id);if(existing)return state;
   const review=c.reviews.findLast(r=>r.artifactId===a.id&&r.decision==="approved");
   if(!review)throw Object.assign(new Error("必须先人工批准该结果"),{status:409});
   c.archives.push({id:c.id+"-archive-"+(c.archives.length+1),factsVersionId:a.factsVersionId,artifactId:a.id,reviewAt:review.at,at:now,synthetic:true});
@@ -74,6 +85,8 @@ export function apply(state,action){
   if(!["approved","rejected"].includes(action.decision))throw Object.assign(new Error("复核动作不合法"),{status:400});
   if((a.results.some(x=>x.status==="blocked")||(c.id==="F4"&&a.legalPaths.some(p=>p.items.some(x=>x.status!=="evidence_linked"))))&&action.decision==="approved")throw Object.assign(new Error("存在阻断规则，不能批准"),{status:409});
   if(typeof action.comment!=="string"||action.comment.length>1000)throw Object.assign(new Error("复核意见不合法"),{status:400});
+  const existingReview=c.reviews.find(x=>x.artifactId===a.id);
+  if(existingReview){if(existingReview.decision===action.decision&&existingReview.comment===action.comment)return state;throw Object.assign(new Error("该结果已复核，不能覆盖历史决定"),{status:409});}
   c.reviews.push({artifactId:a.id,decision:action.decision,comment:action.comment,at:now,actor:"校赛演示操作员"});
   c.events.push({at:now,type:"review."+action.decision,artifactId:a.id});
  }else throw Object.assign(new Error("不支持的操作"),{status:400});
