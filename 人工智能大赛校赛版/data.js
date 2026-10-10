@@ -19,6 +19,8 @@ export function initialState(){
 export function evaluate(facts){
  return ruleDefs.map(rule=>{
   const left=facts[rule.field], right=rule.other?facts[rule.other]:undefined;
+  const scenario=Object.hasOwn(facts,"beneficial_owner_verified")?"KYB":"TXN";
+  if(rule.id.startsWith("FIN-KYB")&&scenario!=="KYB" || rule.id.startsWith("FIN-TXN")&&scenario!=="TXN")return {ruleId:rule.id,version:"demo-1.0",label:rule.label,source:rule.source,status:"not_applicable",fired:false,action:null,trace:{reason:"此规则不适用于当前演示场景"},blocker:null};
   const valid=typeof left=== (rule.op==="gte"||rule.op==="combo"?"number":"boolean") && (!rule.other || typeof right === (rule.other==="transaction_total_30d"?"number":"boolean"));
   const fired=valid && (rule.op==="eq"?left===rule.value:rule.op==="gte"?left>=rule.value:rule.op==="both"?left===rule.value&&right===rule.otherValue:rule.op==="combo"?left<(rule.id==="FIN-TXN-002"?rule.value:-Infinity)&&right>=rule.otherValue: false);
   const actualFired=rule.id==="FIN-TXN-004"?valid&&left>=rule.value&&right>=rule.otherValue:fired;
