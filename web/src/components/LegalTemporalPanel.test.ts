@@ -47,7 +47,7 @@ describe('LegalTemporalPanel', () => {
     expect(text).toContain('2026-02-01')
     expect(text).toContain('2024.1')
     expect(text).toContain('2026.1')
-    expect(text).toContain('刑期 12 个月')
+    expect(text).toContain('量刑辅助分析结果：12 个月')
     expect(text).toContain('罚金 3000 元')
     expect(text).toContain('行为时点分支')
   })
@@ -58,7 +58,7 @@ describe('LegalTemporalPanel', () => {
     expect(text).toContain('该路径已阻断，暂不显示计算数字')
     expect(text).toContain('缺少裁判时点适用法源')
     expect(text).toContain('待人工择法的路径对照，未选为结论')
-    expect(text).not.toContain('刑期 24 个月')
+    expect(text).not.toContain('量刑辅助分析结果：24 个月')
   })
 
   it('renders nothing when temporal fields are absent', () => {
@@ -76,7 +76,7 @@ describe('LegalTemporalPanel', () => {
     }]
     const wrapper = mount(LegalTemporalPanel, { props: { content } })
     expect(wrapper.text()).toContain('该路径已阻断，暂不显示计算数字')
-    expect(wrapper.text()).not.toContain('刑期 12 个月')
+    expect(wrapper.text()).not.toContain('量刑辅助分析结果：12 个月')
   })
 
   it('defensively blocks a calculated path when nested evidence is missing', () => {
@@ -96,7 +96,7 @@ describe('LegalTemporalPanel', () => {
     expect(text).toContain('缺少必需证据类型 服务记录')
     expect(text).toContain('已阻断')
     expect(text).not.toContain('已计算')
-    expect(text).not.toContain('刑期 12 个月')
+    expect(text).not.toContain('量刑辅助分析结果：12 个月')
     expect(text).not.toContain('罚金 900 元')
   })
 

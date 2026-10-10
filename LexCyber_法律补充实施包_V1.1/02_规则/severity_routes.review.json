@@ -1,0 +1,123 @@
+{
+  "status": "review_draft_not_seed_ready",
+  "semantics": "S1-S8 any / OR; S6, S7 internal all / AND; manual sections not counted as machine-complete",
+  "routes": [
+    {
+      "route": "S1",
+      "name": "帮助对象达到三人",
+      "operator": "gte",
+      "fact": "facts.assisted_targets.value",
+      "threshold": 3
+    },
+    {
+      "route": "S2",
+      "name": "支付结算达到二十万元",
+      "operator": "gte",
+      "fact": "amounts.payment_settlement_amount.confirmedSum",
+      "threshold": 200000
+    },
+    {
+      "route": "S3",
+      "name": "符合条件的提供资金达到五万元",
+      "operator": "gte",
+      "fact": "amounts.provided_funds_amount.confirmedSum",
+      "threshold": 50000,
+      "legal_facts_to_verify": [
+        "资金的提供方式及用途",
+        "相关上游犯罪事实"
+      ]
+    },
+    {
+      "route": "S4",
+      "name": "违法所得达到一万元",
+      "operator": "gte",
+      "fact": "amounts.illegal_gain.confirmedSum",
+      "threshold": 10000
+    },
+    {
+      "route": "S5",
+      "name": "两年内相关行政处罚后又帮助",
+      "human_check": true,
+      "required_facts": [
+        "行政处罚决定与类型",
+        "处罚日期",
+        "本次帮助行为日期",
+        "行为主体一致性"
+      ]
+    },
+    {
+      "route": "S6",
+      "name": "本人账户至少三且账户流入三十万元",
+      "all": [
+        {
+          "fact": "facts.self_account_count.value",
+          "op": "gte",
+          "value": 3
+        },
+        {
+          "fact": "amounts.account_total_flow.confirmedSum",
+          "op": "gte",
+          "value": 300000
+        }
+      ],
+      "required_facts": [
+        "本人账户权属",
+        "出租出售行为",
+        "账户集合和资金统计期间"
+      ]
+    },
+    {
+      "route": "S7",
+      "name": "非本人账户收购出售出租且账户流入三十万元",
+      "all": [
+        {
+          "fact": "facts.non_self_account_transaction.value",
+          "op": "eq",
+          "value": true
+        },
+        {
+          "fact": "amounts.account_total_flow.confirmedSum",
+          "op": "gte",
+          "value": 300000
+        }
+      ],
+      "required_facts": [
+        "非本人或单位账户权属",
+        "相关账户行为",
+        "账户集合和资金统计期间"
+      ]
+    },
+    {
+      "route": "S8",
+      "name": "相关电话卡物联网卡至少二十张",
+      "operator": "gte",
+      "fact": "facts.phone_or_iot_card_count.value",
+      "threshold": 20,
+      "manual_fallback": true
+    }
+  ],
+  "manual_severity_review": [
+    {
+      "id": "upstream_serious_consequence",
+      "label": "被帮助对象犯罪造成严重后果",
+      "required": [
+        "后果事实",
+        "因果关系",
+        "上下游犯罪关联",
+        "支持和相反证据",
+        "人工复核记录"
+      ]
+    },
+    {
+      "id": "other_serious_circumstances",
+      "label": "其他情节严重",
+      "required": [
+        "具体情节",
+        "法源及条款",
+        "支持和相反证据",
+        "人工复核记录"
+      ]
+    }
+  ],
+  "warning": "部分路径依赖新金额kind和待审事实键；不得在未迁移及未签署情况下直接播种。"
+}

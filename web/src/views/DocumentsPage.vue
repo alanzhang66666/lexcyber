@@ -465,7 +465,7 @@ onBeforeUnmount(() => { loadGeneration += 1 })
           <div><p class="section-index">03</p><h2>模板渲染</h2></div>
           <span v-if="renderedMeta" class="subtle-chip mono">{{ renderedMeta.docType }} · v{{ renderedMeta.version }}</span>
         </div>
-        <p class="panel-note">按已会签模板与已确认事实快照渲染文书；上游模块结论自动代入。结果须人工复核，不作为正式法律文书。</p>
+        <p class="panel-note">按已会签模板与已确认事实快照渲染文书；上游模块结论自动代入。规则计算参考值不是正式量刑建议。结果须人工复核，不作为正式法律文书。</p>
 
         <form class="form-stack create-row" @submit.prevent="renderDraft">
           <label>

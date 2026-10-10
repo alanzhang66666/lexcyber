@@ -141,7 +141,7 @@ watch(caseId, () => {
         <RouterLink class="back-link" :to="workspaceTo">← 返回案件工作区</RouterLink>
         <p class="eyebrow">量刑推导链</p>
         <h1>量刑分析</h1>
-        <p>{{ caseItem?.title || '当前案件' }} · 按已确认事实逐档计算量刑区间并留痕，不输出系统自创刑期</p>
+        <p>{{ caseItem?.title || '当前案件' }} · 按已确认事实逐档计算辅助分析参考值并留痕，不输出系统自创结论</p>
       </div>
       <div class="heading-actions">
         <CasePhaseBar current="analysis" />
@@ -150,7 +150,7 @@ watch(caseId, () => {
     </header>
     <p class="notice notice-warning" role="note">
       <strong>辅助分析，不替代司法裁量</strong>
-      <span>刑期与罚金为注册表规则的可解释计算结果，输入为已确认事实快照；阻断项只展示待确认，不编造结果。</span>
+      <span>规则计算参考值与罚金为注册表规则的可解释计算结果，输入为已确认事实快照；阻断项只展示待确认，不编造结果。</span>
     </p>
     <div v-if="loading" class="panel empty-state" aria-live="polite">正在读取案件…</div>
     <div v-else-if="error" class="panel">
@@ -193,14 +193,14 @@ watch(caseId, () => {
         <div class="panel-heading"><div><p class="section-index">02</p><h2>已核对宣告口径</h2></div></div>
         <p v-if="resultBlocked" class="notice notice-warning" role="note">
           <strong>重放被阻断</strong>
-          <span>输入未满足已复核口径要求，以下为待确认项，不输出刑期。</span>
+          <span>输入未满足已复核口径要求，以下为待确认项，不输出计算参考值。</span>
         </p>
         <SentencingResultPanel :result="sentencingResult" @locate="handleLocate" />
       </section>
       <section v-else-if="taskLoading" class="panel empty-state">正在计算量刑区间…</section>
       <section v-else class="panel empty-state">
         <strong>尚未运行量刑分析</strong>
-        <p>按已确认事实快照逐档计算量刑区间；本页不编造刑期。</p>
+        <p>按已确认事实快照逐档计算辅助分析参考值；本页不编造结论。</p>
       </section>
       <LegalTemporalPanel v-if="result" :content="result.content" />
     </template>

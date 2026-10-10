@@ -13,6 +13,105 @@
         "required": ["facts.defendant_name.value"]
       },
       "body_template": "起诉意见书（草稿 · 待复核）\n\n案件编号：{{case_id}}\n文书类型：{{doc_type}}\n\n一、被告人基本情况\n被告人：{{facts.defendant_name.value}}\n\n二、上游犯罪事实关联\n上游犯罪涉案金额合计：{{amounts.crime_amount.sum}} 元\n被告人违法所得合计：{{amounts.illegal_gain.sum}} 元\n\n三、模块研判结论（辅助意见，须经人工复核）\n定罪研判状态：{{artifacts.conviction.status}}\n量刑分析（基准档）：{{artifacts.sentencing.results.0.term_months}} 个月\n\n四、说明\n本稿由已会签模板按确认事实快照与上游模块结果渲染；所有结论性内容须经具备资质人员复核，不作为正式法律文书。\n"
+    },
+    {
+      "template_id": "indictment-draft",
+      "template_version": "1.1.0",
+      "doc_type": "indictment-draft",
+      "legal_review_status": "pending",
+      "provenance": "review-draft:LexCyber_法律补充实施包_V1.1",
+      "description": "支付结算型起诉书草稿。不替代已会签的 1.0.2 原文；正式样式仍待法学审定。",
+      "field_schema": {
+        "required": [
+          "facts.defendant_name.value", "facts.defendant_sex.value", "facts.defendant_birth_date.value",
+          "facts.defendant_identity_document.value", "facts.defendant_residence.value",
+          "facts.rights_notice.value", "facts.facts_summary.value", "facts.evidence_catalogue.value",
+          "facts.legal_basis.value", "facts.attachments.value", "facts.prosecutor_name.value",
+          "facts.issued_at.value", "amounts.payment_settlement_amount.confirmedSum"
+        ],
+        "applicability": {
+          "document_disposition": "prosecution",
+          "help_type": "payment_settlement",
+          "manual_document_selection": true
+        }
+      },
+      "body_template": "起诉书草稿（支付结算型，待复核，非正式文书）\n\n案件编号：{{case_id}}\n被告人：{{facts.defendant_name.value}}，{{facts.defendant_sex.value}}，{{facts.defendant_birth_date.value}}出生。身份信息：{{facts.defendant_identity_document.value}}。住址：{{facts.defendant_residence.value}}。\n诉讼权利告知：{{facts.rights_notice.value}}\n审查认定事实：{{facts.facts_summary.value}}\n支付结算金额（确认口径）：{{amounts.payment_settlement_amount.confirmedSum}} 元\n证据分类：{{facts.evidence_catalogue.value}}\n法律依据：{{facts.legal_basis.value}}\n附件：{{facts.attachments.value}}\n检察官：{{facts.prosecutor_name.value}}\n日期：{{facts.issued_at.value}}\n本稿不代替检察官决定，不得自动落章。\n"
+    },
+    {
+      "template_id": "indictment-assist",
+      "template_version": "1.1.0",
+      "doc_type": "indictment-assist",
+      "legal_review_status": "pending",
+      "provenance": "review-draft:LexCyber_法律补充实施包_V1.1",
+      "description": "帮信通用起诉书草稿。不强制支付结算金额，不替代已会签的 1.0.1。",
+      "field_schema": {
+        "required": [
+          "facts.defendant_name.value", "facts.defendant_sex.value", "facts.defendant_birth_date.value",
+          "facts.defendant_identity_document.value", "facts.defendant_residence.value",
+          "facts.rights_notice.value", "facts.upstream_crime_facts.value", "facts.help_behavior.value",
+          "facts.knowledge_evidence.value", "facts.severity_basis.value", "facts.evidence_catalogue.value",
+          "facts.legal_basis.value", "facts.attachments.value", "facts.prosecutor_name.value", "facts.issued_at.value"
+        ],
+        "applicability": {
+          "document_disposition": "prosecution",
+          "manual_document_selection": true
+        }
+      },
+      "body_template": "起诉书草稿（帮信通用型，待复核，非正式文书）\n\n案件编号：{{case_id}}\n被告人：{{facts.defendant_name.value}}，{{facts.defendant_sex.value}}，{{facts.defendant_birth_date.value}}出生。身份信息：{{facts.defendant_identity_document.value}}。住址：{{facts.defendant_residence.value}}。\n诉讼权利告知：{{facts.rights_notice.value}}\n上游事实：{{facts.upstream_crime_facts.value}}\n帮助行为：{{facts.help_behavior.value}}\n明知证据：{{facts.knowledge_evidence.value}}\n情节严重依据：{{facts.severity_basis.value}}\n证据分类：{{facts.evidence_catalogue.value}}\n法律依据：{{facts.legal_basis.value}}\n附件：{{facts.attachments.value}}\n检察官：{{facts.prosecutor_name.value}}\n日期：{{facts.issued_at.value}}\n界分未确定时不得使用本稿。本稿不代替检察官决定。\n"
+    },
+    {
+      "template_id": "non-prosecution-decision",
+      "template_version": "1.0.0",
+      "doc_type": "non-prosecution-decision",
+      "legal_review_status": "pending",
+      "provenance": "review-draft:LexCyber_法律补充实施包_V1.1",
+      "description": "不起诉决定书草稿。四种类型互斥；附条件不起诉仅符合条件的未成年人。权利告知按类型使用受控段落。",
+      "field_schema": {
+        "required": [
+          "facts.defendant_name.value", "facts.defendant_identity_document.value",
+          "facts.case_facts.value", "facts.decision_reasons.value", "facts.legal_basis.value",
+          "facts.prosecutor_name.value", "facts.issued_at.value"
+        ],
+        "applicability": {"document_disposition": "non_prosecution", "manual_document_selection": true},
+        "exclusive_field": "non_prosecution_type",
+        "mutually_exclusive": ["statutory", "discretionary", "insufficient_evidence", "conditional_minor"],
+        "conditional_minor_required": [
+          "offence_age_under_18", "criminal_law_chapter_4_5_6", "possible_term_leq_one_year",
+          "prosecution_conditions_met", "remorse", "lawful_consultations",
+          "minor_and_guardian_non_objection", "supervision_period_plan"
+        ],
+        "conditional_sections": {
+          "fact": "non_prosecution_type",
+          "sections": {
+            "statutory": "权利告知（法定不起诉，待法学审定）：被不起诉人如不服，可以依法申诉。",
+            "discretionary": "权利告知（酌定不起诉，待法学审定）：被不起诉人、被害人和公安机关的救济按各自主体分别告知。",
+            "insufficient_evidence": "权利告知（证据不足不起诉，待法学审定）：公安机关要求复议复核的权利与被不起诉人申诉分别告知。",
+            "conditional_minor": "权利告知（附条件不起诉，待法学审定）：仅适用于符合条件的未成年人，异议与考验安排须另行载明。"
+          }
+        }
+      },
+      "body_template": "不起诉决定书草稿（待复核，非正式文书）\n\n被不起诉人：{{facts.defendant_name.value}}。身份信息：{{facts.defendant_identity_document.value}}。\n案件事实：{{facts.case_facts.value}}\n决定理由：{{facts.decision_reasons.value}}\n法律依据：{{facts.legal_basis.value}}\n检察官：{{facts.prosecutor_name.value}}\n日期：{{facts.issued_at.value}}\n"
+    },
+    {
+      "template_id": "sentencing-recommendation",
+      "template_version": "1.0.0",
+      "doc_type": "sentencing-recommendation",
+      "legal_review_status": "pending",
+      "provenance": "review-draft:LexCyber_法律补充实施包_V1.1",
+      "description": "量刑建议书草稿。计算参考值不写入正式建议。免刑与主刑、执行方式、附加刑互斥。",
+      "field_schema": {
+        "required": [
+          "facts.defendant_name.value", "facts.offence.value", "facts.statutory_range.value",
+          "facts.sentencing_facts.value", "facts.prosecutor_name.value"
+        ],
+        "applicability": {"document_disposition": "sentencing_recommendation", "manual_document_selection": true},
+        "conditional_required": [
+          {"fact": "exempt_from_criminal_punishment", "eq": false, "required": ["proposed_principal_penalty"]},
+          {"fact": "exempt_from_criminal_punishment", "eq": true, "required": ["exemption_basis"],
+           "must_omit": ["proposed_principal_penalty", "execution_method", "additional_penalty"]}
+        ]
+      },
+      "body_template": "量刑建议书草稿（待复核，非正式文书）\n\n被告人：{{facts.defendant_name.value}}\n拟评价罪名：{{facts.offence.value}}\n法定刑：{{facts.statutory_range.value}}\n量刑事实：{{facts.sentencing_facts.value}}\n规则计算参考值只供人工核对，不自动成为正式量刑建议。\n检察官：{{facts.prosecutor_name.value}}\n"
     }
   ]
 }

@@ -199,6 +199,10 @@ def resolve_temporal(source_key: str, conduct_date: date | None,
             "detail": "法源有效区间重叠，无法自动选择版本",
             "points": [item["point"] for item in result["overlaps"]],
         })
+    coverage = rows[0][15] or {}
+    if isinstance(coverage, str):
+        coverage = json.loads(coverage)
+    result["versionGroup"] = coverage.get("version_group") if isinstance(coverage, dict) else None
     return result
 
 

@@ -46,7 +46,8 @@ public class FactsBaselineService {
             "jurisdiction-connections", "jurisdiction_connection");
     static final List<String> AMOUNT_KINDS = List.of(
             "payment_settlement_amount", "illegal_gain", "crime_amount",
-            "business_revenue", "recovery", "fine");
+            "business_revenue", "recovery", "fine",
+            "account_total_flow", "provided_funds_amount");
 
     private final JdbcTemplate jdbc;
     private final StalePropagationService stale;

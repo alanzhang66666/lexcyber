@@ -37,7 +37,7 @@ const hasDetail = computed(() => Boolean(
           <span>{{ rule.status || '未知状态' }}</span>
         </div>
         <template v-if="!blocked">
-          <p v-if="rule.termMonths !== null && rule.termMonths !== undefined" class="rule-term">刑期 {{ rule.termMonths }} 个月</p>
+          <p v-if="rule.termMonths !== null && rule.termMonths !== undefined" class="rule-term">规则计算参考值：{{ rule.termMonths }} 个月</p>
           <p v-if="rule.fine" class="rule-term">{{ rule.fine }}</p>
           <ol v-if="rule.steps?.length" class="rule-steps">
             <li v-for="(step, j) in rule.steps" :key="j">
@@ -79,7 +79,7 @@ const hasDetail = computed(() => Boolean(
       </section>
 
       <section v-if="result.interval && (result.ruleResults?.length || 0) <= 1" class="sent-section">
-        <h3>刑期区间</h3>
+        <h3>计算参考区间</h3>
         <div class="result-meta">
           <span>参考区间（待人工核验，非系统预测）</span>
           <code>{{ result.interval }}</code>

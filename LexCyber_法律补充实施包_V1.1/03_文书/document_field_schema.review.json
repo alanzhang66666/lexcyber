@@ -1,0 +1,168 @@
+{
+  "status": "review_draft_not_seed_ready",
+  "contract": "document-field-schema-design.v1 (proposal; existing renderer does not execute this)",
+  "common": {
+    "identity_conditional_fields": [
+      "defendant.nationality",
+      "defendant.ethnicity",
+      "defendant.education",
+      "defendant.occupation",
+      "defendant.previous_convictions",
+      "defendant.compulsory_measures"
+    ],
+    "procedure_fields": [
+      "prosecution_review.supplementary_investigation_count",
+      "prosecution_review.supplementary_investigation_dates",
+      "prosecution_review.extended_review_period",
+      "prosecution_review.defense_rights"
+    ],
+    "review_requirement": "template form elements and mandatory conditions subject to prosecutor format review"
+  },
+  "templates": [
+    {
+      "template_id": "indictment-draft",
+      "doc_type": "indictment-draft",
+      "title": "起诉书（支付结算型草稿）",
+      "required": [
+        "case_id",
+        "document_number",
+        "organization",
+        "defendant.name",
+        "defendant.sex",
+        "defendant.birth_date",
+        "defendant.identity_document",
+        "defendant.residence",
+        "prosecution_review.migration_date",
+        "prosecution_review.rights_notice",
+        "facts_summary",
+        "evidence_catalogue",
+        "legal_basis",
+        "attachments",
+        "prosecutor.name",
+        "issued_at",
+        "upstream_crime_facts",
+        "help_behavior",
+        "knowledge_evidence",
+        "severity_basis",
+        "amounts.payment_settlement_amount.confirmedSum"
+      ],
+      "applies_when": {
+        "document_disposition": "prosecution",
+        "help_type": "payment_settlement",
+        "manual_document_selection": true
+      },
+      "notes": "原已签1.0.2须从数据库原记录恢复、核对hash；新增内容升新版本，不覆盖历史"
+    },
+    {
+      "template_id": "indictment-assist",
+      "doc_type": "indictment-assist",
+      "title": "起诉书（帮信通用型草稿）",
+      "required": [
+        "case_id",
+        "document_number",
+        "organization",
+        "defendant.name",
+        "defendant.sex",
+        "defendant.birth_date",
+        "defendant.identity_document",
+        "defendant.residence",
+        "prosecution_review.migration_date",
+        "prosecution_review.rights_notice",
+        "facts_summary",
+        "evidence_catalogue",
+        "legal_basis",
+        "attachments",
+        "prosecutor.name",
+        "issued_at",
+        "upstream_crime_facts",
+        "help_behavior",
+        "knowledge_evidence",
+        "severity_basis"
+      ],
+      "applies_when": {
+        "document_disposition": "prosecution",
+        "manual_document_selection": true
+      },
+      "forbidden_unconditional_required": [
+        "amounts.payment_settlement_amount.confirmedSum"
+      ]
+    },
+    {
+      "template_id": "non-prosecution-decision",
+      "doc_type": "non-prosecution-decision",
+      "title": "不起诉决定书草稿",
+      "required": [
+        "case_id",
+        "defendant.name",
+        "defendant.identity_document",
+        "non_prosecution_type",
+        "case_facts",
+        "decision_reasons",
+        "legal_basis",
+        "rights_notice",
+        "prosecutor.name",
+        "issued_at"
+      ],
+      "enum": {
+        "non_prosecution_type": [
+          "statutory",
+          "discretionary",
+          "insufficient_evidence",
+          "conditional_minor"
+        ]
+      },
+      "mutually_exclusive": [
+        "statutory",
+        "discretionary",
+        "insufficient_evidence",
+        "conditional_minor"
+      ],
+      "conditional_minor_required": [
+        "offence_age_under_18",
+        "criminal_law_chapter_4_5_6",
+        "possible_term_leq_one_year",
+        "prosecution_conditions_met",
+        "remorse",
+        "lawful_consultations",
+        "minor_and_guardian_non_objection",
+        "supervision_period_plan"
+      ],
+      "rights_notice": "per_type; per_right_holder; manual legal review"
+    },
+    {
+      "template_id": "sentencing-recommendation",
+      "doc_type": "sentencing-recommendation",
+      "title": "量刑建议书草稿",
+      "required": [
+        "case_id",
+        "defendant.name",
+        "offence",
+        "statutory_range",
+        "sentencing_facts",
+        "recommendation_review_status",
+        "prosecutor.name"
+      ],
+      "if": {
+        "exempt_from_criminal_punishment==false": {
+          "required": [
+            "proposed_principal_penalty"
+          ]
+        },
+        "exempt_from_criminal_punishment==true": {
+          "required": [
+            "exemption_basis"
+          ],
+          "must_omit": [
+            "proposed_principal_penalty",
+            "execution_method",
+            "additional_penalty"
+          ]
+        }
+      },
+      "analysis_reference_only": [
+        "calculated_reference_months"
+      ],
+      "do_not_copy_to_formal_recommendation": true
+    }
+  ]
+}

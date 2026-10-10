@@ -190,7 +190,7 @@ watch(() => moduleState.value?.content, (content) => syncRequestedRows(content),
 
       <section v-if="v2Analysis" class="panel">
         <div class="panel-heading"><div><p class="section-index">02</p><h2>规则执行结果</h2></div></div>
-        <p class="panel-note">approved 规则包对确认事实快照的逐条求值；不构成定罪结论。</p>
+        <p class="panel-note">该候选路径相关要件已命中时，仍须人工复核。材料缺失只表示待核查，不是已经排除。</p>
         <RuleResultsPanel :analysis="v2Analysis" />
       </section>
 

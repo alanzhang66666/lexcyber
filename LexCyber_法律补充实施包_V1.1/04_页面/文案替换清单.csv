@@ -1,0 +1,7 @@
+﻿区域,原文或错误类型,建议替换,附加约束,文件定位
+量刑结果,刑期 N 个月,规则计算参考值：N 个月,blocked不得裸露数字,web/src/components/SentencingResultPanel.vue
+双时点,刑期 N 个月,量刑辅助分析结果：N 个月,两时点法源差异另行提示,web/src/components/LegalTemporalPanel.vue
+检索,本案适用某条,检索到相关法源，适用与时效需人工核查,列文号、效力、检索时间,source-search页面/组件
+合规,确认违法 / 应处罚,存在相关风险，建议进一步核查,不得输出终局违法结论,web/src/views/CompliancePage.vue
+定罪,构成某罪 / 罪名成立 / 有罪,该候选路径相关要件已命中，须人工复核,材料缺失不得写排除,web/src/views/ConvictionPage.vue
+文书,自动量刑建议 8.1 月,规则计算参考值：8.1个月（非正式建议）,人工签署与正式建议区分,web/src/views/DocumentsPage.vue

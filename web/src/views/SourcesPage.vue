@@ -67,7 +67,7 @@ onMounted(() => {
     </header>
     <p class="notice notice-warning" role="note">
       <strong>辅助检索，不构成法律适用结论</strong>
-      <span>命中条文的时效与适用性仍需法学负责人确认。</span>
+      <span>检索到相关法源，适用与时效需人工核查。未标明效力区间的旧法不能直接作为裁判依据。</span>
     </p>
     <div class="filter-bar panel">
       <label class="wide-search">

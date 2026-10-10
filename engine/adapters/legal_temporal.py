@@ -144,6 +144,57 @@ def resolve_sources(source_ids: set[str], conduct: date | None,
         (item["sourceId"], item["sourceVersion"], item["point"]): item
         for item in result["source_versions"]
     }.values())
+    return _reconcile_version_groups(result)
+
+
+def _point_covered(resolution: dict[str, Any], point: str) -> bool:
+    info = (resolution.get("resolutions") or {}).get(point) or {}
+    return bool(info.get("candidates"))
+
+
+def _reconcile_version_groups(result: dict[str, Any]) -> dict[str, Any]:
+    """Same-statute versions keep their own articles and are chosen by date.
+
+    A key that does not cover a point is not a gap when another key in its
+    version_group does. Conduct and judgment landing on different members
+    stay divergent and are not auto-selected.
+    """
+    groups: dict[str, list[tuple[str, dict[str, Any]]]] = {}
+    for key, resolution in (result.get("resolutions") or {}).items():
+        group = resolution.get("versionGroup") if isinstance(resolution, dict) else None
+        if group:
+            groups.setdefault(str(group), []).append((key, resolution))
+    if not groups:
+        return result
+    kept: list[dict[str, Any]] = []
+    for blocker in result.get("blockers") or []:
+        if blocker.get("code") != "LEGAL_SOURCE_COVERAGE_GAP":
+            kept.append(blocker)
+            continue
+        resolution = (result.get("resolutions") or {}).get(blocker.get("sourceKey")) or {}
+        siblings = [item for item in groups.get(str(resolution.get("versionGroup")), [])
+                    if item[0] != blocker.get("sourceKey")]
+        remaining = [gap for gap in blocker.get("gaps") or []
+                     if not any(_point_covered(sibling, gap.get("point")) for _, sibling in siblings)]
+        if remaining:
+            kept.append({**blocker, "gaps": remaining})
+    result["blockers"] = kept
+    for group, members in groups.items():
+        conduct = [key for key, resolution in members if _point_covered(resolution, "conduct")]
+        judgment = [key for key, resolution in members if _point_covered(resolution, "judgment")]
+        if conduct and judgment and set(conduct) != set(judgment):
+            result.setdefault("divergence", []).append({
+                "code": "LAW_VERSION_DIVERGENCE",
+                "sourceKey": group,
+                "detail": "行为时点与裁判时点落在同一法律的不同版本，须人工择法",
+                "conductVersion": conduct,
+                "judgmentVersion": judgment,
+            })
+            result["blockers"].append({
+                "code": "LEGAL_TEMPORAL_DIVERGENCE",
+                "sourceKey": group,
+                "detail": "行为时点与裁判时点落在同一法律的不同版本，须人工择法",
+            })
     return result
 
 

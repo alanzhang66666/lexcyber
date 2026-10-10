@@ -12,7 +12,7 @@ const props = defineProps<{ blockers: Blocker[] }>()
   <section v-if="blockers.length" class="blocked-notice" role="alert">
     <div class="blocked-head">
       <strong>量刑结果待确认（blocked）</strong>
-      <span>存在阻断项，暂不展示刑期结果；基准刑仅供参考，不作为系统预测。</span>
+      <span>存在阻断项，暂不展示计算参考值；基准仅供参考，不作为系统预测。</span>
     </div>
     <ol class="blocker-list">
       <li v-for="(b, i) in blockers" :key="i">

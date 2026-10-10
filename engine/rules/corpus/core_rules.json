@@ -1,6 +1,6 @@
 {
   "schema_version": "rule-corpus.v1",
-  "note": "法学底稿：pending 注册，须经 signoff 批准后才参与产出（INV-RULE-002）。source_refs 按 source_key@source_version 引用已登记法源。",
+  "note": "法学底稿：pending 注册，须经 signoff 批准后才参与产出（INV-RULE-002）。source_refs 按 source_key@source_version 引用已登记法源。1.1.0 为 2026-10-10 补充版本，legal_review_status=pending，不替代已会签的 1.0.x。",
   "rules": [
     {
       "rule_id": "rule-conviction-assist-287-2-elements",
@@ -133,6 +133,164 @@
       "source_refs": ["cn-criminal-law-287-2-current", "cn-sentencing-guidance-2024-2"],
       "coverage": {"covers": ["sentencing.assist_ict"]},
       "required_evidence_kinds": ["transaction_flow", "surrender_record", "plea_document"]
+    },
+    {
+      "rule_id": "rule-conviction-assist-287-2-elements",
+      "rule_version": "1.1.0",
+      "family": "conviction",
+      "legal_review_status": "pending",
+      "predicate": {"all": [
+        {"path": "facts.knowledge_of_crime.value", "op": "eq", "value": "explicit"},
+        {"path": "facts.upstream_crime_established.value", "op": "eq", "value": true},
+        {"path": "facts.help_type.value", "op": "in", "value": [
+          "technical_support", "payment_settlement", "advertising_promotion",
+          "internet_access", "server_hosting", "network_storage", "communication_transmission"
+        ]}
+      ]},
+      "outcome": {
+        "charge_candidate": "assisting_information_network_crime",
+        "article": "刑法第287条之二",
+        "elements_met": ["knowledge_explicit", "assistance", "upstream_crime"],
+        "severity_rule_id": "rule-conviction-assist-severity-2019-threshold",
+        "severity_rule_version": "1.1.0",
+        "emit_business_status": true,
+        "help_categories": {
+          "technical_support": ["technical_support", "internet_access", "server_hosting", "network_storage", "communication_transmission"],
+          "payment_settlement": ["payment_settlement"],
+          "advertising_promotion": ["advertising_promotion"]
+        },
+        "note": "明知终态只接受 explicit。presumed 不是构成要件命中。四个技术子类归入技术支持，不与支付结算、广告推广并列成六个一级分类。情节严重见独立 1.1.0 规则；两规则同时 calculated 才写入建议罪名。建议罪名不是定罪结论。"
+      },
+      "source_refs": ["cn-criminal-law-287-2-current"],
+      "coverage": {"covers": ["crime.assist_ict"]},
+      "required_evidence_kinds": ["chat_record", "transaction_flow", "service_log"]
+    },
+    {
+      "rule_id": "rule-conviction-assist-severity-2019-threshold",
+      "rule_version": "1.1.0",
+      "family": "conviction",
+      "legal_review_status": "pending",
+      "predicate": {"any": [
+        {"path": "facts.assisted_targets.value", "op": "gte", "value": 3},
+        {"path": "amounts.payment_settlement_amount.confirmedSum", "op": "gte", "value": 200000},
+        {"path": "amounts.provided_funds_amount.confirmedSum", "op": "gte", "value": 50000},
+        {"path": "amounts.illegal_gain.confirmedSum", "op": "gte", "value": 10000},
+        {"all": [
+          {"path": "facts.self_account_count.value", "op": "gte", "value": 3},
+          {"path": "amounts.account_total_flow.confirmedSumSelf", "op": "gte", "value": 300000}
+        ]},
+        {"all": [
+          {"path": "facts.non_self_account_transaction.value", "op": "eq", "value": true},
+          {"path": "amounts.account_total_flow.confirmedSumNonSelf", "op": "gte", "value": 300000}
+        ]}
+      ]},
+      "outcome": {
+        "severity_threshold": "met",
+        "emit_business_status": true,
+        "machine_routes": ["S1", "S2", "S3", "S4", "S6", "S7"],
+        "coverage_boundary": "机器路径不是法释〔2019〕15号第十二条的全部情形。S6、S7 使用分属本人与非本人的确认流入，不能用未拆分的账户总额代替，也不能据此确认刑责。",
+        "manual_severity_review": [
+          {"id": "internet_admin_penalty_within_2y", "label": "两年内相关行政处罚后又帮助", "machine_complete": false},
+          {"id": "phone_or_iot_card_count", "label": "电话卡或物联网卡不少于20张", "machine_complete": false, "manual_fallback": true},
+          {"id": "upstream_serious_consequence", "label": "被帮助对象犯罪造成严重后果"},
+          {"id": "other_serious_circumstances", "label": "其他情节严重"}
+        ],
+        "note": "S1 不再附加30万元。S2、S3、S4 分别使用支付结算、提供资金、违法所得。S5 与 S8 只进入人工核查，不自动命中。S6、S7 不读取未按归属拆分的 confirmedSum。"
+      },
+      "source_refs": ["cn-cybercrime-interpretation-2019-11-12", "cn-helping-opinion-2025-4-9"],
+      "coverage": {"covers": ["crime.assist_ict.severity"]},
+      "required_evidence_kinds": []
+    },
+    {
+      "rule_id": "rule-distinction-concealment-after-upstream",
+      "rule_version": "1.1.0",
+      "family": "distinction",
+      "legal_review_status": "pending",
+      "predicate": {"all": [
+        {"path": "facts.upstream_crime_completed.value", "op": "eq", "value": true},
+        {"path": "facts.contact_timing.value", "op": "eq", "value": "after_upstream"},
+        {"path": "facts.prior_collusion.value", "op": "eq", "value": false},
+        {"path": "facts.continued_participation.value", "op": "eq", "value": false}
+      ]},
+      "outcome": {
+        "distinction": "assist_time_boundary",
+        "concealment_position": "candidate_only",
+        "assist_position": "exclusion_clue",
+        "emit_business_status": true,
+        "note": "上游既遂后首次介入，且无事前通谋、无既遂前持续参与，只形成帮信时间界分的排除线索。掩隐罪仅作候选罪名，不因本规则命中而成立。仅有既遂事实、或存在事前通谋、或存在持续参与时，本规则不命中，不得据此认定掩隐或排除帮信。"
+      },
+      "source_refs": ["cn-criminal-law-312-current", "cn-concealment-interpretation-2025-1-12"],
+      "coverage": {"covers": ["distinction.concealment_vs_assist"]},
+      "required_evidence_kinds": ["transaction_flow", "timeline"]
+    },
+    {
+      "rule_id": "rule-distinction-fraud-accomplice-prior-collusion",
+      "rule_version": "1.1.0",
+      "family": "distinction",
+      "legal_review_status": "pending",
+      "predicate": {"any": [
+        {"all": [
+          {"path": "facts.prior_collusion.value", "op": "eq", "value": true},
+          {"path": "facts.knowledge_specificity.value", "op": "eq", "value": "specific"},
+          {"path": "facts.support_provided.value", "op": "eq", "value": true}
+        ]},
+        {"all": [
+          {"path": "facts.prior_collusion.value", "op": "eq", "value": false},
+          {"path": "facts.stable_cooperation.value", "op": "eq", "value": true},
+          {"path": "facts.cooperation_formed_before_completion.value", "op": "eq", "value": true},
+          {"path": "facts.knowledge_specificity.value", "op": "eq", "value": "specific"},
+          {"path": "facts.substantial_participation.value", "op": "eq", "value": true},
+          {"path": "facts.support_provided.value", "op": "eq", "value": true}
+        ]}
+      ]},
+      "outcome": {
+        "distinction": "fraud_accomplice_review",
+        "emit_business_status": true,
+        "note": "事前通谋，或既遂前稳定配合且具有具体明知和实质参与时，诈骗罪进入优先核查的候选路径，不自动认定共犯。概括明知不命中本规则。"
+      },
+      "source_refs": ["cn-criminal-law-266-current", "cn-telefraud-opinion-2016-common-crime"],
+      "coverage": {"covers": ["distinction.fraud_accomplice_vs_assist"]},
+      "required_evidence_kinds": ["chat_record", "timeline"]
+    },
+    {
+      "rule_id": "rule-compliance-logs-retention-6m",
+      "rule_version": "1.1.0",
+      "family": "compliance",
+      "legal_review_status": "pending",
+      "predicate": {"all": [
+        {"path": "facts.log_retention_months.value", "op": "gte", "value": 6},
+        {"path": "facts.log_retention_executed.value", "op": "eq", "value": true}
+      ]},
+      "outcome": {
+        "finding": "log_retention_execution_supported",
+        "severity": "info",
+        "duty": "网络日志留存不少于六个月",
+        "emit_business_status": true,
+        "note": "六个月门槛不变。只有制度文件、没有实际留存证据时不命中。2026年1月1日前的行为不得用2025年修正文本替代旧法。"
+      },
+      "source_refs": ["cn-cybersecurity-law-2016@2017-original", "cn-cybersecurity-law-2025@2025-revision"],
+      "coverage": {"covers": ["duty.log_retention"]},
+      "required_evidence_kinds": ["service_log", "policy_document"]
+    },
+    {
+      "rule_id": "rule-compliance-realname-verification",
+      "rule_version": "1.1.0",
+      "family": "compliance",
+      "legal_review_status": "pending",
+      "predicate": {"all": [
+        {"path": "facts.realname_policy_exists.value", "op": "eq", "value": true},
+        {"path": "facts.realname_verification_executed.value", "op": "eq", "value": true}
+      ]},
+      "outcome": {
+        "finding": "realname_verification_executed",
+        "severity": "info",
+        "duty": "用户真实身份信息核验",
+        "emit_business_status": true,
+        "note": "有核验制度但确认未实际执行时，业务状态为 not_met，不得因制度文件存在而视为义务已履行。"
+      },
+      "source_refs": ["cn-cybersecurity-law-2016@2017-original", "cn-cybersecurity-law-2025@2025-revision"],
+      "coverage": {"covers": ["duty.realname"]},
+      "required_evidence_kinds": ["policy_document", "service_log"]
     }
   ]
 }

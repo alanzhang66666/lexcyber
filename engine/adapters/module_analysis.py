@@ -37,6 +37,70 @@ class ModuleAnalysisError(Exception):
         self.code = code
 
 
+_ASSIST_ELEMENTS = ("rule-conviction-assist-287-2-elements", "1.1.0")
+_ASSIST_SEVERITY = ("rule-conviction-assist-severity-2019-threshold", "1.1.0")
+
+
+def _business_status(fired: bool, trace: list[dict[str, Any]], blockers: list[dict[str, Any]]) -> str:
+    """Layer met/not_met/unknown/conflicted beside the execution status.
+
+    A missing or blocked input is not treated as a verified failure.
+    """
+    codes = {str(item.get("code") or "") for item in blockers if isinstance(item, dict)}
+    if any("CONFLICT" in code for code in codes):
+        return "conflicted"
+    if blockers:
+        return "unknown"
+    if fired:
+        return "met"
+    if trace and all(isinstance(item, dict) and item.get("found") for item in trace):
+        return "not_met"
+    return "unknown"
+
+
+def _attach_business_status(entry: dict[str, Any], rule: dict[str, Any], fired: bool,
+                            trace: list[dict[str, Any]], blockers: list[dict[str, Any]]) -> None:
+    outcome = rule.get("outcome") if isinstance(rule, dict) else None
+    if isinstance(outcome, dict) and outcome.get("emit_business_status") is True:
+        entry["business_status"] = _business_status(fired, trace, blockers)
+
+
+def _apply_assist_severity_gate(rule_results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """A recommended assisting charge requires the separate severity rule to be met."""
+    elements = next((row for row in rule_results
+                     if (row.get("ruleId"), row.get("ruleVersion")) == _ASSIST_ELEMENTS), None)
+    severity = next((row for row in rule_results
+                     if (row.get("ruleId"), row.get("ruleVersion")) == _ASSIST_SEVERITY), None)
+    if elements is None or severity is None:
+        return []
+    severity_met = severity.get("fired") is True and severity.get("status") == "calculated"
+    if severity_met:
+        elements["severity_gate"] = "met"
+    elif severity.get("status") == "blocked" or severity.get("business_status") == "unknown":
+        elements["severity_gate"] = "unknown"
+    else:
+        elements["severity_gate"] = "not_met"
+    if not (elements.get("fired") is True and elements.get("status") == "calculated"):
+        return []
+    outcome = dict(elements.get("outcome") or {})
+    if severity_met:
+        outcome["recommended_charge"] = "assisting_information_network_crime"
+        outcome["recommended_charge_note"] = (
+            "该罪名的系统规则要件目前已命中，建议由有权人员进一步核查证据与排除事由。"
+        )
+        elements["outcome"] = outcome
+        return []
+    outcome["recommended_charge"] = None
+    elements["outcome"] = outcome
+    elements["status"] = "blocked"
+    return [{
+        "code": "SEVERITY_GATE_UNMET",
+        "ruleId": elements["ruleId"],
+        "ruleVersion": elements["ruleVersion"],
+        "message": "帮信其他构成要件已命中，情节严重门槛未同时满足，不输出建议罪名",
+    }]
+
+
 _FAMILIES = {
     "compliance.analyze": ("compliance", "case.compliance.v2", "compliance"),
     "conviction.analyze": ("conviction", "case.conviction.v2", "conviction"),
@@ -147,6 +211,7 @@ def analyze(payload: dict[str, Any], task_type: str) -> dict[str, Any]:
             "candidate_paths": paths_for_rule,
             "input_validation": input_validator.summary(),
         }
+        _attach_business_status(entry, rule, fired, trace, input_blockers + evidence.get("blockers", []))
         rule_results.append(entry)
         if fired:
             fired_sources.update(rule["sourceIds"])
@@ -256,6 +321,7 @@ def analyze(payload: dict[str, Any], task_type: str) -> dict[str, Any]:
                 input_validation["blockers"].append(blocker)
     input_validation["status"] = "blocked" if input_validation["blockers"] else "verified"
     blockers.extend(input_validation.get("blockers", []))
+    blockers.extend(_apply_assist_severity_gate(rule_results))
 
     status = "blocked" if blockers else ("calculated" if any(r["fired"] for r in rule_results)
                                          else "not_applicable")
@@ -450,6 +516,9 @@ def _temporal_paths(payload: dict[str, Any], family: str, schema_version: str,
                                  "input_blockers": input_blockers,
                                  "candidate_paths": paths_for_rule,
                                  "input_validation": input_validator.summary()})
+            _attach_business_status(path_results[-1], rule, fired, trace,
+                                    input_blockers + evidence.get("blockers", []))
+        path_blockers.extend(_apply_assist_severity_gate(path_results))
         if not path_rules and not path_blockers:
             path_blockers.append({"code": "TEMPORAL_RULE_PATH_UNAVAILABLE",
                                   "point": point, "date": point_date.isoformat(),

@@ -494,7 +494,7 @@ export function toSentencingResultV2(content: Rec): SentencingResult | null {
     if (first.fine) intervalParts.push(first.fine)
   }
   if (payload.status === 'blocked' && blockers.length === 0) {
-    blockers.push({ message: '量刑结果整体被阻断，未输出刑期。' })
+    blockers.push({ message: '量刑结果整体被阻断，未输出计算参考值。' })
   }
   return {
     status: payload.status || null,

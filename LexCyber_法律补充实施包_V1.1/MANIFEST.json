@@ -1,0 +1,108 @@
+{
+  "package": "LexCyber_法律补充实施包_V1.1",
+  "built_on": "2026-10-10",
+  "type": "implementation_spec_and_review_drafts",
+  "warnings": [
+    "not a deployable/approved rule bundle",
+    "not a Flyway migration patch",
+    "signoff required before use",
+    "/v1 feature gates remain 501"
+  ],
+  "files": [
+    {
+      "path": "00_总览/总需求与优先级.md",
+      "bytes": 1828,
+      "sha256": "712ba6621d1eba5c378152f61b18e6e5b404724b2fecd3a7e33da59e78f7a972"
+    },
+    {
+      "path": "01_法源/legal_sources_additions.review.json",
+      "bytes": 2025,
+      "sha256": "5e30bb4635375022f1dc1e99ae0188373dd5d6841a0870d47479ba6a1c612bda"
+    },
+    {
+      "path": "01_法源/旧新网络安全法衔接.md",
+      "bytes": 2067,
+      "sha256": "2c47e17bc044661fd58d1652a97d9b92cfecabf998146ec8e9cb8431f8e7f825"
+    },
+    {
+      "path": "02_规则/candidate_paths_设计与事实键对照.md",
+      "bytes": 2819,
+      "sha256": "6b398f8af4d20cf575af14dbb01512a00ebc5add8487ef559b0a93c7057152eb"
+    },
+    {
+      "path": "02_规则/severity_routes.review.json",
+      "bytes": 3280,
+      "sha256": "6332aa2bf74456180c713191d1b95ccbd0c695411130f81185f8f3ccd58caa8c"
+    },
+    {
+      "path": "02_规则/规则补充总规范.md",
+      "bytes": 4122,
+      "sha256": "7d5a9f48e63b268fa829f7b1afc71778ccc81116d1cdaf2e234210e7d3884f7b"
+    },
+    {
+      "path": "03_文书/document_field_schema.review.json",
+      "bytes": 4962,
+      "sha256": "e9ad1077dbb3f227f38e68f08bed37344de2338975bee902b8d164dea9ad1ca9"
+    },
+    {
+      "path": "03_文书/文书模板与渲染规范.md",
+      "bytes": 3014,
+      "sha256": "14ac0718ca9e707eee97c57f1823719b85a1d2070cb32bcf289ccb3c4e600419"
+    },
+    {
+      "path": "03_文书/模板结构样稿/不起诉决定书_四类型_法学审查样稿.md",
+      "bytes": 1097,
+      "sha256": "6415cbb063603d1e05a7f3700a29437a6cbebbfac491a84b1dfb3ff5a748274c"
+    },
+    {
+      "path": "03_文书/模板结构样稿/起诉书_帮信通用型_法学审查样稿.md",
+      "bytes": 952,
+      "sha256": "c0fa9a472c2262dfe48df932de544d4c7c0b1ceebf2af1c38986368cbc58ac23"
+    },
+    {
+      "path": "03_文书/模板结构样稿/起诉书_支付结算型_法学审查样稿.md",
+      "bytes": 1278,
+      "sha256": "a413bac7ae3394e8b95b494115341d55ac09ab0d16eaf62c80e4f63579bf1928"
+    },
+    {
+      "path": "03_文书/模板结构样稿/量刑建议书_法学审查样稿.md",
+      "bytes": 872,
+      "sha256": "19314754aa2348e4c8e33a86238cf564a9bddb08d3accb7d2bc7027b027c4101"
+    },
+    {
+      "path": "04_页面/文案替换清单.csv",
+      "bytes": 945,
+      "sha256": "c4b45d7f93c4981779a2aa9044ab83f9d8fa643b27bc7a18bdf3fb3fb75a41ce"
+    },
+    {
+      "path": "04_页面/页面文案与法律边界.md",
+      "bytes": 1827,
+      "sha256": "eb2db2af0a08bec4d169b560bb9ab9d323c9eb4feceb477e85c15d6f3a5e5793"
+    },
+    {
+      "path": "05_迁移与生效/播种会签与501门闩运行手册.md",
+      "bytes": 2102,
+      "sha256": "a6e14bf919b0107da1ed9ca19784d327a748135120fa3d99b545e42d6fac11e3"
+    },
+    {
+      "path": "05_迁移与生效/金额扩展与V27验证.md",
+      "bytes": 2159,
+      "sha256": "3b98be6444891ac7988ebebcc19b4d171b9cdfdaf63be6ef158dd22af7dfd4ba"
+    },
+    {
+      "path": "06_验收/测试用例矩阵.csv",
+      "bytes": 3272,
+      "sha256": "b429cec666d52cc31a359ca5c9df8c070463394c32a6b4cb3ddaae4aaa79f33e"
+    },
+    {
+      "path": "06_验收/验收清单.md",
+      "bytes": 1796,
+      "sha256": "67782abbcf2e5ffc2c39dc64ac3ae6d62a5c82c2d20247cc949650e3942acce1"
+    },
+    {
+      "path": "README.md",
+      "bytes": 3136,
+      "sha256": "e52e1fa0c2b50325b93257a3fbd8b551040b4dbaf063a944995ea4c651c6314b"
+    }
+  ]
+}

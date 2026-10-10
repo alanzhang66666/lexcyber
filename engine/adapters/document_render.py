@@ -139,6 +139,14 @@ def render(payload: dict[str, Any]) -> dict[str, Any]:
     if input_validation.get("blockers"):
         unresolved.extend({"path": item.get("path"), "reason": item.get("code", "input_blocked")}
                           for item in input_validation["blockers"])
+    unresolved.extend(_document_constraints(template, view, metadata))
+    section = _conditional_section(template, view)
+    if section is _SECTION_MISSING:
+        unresolved.append({"path": "conditional_sections", "reason": "conditional_section_missing"})
+    elif isinstance(section, str):
+        body = body.rstrip() + "\n" + section
+        if _PLACEHOLDER.search(section) or _CHINESE_PLACEHOLDER.search(section):
+            unresolved.append({"path": "conditional_sections", "reason": "unresolved_placeholder"})
     status = "blocked" if unresolved else "rendered"
     body_out = {
         "schema_version": "draft.v2",
@@ -165,6 +173,91 @@ def render(payload: dict[str, Any]) -> dict[str, Any]:
         "input_validation": input_validation,
     }
     return {"final_output": body_out, "human_approval_required": True}
+
+
+_SECTION_MISSING = object()
+
+
+def _fact_value(view: dict[str, Any], key: str) -> Any:
+    item = (view.get("facts") or {}).get(key)
+    if not isinstance(item, dict) or item.get("value") is None:
+        return None
+    return item.get("value")
+
+
+def _is_true(value: Any) -> bool:
+    return value is True or (isinstance(value, str) and value.strip().lower() == "true")
+
+
+def _is_false(value: Any) -> bool:
+    return value is False or (isinstance(value, str) and value.strip().lower() == "false")
+
+
+def _matches(actual: Any, expected: Any) -> bool:
+    if isinstance(expected, bool):
+        return _is_true(actual) if expected else _is_false(actual)
+    return actual == expected
+
+
+def _document_constraints(template: dict[str, Any], view: dict[str, Any],
+                          metadata: dict[str, Any]) -> list[dict[str, str]]:
+    schema = template.get("fieldSchema") or {}
+    unresolved: list[dict[str, str]] = []
+    applicability = schema.get("applicability")
+    if isinstance(applicability, dict):
+        selection = metadata.get("documentSelection")
+        selection = selection if isinstance(selection, dict) else {}
+        if applicability.get("manual_document_selection") and selection.get("confirmed") is not True:
+            unresolved.append({"path": "documentSelection.confirmed", "reason": "manual_selection_required"})
+        expected = applicability.get("document_disposition")
+        if expected and selection.get("documentDisposition") != expected:
+            unresolved.append({"path": "documentSelection.documentDisposition", "reason": "applicability_mismatch"})
+        help_type = applicability.get("help_type")
+        if help_type and _fact_value(view, "help_type") != help_type:
+            unresolved.append({"path": "facts.help_type.value", "reason": "applicability_mismatch"})
+        if selection.get("chargeBoundaryUnresolved") is True:
+            unresolved.append({"path": "documentSelection.chargeBoundaryUnresolved", "reason": "boundary_unresolved"})
+    exclusive = schema.get("mutually_exclusive")
+    exclusive_field = schema.get("exclusive_field")
+    if isinstance(exclusive, list) and exclusive and isinstance(exclusive_field, str):
+        value = _fact_value(view, exclusive_field)
+        path = f"facts.{exclusive_field}.value"
+        if isinstance(value, list) or (isinstance(value, str) and "," in value):
+            unresolved.append({"path": path, "reason": "mutually_exclusive"})
+        elif value not in exclusive:
+            unresolved.append({"path": path, "reason": "exclusive_value_invalid"})
+    if _fact_value(view, "non_prosecution_type") == "conditional_minor":
+        for key in schema.get("conditional_minor_required") or []:
+            if not _is_true(_fact_value(view, str(key))):
+                unresolved.append({"path": f"facts.{key}.value", "reason": "conditional_required_missing"})
+        age = _fact_value(view, "offence_age")
+        if isinstance(age, (int, float)) and not isinstance(age, bool) and age >= 18:
+            unresolved.append({"path": "facts.offence_age.value", "reason": "conditional_minor_not_applicable"})
+    for branch in schema.get("conditional_required") or []:
+        if not isinstance(branch, dict):
+            continue
+        if not _matches(_fact_value(view, str(branch.get("fact"))), branch.get("eq")):
+            continue
+        for key in branch.get("required") or []:
+            if _fact_value(view, str(key)) is None:
+                unresolved.append({"path": f"facts.{key}.value", "reason": "conditional_required_missing"})
+        for key in branch.get("must_omit") or []:
+            if _fact_value(view, str(key)) is not None:
+                unresolved.append({"path": f"facts.{key}.value", "reason": "mutually_exclusive"})
+    return unresolved
+
+
+def _conditional_section(template: dict[str, Any], view: dict[str, Any]) -> Any:
+    schema = template.get("fieldSchema") or {}
+    spec = schema.get("conditional_sections")
+    if not isinstance(spec, dict):
+        return None
+    value = _fact_value(view, str(spec.get("fact") or ""))
+    sections = spec.get("sections") if isinstance(spec.get("sections"), dict) else {}
+    text = sections.get(value)
+    if not isinstance(text, str) or not text.strip():
+        return _SECTION_MISSING
+    return text
 
 
 class DraftRenderRunner:

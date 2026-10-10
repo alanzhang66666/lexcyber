@@ -102,7 +102,7 @@ watch(caseId, () => void load())
 
       <section v-if="v2Analysis" class="panel">
         <div class="panel-heading"><div><p class="section-index">02</p><h2>规则执行结果</h2></div></div>
-        <p class="panel-note">approved 规则包对确认事实快照的逐条求值；不构成合规结论。</p>
+        <p class="panel-note">approved 规则包对确认事实快照的逐条求值。存在相关风险时建议进一步核查，需要结合全案材料判断。</p>
         <RuleResultsPanel :analysis="v2Analysis" />
       </section>
 

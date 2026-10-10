@@ -1,0 +1,46 @@
+{
+  "status": "review_draft_not_seed_ready",
+  "note": "仅为本轮拟新增的网络安全法法源元数据；需在正式语料中依registry既有字段校验、与既有ID去重并法学会签。旧新版之间的版本接续应由registry法源关系维护。",
+  "sources": [
+    {
+      "id": "cn-cybersecurity-law-2016",
+      "title": "中华人民共和国网络安全法（2016年通过文本）",
+      "document_number": "中华人民共和国主席令第五十三号",
+      "article": "第二十一条第三项、第二十四条",
+      "jurisdiction": "CN",
+      "authority": "law",
+      "source_version": "2017-original",
+      "signoff_status": "pending",
+      "effective_from": "2017-06-01",
+      "effective_to": "2025-12-31",
+      "official_url": "https://www.miit.gov.cn/zwgk/zcwj/flfg/art/2020/art_b47f3f954273437d9f3ebe880fd6b0b4.html",
+      "excerpt": "第二十一条第三项涉及日志留存不少于六个月；第二十四条涉及网络实名信息义务。",
+      "aliases": [
+        "2016网络安全法",
+        "网络安全法原版",
+        "原第二十一条日志留存",
+        "原第二十四条实名"
+      ]
+    },
+    {
+      "id": "cn-cybersecurity-law-2025",
+      "title": "中华人民共和国网络安全法（2025年修正）",
+      "document_number": "中华人民共和国主席令第六十一号",
+      "article": "第二十三条第三项、第二十六条",
+      "jurisdiction": "CN",
+      "authority": "law",
+      "source_version": "2025-revision",
+      "signoff_status": "pending",
+      "effective_from": "2026-01-01",
+      "effective_to": null,
+      "official_url": "https://www.cac.gov.cn/2025-12/29/c_1768735112911946.htm",
+      "excerpt": "第二十三条第三项涉及日志留存不少于六个月；第二十六条涉及网络实名信息义务。",
+      "aliases": [
+        "2025修正网络安全法",
+        "网络安全法新版本",
+        "第二十三条日志留存",
+        "第二十六条实名"
+      ]
+    }
+  ]
+}

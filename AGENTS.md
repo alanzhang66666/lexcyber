@@ -68,4 +68,4 @@ python scripts/concurrency_check.py
 - **遗留缺口**：案载 12–18 月基准被复核裁定为偏重应修正（系统 9.0 月无异常，规则不改）；`module-content.ts` 容错读取器仅服务 /v1 演示壳（v2 工件用 `module-content-v2.ts`）；合规两规则依赖未会签的 `cn-cybersecurity-law-2025`，暂不进有效视图
 - **2026-10-09 法学生复核版会签已入册**：10 法源 signed_off（别名修正+掩隐新旧链）、规则/模板同内容升版正式会签（旧版 superseded）；复核人非法学负责人，有条件同意的实质修改待负责人确认后另出新版本。明细见 `docs/legal-signoff-checklist.md`、`docs/legal-review/`、执行脚本 `scripts/apply_legal_signoff_2026_10_09.py`
 
-下一步：正式法学负责人复核（在法学生结论基础上裁定有条件同意项）、案例 A 案载基准修正、合规法源 `cn-cybersecurity-law-2025` 会签。
+下一步：1.1.0 补充规则和 `cn-cybersecurity-law-2025` 仍是 pending，须法学负责人 `signoff()` 后才进入有效视图；文书四类模板与页面辅助研判措辞见 `docs/legal-supplement-requirements-2026-10-10.md`。不要把 pending 语料当成已会签，也不要打开 `/v1` 的 `501` 门闩。

@@ -106,7 +106,7 @@ function resultNumbers(rule: Rec): string[] {
   if (ruleStatus(rule) !== 'calculated' || records(rule.blockers).length > 0) return []
   const values: string[] = []
   const months = number(rule.term_months ?? rule.termMonths)
-  if (months !== undefined) values.push(`刑期 ${months} 个月`)
+  if (months !== undefined) values.push(`量刑辅助分析结果：${months} 个月`)
   const fine = fineValue(rule.fine)
   if (fine) values.push(fine)
   return values

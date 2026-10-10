@@ -165,15 +165,52 @@ def build_view(snapshot: dict[str, Any]) -> dict[str, Any]:
                          "count": [], "confirmedCount": []}
         view["_input_rows"]["amounts"][kind] = input_rows
         view["_input_invalid"]["amounts"][kind] = input_invalid
+        self_rows, non_self_rows = _ownership_rows(confirmed_sum_rows)
+        input_rows["confirmedSumSelf"] = self_rows
+        input_rows["confirmedSumNonSelf"] = non_self_rows
+        input_invalid["confirmedSumSelf"] = []
+        input_invalid["confirmedSumNonSelf"] = []
         view["amounts"][kind] = {
             "sum": float(bucket["sum"]), "count": bucket["count"],
             "confirmedSum": float(bucket["confirmed_sum"]),
             "confirmedCount": bucket["confirmed_count"],
+            "confirmedSumSelf": _amount_total(self_rows),
+            "confirmedSumNonSelf": _amount_total(non_self_rows),
             "items": rows_for_kind,
             "_input_rows": input_rows,
             "_input_invalid": input_invalid,
         }
     return view
+
+
+def _account_ownership(row: dict[str, Any]) -> str | None:
+    """Map an amount row onto the S6/S7 account sets. Unknown values stay out of both."""
+    raw = row.get("accountOwnership", row.get("account_ownership"))
+    if not isinstance(raw, str) or not raw.strip():
+        attributes = row.get("attributes")
+        if isinstance(attributes, dict):
+            raw = attributes.get("accountOwnership", attributes.get("account_ownership"))
+    if not isinstance(raw, str):
+        return None
+    key = raw.strip().lower()
+    if key in {"self", "own", "self_account"}:
+        return "self"
+    if key in {"non_self", "nonself", "other", "unit"}:
+        return "non_self"
+    return None
+
+
+def _ownership_rows(rows: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    self_rows = [row for row in rows if _account_ownership(row) == "self"]
+    non_self_rows = [row for row in rows if _account_ownership(row) == "non_self"]
+    return self_rows, non_self_rows
+
+
+def _amount_total(rows: list[dict[str, Any]]) -> float:
+    total = Decimal(0)
+    for row in rows:
+        total += Decimal(str(row.get("value")))
+    return float(total)
 
 
 def _resolve(view: dict[str, Any], path: str) -> tuple[bool, Any]:
