@@ -4,23 +4,28 @@ import {fileURLToPath} from "node:url";
 import path from "node:path";
 import {initStore,readState,changeState} from "./store.js";
 import {explain,ruleDefs} from "./data.js";
+import {listTransfers} from "./risk-transfer.js";
+import {timingSafeEqual} from "node:crypto";
 const base=path.dirname(fileURLToPath(import.meta.url));
 const port=Number(process.env.PORT||8080);
 const json=(res,status,obj)=>{res.writeHead(status,{"content-type":"application/json; charset=utf-8","cache-control":"no-store","x-content-type-options":"nosniff"});res.end(JSON.stringify(obj))};
 async function body(req){let s="";for await(const chunk of req){s+=chunk;if(s.length>20000)throw Object.assign(new Error("请求过大"),{status:413})}try{return JSON.parse(s)}catch{throw Object.assign(new Error("无效 JSON"),{status:400})}}
+function authorized(req){const expected=process.env.DEMO_WRITE_TOKEN,got=req.headers["x-demo-token"];if(!expected||typeof got!=="string")return false;const a=Buffer.from(expected),b=Buffer.from(got);return a.length===b.length&&timingSafeEqual(a,b)}
 export function handler(req,res){
  (async()=>{
   const url=new URL(req.url,"http://localhost");const route=url.pathname;
   if(req.method==="GET"&&route==="/healthz")return json(res,200,{ok:true,storage:process.env.DATABASE_URL?"mysql":"demo-memory"});
   if(req.method==="GET"&&route==="/api/state")return json(res,200,{...(await readState()),rules:ruleDefs});
   if(req.method==="POST"&&route==="/api/action"){
-   if(process.env.DEMO_WRITE_TOKEN && req.headers["x-demo-token"]!==process.env.DEMO_WRITE_TOKEN)throw Object.assign(new Error("操作需要演示授权令牌"),{status:401});
+   if(!authorized(req))throw Object.assign(new Error("操作需要演示授权令牌"),{status:401});
    if(!["application/json"].includes((req.headers["content-type"]||"").split(";")[0]))throw Object.assign(new Error("需要 application/json"),{status:415});
    const action=await body(req);if(!action||typeof action!=="object"||Array.isArray(action))throw Object.assign(new Error("无效动作"),{status:400});
    return json(res,200,await changeState(action));
   }
+  if(req.method==="GET"&&route==="/api/risk-transfers")return json(res,200,listTransfers(await readState()));
   if(req.method==="GET"&&route.startsWith("/api/cases/")){
    const parts=route.split("/");const c=(await readState()).cases.find(x=>x.id===parts[3]);if(!c)throw Object.assign(new Error("事项不存在"),{status:404});
+   if(parts[4]==="risk-transfers")return json(res,200,listTransfers(await readState()).filter(t=>t.targetCaseId===c.id));
    if(parts[4]==="risk-signals")return json(res,200,c.artifacts.at(-1)?.stale?[]:c.artifacts.at(-1)?.riskSignals??[]);
    if(parts[4]==="evidence")return json(res,200,c.evidence??[]);
    if(parts[4]==="candidate-facts")return json(res,200,c.candidates??[]);
