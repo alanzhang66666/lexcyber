@@ -28,15 +28,14 @@ export function createRiskSignals(c){
 }
 export function derivePaths(c){
  if(c.id!=="F4")return [];
- const version=c.versions.at(-1),facts=version?.facts??{};
+ const version=c.versions.at(-1),facts=version?.facts??{},proofs=version?.proofs??{};
  return legalPaths.map(p=>({
  id:p.id,label:p.label,position:"review_only",
  items:p.checks.map(([key,label])=>{
-  const fact=c.candidates.find(x=>x.key===key&&x.status==="confirmed");
-  const value=facts[key];
-  const evidence=fact?.evidenceRefs?.filter(ref=>c.evidence.some(x=>x.id===ref))??[];
-  return {key,label,status:fact&&value===true&&evidence.length?"evidence_linked":"needs_verification",
-    evidenceRefs:evidence,verifiedFact:fact&&value===true?version?.id:null};
+  const proof=proofs[key],value=facts[key];
+  const evidence=proof?.evidenceRefs??[];
+  return {key,label,status:proof&&value===true&&evidence.length?"evidence_linked":"needs_verification",
+    evidenceRefs:evidence,candidateFactId:proof?.candidateFactId??null,verifiedFact:proof&&value===true?version?.id:null};
  }),
  humanReviewRequired:true,legalConclusion:null
  }));
@@ -48,6 +47,9 @@ export function verifyCandidate(c,id,decision){
  if(!["confirmed","rejected"].includes(decision))throw Object.assign(new Error("无效核验决定"),{status:400});
  if(decision==="confirmed"&&(!fact.evidenceRefs?.length||fact.evidenceRefs.some(ref=>!c.evidence.some(e=>e.id===ref))))throw Object.assign(new Error("确认前必须关联本案有效证据"),{status:409});
  fact.status=decision;
- if(decision==="confirmed")c.draft[fact.key]=fact.value;
+ if(decision==="confirmed"){
+  if(c.candidates.some(x=>x.id!==fact.id&&x.key===fact.key&&x.status==="confirmed"&&x.value!==fact.value))throw Object.assign(new Error("同一事实存在冲突确认，必须先解决"),{status:409});
+  c.draft[fact.key]=fact.value;
+ }
  return fact;
 }
